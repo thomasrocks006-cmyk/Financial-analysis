@@ -73,7 +73,7 @@ model, run ID, and timestamp.
 
 ### Inputs
 - API key (from UI sidebar)
-- Model selection (`claude-opus-4-5` / `claude-sonnet-4-5` / `claude-haiku-4-5`)
+- Model selection (`claude-opus-4-6` / `claude-sonnet-4-6` / `claude-haiku-4-5`)
 - Ticker list (from universe selection)
 - Temperature setting
 
@@ -81,7 +81,7 @@ model, run ID, and timestamp.
 ```json
 {
   "run_id": "DEMO-A1B2C3D4",
-  "model": "claude-opus-4-5",
+  "model": "claude-opus-4-6",
   "tickers": ["NVDA", "CEG", "PWR"],
   "data_source": "Demo mode — illustrative data",
   "config_valid": true,

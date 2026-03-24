@@ -91,19 +91,64 @@ with st.sidebar:
 
     # API Configuration
     st.markdown("### 🔑 API Configuration")
+
+    PROVIDER_MODELS = {
+        "Anthropic (Claude)": {
+            "models": [
+                ("claude-opus-4-6",        "Opus 4.6       $5 / $25 per MTok"),
+                ("claude-sonnet-4-6",      "Sonnet 4.6     $3 / $15 per MTok"),
+                ("claude-haiku-4-5",       "Haiku 4.5      $1 /  $5 per MTok"),
+            ],
+            "key_label": "Anthropic API Key",
+            "key_placeholder": "sk-ant-...",
+        },
+        "OpenAI (GPT)": {
+            "models": [
+                ("gpt-5.4",      "GPT-5.4        $2.50 / $15 per MTok"),
+                ("gpt-5.4-mini", "GPT-5.4 mini   $0.75 / $4.50 per MTok"),
+                ("gpt-5.4-nano", "GPT-5.4 nano   $0.20 / $1.25 per MTok"),
+            ],
+            "key_label": "OpenAI API Key",
+            "key_placeholder": "sk-...",
+        },
+        "Google (Gemini)": {
+            "models": [
+                ("gemini-3.1-pro-preview", "Gemini 3.1 Pro  $2 / $12 per MTok"),
+                ("gemini-2.5-pro",         "Gemini 2.5 Pro  $1.25 / $10 per MTok"),
+                ("gemini-2.5-flash",       "Gemini 2.5 Flash  $0.30 / $2.50 per MTok"),
+                ("gemini-2.5-flash-lite",  "Flash-Lite    $0.10 / $0.40 per MTok"),
+            ],
+            "key_label": "Google AI API Key",
+            "key_placeholder": "AIza...",
+        },
+    }
+
+    provider = st.selectbox(
+        "Provider",
+        list(PROVIDER_MODELS.keys()),
+        index=0,
+        help="Choose the LLM provider. Each requires its own API key.",
+    )
+    pdata = PROVIDER_MODELS[provider]
+
     api_key = st.text_input(
-        "Anthropic API Key",
+        pdata["key_label"],
         type="password",
-        placeholder="sk-ant-...",
-        help="Your Anthropic API key. Used only for this session.",
+        placeholder=pdata["key_placeholder"],
+        help="Used only for this session — never stored.",
     )
 
-    model_choice = st.selectbox(
+    model_ids   = [m[0] for m in pdata["models"]]
+    model_labels = [m[1] for m in pdata["models"]]
+    model_idx = st.selectbox(
         "Model",
-        ["claude-opus-4-5", "claude-sonnet-4-5", "claude-haiku-4-5"],
+        range(len(model_ids)),
+        format_func=lambda i: model_labels[i],
         index=0,
-        help="claude-opus-4-5 gives richest output. claude-haiku-4-5 is fastest.",
+        help="Input price / output price per million tokens.",
     )
+    model_choice = model_ids[model_idx]
+    st.caption(f"Selected: `{model_choice}`")
 
     temperature = st.slider("Temperature", 0.0, 1.0, 0.3, 0.05,
                              help="Lower = more deterministic. 0.2–0.4 recommended.")
@@ -238,13 +283,8 @@ with tab_pipeline:
         progress_bar = st.progress(0)
         status_text  = st.empty()
 
-        total_stages = len(STAGES)
-        stages_done  = 0
-
         async def _run():
-            nonlocal stages_done
-            result = await runner.run(progress_callback=progress_cb)
-            return result
+            return await runner.run(progress_callback=progress_cb)
 
         # Kick off async run
         loop = asyncio.new_event_loop()

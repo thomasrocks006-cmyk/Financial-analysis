@@ -43,7 +43,7 @@ class BaseAgent(ABC):
     def __init__(
         self,
         name: str,
-        model: str = "claude-opus-4-5",
+        model: str = "claude-opus-4-6",
         temperature: float = 0.2,
         max_retries: int = 3,
         prompts_dir: Path | None = None,
