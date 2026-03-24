@@ -90,68 +90,109 @@ with st.sidebar:
     st.divider()
 
     # API Configuration
-    st.markdown("### 🔑 API Configuration")
+    st.markdown("### 🔑 API Keys")
+    st.caption("Enter keys for each provider you want to use.")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.caption("Anthropic")
+        anthropic_key = st.text_input("Anthropic key", type="password", placeholder="sk-ant-...",
+                                       key="key_ant", label_visibility="collapsed")
+    with c2:
+        st.caption("OpenAI")
+        openai_key = st.text_input("OpenAI key", type="password", placeholder="sk-...",
+                                    key="key_oai", label_visibility="collapsed")
+    with c3:
+        st.caption("Google")
+        gemini_key = st.text_input("Google key", type="password", placeholder="AIza...",
+                                    key="key_gem", label_visibility="collapsed")
 
-    PROVIDER_MODELS = {
-        "Anthropic (Claude)": {
-            "models": [
-                ("claude-opus-4-6",        "Opus 4.6       $5 / $25 per MTok"),
-                ("claude-sonnet-4-6",      "Sonnet 4.6     $3 / $15 per MTok"),
-                ("claude-haiku-4-5",       "Haiku 4.5      $1 /  $5 per MTok"),
-            ],
-            "key_label": "Anthropic API Key",
-            "key_placeholder": "sk-ant-...",
-        },
-        "OpenAI (GPT)": {
-            "models": [
-                ("gpt-5.4",      "GPT-5.4        $2.50 / $15 per MTok"),
-                ("gpt-5.4-mini", "GPT-5.4 mini   $0.75 / $4.50 per MTok"),
-                ("gpt-5.4-nano", "GPT-5.4 nano   $0.20 / $1.25 per MTok"),
-            ],
-            "key_label": "OpenAI API Key",
-            "key_placeholder": "sk-...",
-        },
-        "Google (Gemini)": {
-            "models": [
-                ("gemini-3.1-pro-preview", "Gemini 3.1 Pro  $2 / $12 per MTok"),
-                ("gemini-2.5-pro",         "Gemini 2.5 Pro  $1.25 / $10 per MTok"),
-                ("gemini-2.5-flash",       "Gemini 2.5 Flash  $0.30 / $2.50 per MTok"),
-                ("gemini-2.5-flash-lite",  "Flash-Lite    $0.10 / $0.40 per MTok"),
-            ],
-            "key_label": "Google AI API Key",
-            "key_placeholder": "AIza...",
-        },
-    }
-
-    provider = st.selectbox(
-        "Provider",
-        list(PROVIDER_MODELS.keys()),
-        index=0,
-        help="Choose the LLM provider. Each requires its own API key.",
-    )
-    pdata = PROVIDER_MODELS[provider]
-
-    api_key = st.text_input(
-        pdata["key_label"],
-        type="password",
-        placeholder=pdata["key_placeholder"],
-        help="Used only for this session — never stored.",
-    )
-
-    model_ids   = [m[0] for m in pdata["models"]]
-    model_labels = [m[1] for m in pdata["models"]]
-    model_idx = st.selectbox(
-        "Model",
-        range(len(model_ids)),
-        format_func=lambda i: model_labels[i],
-        index=0,
-        help="Input price / output price per million tokens.",
-    )
-    model_choice = model_ids[model_idx]
-    st.caption(f"Selected: `{model_choice}`")
+    provider_keys = {k: v for k, v in
+                     {"anthropic": anthropic_key, "openai": openai_key, "gemini": gemini_key}.items()
+                     if v}
+    any_key = bool(provider_keys)
 
     temperature = st.slider("Temperature", 0.0, 1.0, 0.3, 0.05,
                              help="Lower = more deterministic. 0.2–0.4 recommended.")
+
+    st.divider()
+
+    # ── Per-stage model assignment ────────────────────────────────────────
+    st.markdown("### 🎛️ Model Assignment")
+
+    ALL_MODELS = [
+        ("claude-opus-4-6",        "Opus 4.6        · $5/$25"),
+        ("claude-sonnet-4-6",      "Sonnet 4.6      · $3/$15"),
+        ("claude-haiku-4-5",       "Haiku 4.5       · $1/$5"),
+        ("gpt-5.4",                "GPT-5.4         · $2.50/$15"),
+        ("gpt-5.4-mini",           "GPT-5.4 mini    · $0.75/$4.50"),
+        ("gpt-5.4-nano",           "GPT-5.4 nano    · $0.20/$1.25"),
+        ("gemini-3.1-pro-preview", "Gemini 3.1 Pro  · $2/$12"),
+        ("gemini-2.5-pro",         "Gemini 2.5 Pro  · $1.25/$10"),
+        ("gemini-2.5-flash",       "Gemini 2.5 Flash · $0.30/$2.50"),
+        ("gemini-2.5-flash-lite",  "Flash-Lite      · $0.10/$0.40"),
+    ]
+    ALL_IDS    = [m[0] for m in ALL_MODELS]
+    ALL_LABELS = [m[1] for m in ALL_MODELS]
+
+    # Recommended defaults per stage (from model assessment)
+    STAGE_DEFAULTS = {
+        5:  "claude-sonnet-4-6",   # Evidence: schema discipline
+        6:  "claude-opus-4-6",    # Sector ★: differentiated HOUSE VIEW
+        7:  "claude-sonnet-4-6",   # Valuation: table generation
+        8:  "gemini-2.5-pro",      # Macro: Google's geo/macro breadth
+        9:  "gemini-2.5-flash",    # Risk: narrative over deterministic data
+        10: "claude-opus-4-6",    # Red Team ★: adversarial reasoning
+        11: "claude-sonnet-4-6",   # Review: structured audit
+        12: "gpt-5.4",             # Portfolio: constraint table generation
+    }
+    LLM_STAGES = [
+        (5,  "Evidence Librarian"),
+        (6,  "Sector Analysis ★"),
+        (7,  "Valuation"),
+        (8,  "Macro & Political"),
+        (9,  "Quant Risk"),
+        (10, "Red Team ★"),
+        (11, "Associate Review"),
+        (12, "Portfolio Construction"),
+    ]
+
+    use_same = st.checkbox("Same model for all stages", value=True,
+                            help="Uncheck to assign a different model per stage — saves cost without sacrificing quality on key stages.")
+    if use_same:
+        def_idx = ALL_IDS.index("claude-sonnet-4-6")
+        g_idx = st.selectbox(
+            "Model (all LLM stages)",
+            range(len(ALL_MODELS)),
+            format_func=lambda i: ALL_LABELS[i],
+            index=def_idx, key="global_model",
+        )
+        stage_models = {num: ALL_IDS[g_idx] for num, _ in LLM_STAGES}
+        model_choice = ALL_IDS[g_idx]
+    else:
+        stage_models = {}
+        with st.expander("🔧 Per-stage model selection", expanded=True):
+            st.caption("★ = highest-impact stages; defaults reflect optimal cost/quality split")
+            for stage_num, stage_label in LLM_STAGES:
+                def_model = STAGE_DEFAULTS.get(stage_num, "claude-sonnet-4-6")
+                def_idx   = ALL_IDS.index(def_model)
+                idx = st.selectbox(
+                    f"S{stage_num}: {stage_label}",
+                    range(len(ALL_MODELS)),
+                    format_func=lambda i, _l=ALL_LABELS: _l[i],
+                    index=def_idx,
+                    key=f"sm_{stage_num}",
+                )
+                stage_models[stage_num] = ALL_IDS[idx]
+        model_choice = stage_models.get(6, "claude-opus-4-6")
+
+    # Warn if a chosen model's provider key is missing
+    def _prov(m: str) -> str:
+        if m.startswith("claude"): return "anthropic"
+        if m.startswith("gpt") or m.startswith("o1"): return "openai"
+        return "gemini"
+    missing_keys = {_prov(m) for m in stage_models.values()} - set(provider_keys)
+    if missing_keys and any_key:
+        st.warning(f"⚠️ Missing key(s): {', '.join(sorted(missing_keys))}")
 
     st.divider()
 
@@ -205,7 +246,7 @@ with tab_pipeline:
     with col_run:
         run_disabled = (
             st.session_state.running
-            or not api_key
+            or not any_key
             or not selected_tickers
         )
         run_btn = st.button(
@@ -213,7 +254,7 @@ with tab_pipeline:
             disabled=run_disabled,
             type="primary",
             use_container_width=True,
-            help="Requires Anthropic API key and at least one ticker selected.",
+            help="Requires at least one API key and at least one ticker selected.",
         )
     with col_reset:
         if st.button("↺ Reset", use_container_width=True):
@@ -225,8 +266,8 @@ with tab_pipeline:
             st.session_state.logs = []
             st.rerun()
 
-    if not api_key:
-        st.info("👈 Enter your Anthropic API key in the sidebar to run the pipeline.")
+    if not any_key:
+        st.info("👈 Enter at least one API key in the sidebar to run the pipeline.")
 
     # ── Stage progress display ────────────────────────────────────────────
     st.markdown("### Pipeline Stages")
@@ -267,10 +308,11 @@ with tab_pipeline:
         st.session_state.run_result = None
 
         runner = PipelineRunner(
-            api_key=api_key,
+            provider_keys=provider_keys,
             model=model_choice,
             tickers=selected_tickers,
             temperature=temperature,
+            stage_models=stage_models,
         )
 
         # Progress callback updates session state (not thread-safe but works for single user)

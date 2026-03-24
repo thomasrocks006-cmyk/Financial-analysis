@@ -69,18 +69,21 @@ class PipelineRunner:
 
     def __init__(
         self,
-        api_key: str,
+        provider_keys: dict[str, str],
         model: str = "claude-opus-4-6",
         tickers: Optional[list[str]] = None,
         temperature: float = 0.3,
+        stage_models: Optional[dict[int, str]] = None,
     ):
-        self.api_key = api_key
-        self.model = model
+        self.provider_keys = provider_keys  # {"anthropic": key, "openai": key, "gemini": key}
+        self.model = model          # default / display model
         self.temperature = temperature
         self.tickers = tickers or ["NVDA", "CEG", "PWR"]
+        self.stage_models = stage_models or {}  # {stage_num: model_id}
 
-        # Inject API key into environment for agents
-        os.environ["ANTHROPIC_API_KEY"] = api_key
+        # Backward compat: inject Anthropic key if present
+        if ak := provider_keys.get("anthropic"):
+            os.environ["ANTHROPIC_API_KEY"] = ak
 
     async def run(
         self,
@@ -208,47 +211,45 @@ class PipelineRunner:
         return sr
 
     # ── LLM helpers ──────────────────────────────────────────────────────
-    def _detect_provider(self) -> str:
-        """Detect provider from model name prefix."""
-        m = self.model.lower()
-        if m.startswith("claude"):
-            return "anthropic"
-        if m.startswith("gpt") or m.startswith("o1") or m.startswith("o3"):
-            return "openai"
-        if m.startswith("gemini"):
-            return "gemini"
+    @staticmethod
+    def _provider_for(model: str) -> str:
+        m = model.lower()
+        if m.startswith("claude"):  return "anthropic"
+        if m.startswith("gpt") or m.startswith("o1") or m.startswith("o3"): return "openai"
+        if m.startswith("gemini"): return "gemini"
         return "anthropic"
 
-    async def _call_llm(self, system_prompt: str, user_content: str) -> str:
-        """Route to the correct LLM provider based on model name."""
-        provider = self._detect_provider()
+    async def _call_llm(self, system_prompt: str, user_content: str, stage_num: int = -1) -> str:
+        """Route to the correct provider; uses per-stage model override if configured."""
+        model    = self.stage_models.get(stage_num, self.model)
+        provider = self._provider_for(model)
+        api_key  = self.provider_keys.get(provider, "")
+        if not api_key:
+            raise ValueError(
+                f"No API key for provider '{provider}' "
+                f"(stage {stage_num}, model '{model}'). Add the key in the sidebar."
+            )
         if provider == "openai":
-            return await self._call_openai(system_prompt, user_content)
+            return await self._call_openai(system_prompt, user_content, model, api_key)
         if provider == "gemini":
-            return await self._call_gemini(system_prompt, user_content)
-        return await self._call_anthropic(system_prompt, user_content)
+            return await self._call_gemini(system_prompt, user_content, model, api_key)
+        return await self._call_anthropic(system_prompt, user_content, model, api_key)
 
-    async def _call_anthropic(self, system_prompt: str, user_content: str) -> str:
-        """Call Claude via the anthropic SDK."""
+    async def _call_anthropic(self, system_prompt: str, user_content: str, model: str, api_key: str) -> str:
         import anthropic
-        client = anthropic.AsyncAnthropic(api_key=self.api_key)
+        client = anthropic.AsyncAnthropic(api_key=api_key)
         response = await client.messages.create(
-            model=self.model,
-            max_tokens=8192,
-            temperature=self.temperature,
+            model=model, max_tokens=8192, temperature=self.temperature,
             system=system_prompt,
             messages=[{"role": "user", "content": user_content}],
         )
         return response.content[0].text
 
-    async def _call_openai(self, system_prompt: str, user_content: str) -> str:
-        """Call GPT via the openai SDK."""
+    async def _call_openai(self, system_prompt: str, user_content: str, model: str, api_key: str) -> str:
         import openai
-        client = openai.AsyncOpenAI(api_key=self.api_key)
+        client = openai.AsyncOpenAI(api_key=api_key)
         response = await client.chat.completions.create(
-            model=self.model,
-            max_tokens=8192,
-            temperature=self.temperature,
+            model=model, max_tokens=8192, temperature=self.temperature,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content},
@@ -256,14 +257,12 @@ class PipelineRunner:
         )
         return response.choices[0].message.content
 
-    async def _call_gemini(self, system_prompt: str, user_content: str) -> str:
-        """Call Gemini via the google-genai SDK."""
+    async def _call_gemini(self, system_prompt: str, user_content: str, model: str, api_key: str) -> str:
         from google import genai
         from google.genai import types
-        client = genai.Client(api_key=self.api_key)
+        client = genai.Client(api_key=api_key)
         response = await client.aio.models.generate_content(
-            model=self.model,
-            contents=user_content,
+            model=model, contents=user_content,
             config=types.GenerateContentConfig(
                 system_instruction=system_prompt,
                 max_output_tokens=8192,
@@ -365,7 +364,7 @@ PRELIMINARY CLAIMS FROM DATA SYSTEM ({len(claims)} claims):
 Please build the Evidence Library and Claim Ledger for this universe.
         """.strip()
 
-        return await self._call_llm(system, user_content)
+        return await self._call_llm(system, user_content, stage_num=5)
 
     async def _stage_sector(self, market_data: dict, claims: list[dict]) -> str:
         stocks_by_sector: dict[str, list] = {"compute": [], "power_energy": [], "infrastructure": []}
@@ -427,7 +426,7 @@ Please produce the full Four-Box sector analysis for each stock.
 Use headers: ## [TICKER] — [Company Name] then the four boxes.
         """.strip()
 
-        return await self._call_llm(system, user_content)
+        return await self._call_llm(system, user_content, stage_num=6)
 
     async def _stage_valuation(self, market_data: dict, sector_outputs: str) -> str:
         stocks_str = json.dumps(
@@ -497,7 +496,7 @@ SECTOR ANALYSIS OUTPUT (for context):
 Please produce the full valuation analysis for each stock.
         """.strip()
 
-        return await self._call_llm(system, user_content)
+        return await self._call_llm(system, user_content, stage_num=7)
 
     async def _stage_macro(self, macro_data: dict) -> str:
         system = textwrap.dedent("""
@@ -540,7 +539,7 @@ PORTFOLIO UNIVERSE: {', '.join(self.tickers)}
 Please produce the macro and political risk analysis.
         """.strip()
 
-        return await self._call_llm(system, user_content)
+        return await self._call_llm(system, user_content, stage_num=8)
 
     async def _stage_risk(self, market_data: dict, sector_outputs: str) -> str:
         """Simplified quant risk summary (deterministic + LLM narrative)."""
@@ -595,7 +594,7 @@ SECTOR ANALYSIS EXCERPT:
 Please produce the risk and scenario analysis.
         """.strip()
 
-        return await self._call_llm(system, user_content)
+        return await self._call_llm(system, user_content, stage_num=9)
 
     async def _stage_red_team(self, sector_outputs: str, valuation_outputs: str) -> str:
         system = textwrap.dedent("""
@@ -641,7 +640,7 @@ VALUATION OUTPUTS:
 Please conduct the full Red Team analysis for each stock.
         """.strip()
 
-        return await self._call_llm(system, user_content)
+        return await self._call_llm(system, user_content, stage_num=10)
 
     async def _stage_review(self, sector_outputs: str, valuation_outputs: str, red_team_outputs: str) -> str:
         system = textwrap.dedent("""
@@ -690,7 +689,7 @@ RED TEAM OUTPUTS (excerpt):
 Please conduct the full associate review and produce the self-audit scorecard.
         """.strip()
 
-        return await self._call_llm(system, user_content)
+        return await self._call_llm(system, user_content, stage_num=11)
 
     async def _stage_portfolio(self, sector_outputs: str, valuation_outputs: str, risk_outputs: str) -> str:
         system = textwrap.dedent("""
@@ -743,7 +742,7 @@ RISK ANALYSIS (excerpt):
 Please construct the three portfolio variants.
         """.strip()
 
-        return await self._call_llm(system, user_content)
+        return await self._call_llm(system, user_content, stage_num=12)
 
     async def _stage_report_assembly(
         self,
