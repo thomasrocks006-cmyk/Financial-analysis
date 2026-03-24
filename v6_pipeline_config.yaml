@@ -1,0 +1,161 @@
+version: 6
+name: ai_infrastructure_research_pipeline
+objective: >-
+  Produce public-source, institutional-style AI infrastructure research with claim-level
+  provenance, structured market-data ingest, reconciliation, red-team challenge,
+  hard publication gates, and portfolio construction.
+
+agents:
+  - id: orchestrator
+    type: research
+    name: Research Pipeline Orchestrator
+    stage: [0, 9]
+    outputs: [run_manifest, stage_status, publication_permission]
+  - id: evidence_librarian
+    type: research
+    name: Evidence Librarian
+    stage: [1]
+    outputs: [claim_ledger, source_registry, unresolved_claims]
+  - id: sector_compute
+    type: research
+    name: Sector Analyst - Compute
+    stage: [4]
+    outputs: [stock_notes_compute]
+  - id: sector_power
+    type: research
+    name: Sector Analyst - Power & Energy
+    stage: [4]
+    outputs: [stock_notes_power]
+  - id: sector_infra
+    type: research
+    name: Sector Analyst - Infrastructure & Build-out
+    stage: [4]
+    outputs: [stock_notes_infra]
+  - id: valuation_analyst
+    type: research
+    name: Valuation Analyst
+    stage: [5]
+    outputs: [valuation_cards, target_ranges, crowding_scores]
+  - id: red_team
+    type: research
+    name: Red Team Analyst
+    stage: [6]
+    outputs: [bear_memos, invalidation_triggers, correlated_risks]
+  - id: associate_reviewer
+    type: research
+    name: Associate Reviewer
+    stage: [7]
+    outputs: [gate_memo, review_status]
+  - id: portfolio_manager
+    type: research
+    name: Portfolio Manager
+    stage: [8]
+    outputs: [portfolio_variants, final_report]
+  - id: market_data_ingestor
+    type: platform
+    name: Market Data Ingestor
+    stage: [2, 9]
+    outputs: [market_snapshots, consensus_snapshots, ratings_snapshots, earnings_events]
+  - id: reconciliation_analyst
+    type: platform
+    name: Consensus & Reconciliation Analyst
+    stage: [3, 9]
+    outputs: [reconciliation_report, field_confidence, disagreement_queue]
+
+apis:
+  fmp:
+    role: primary_structured_market_data
+    required: true
+    use_cases:
+      - quotes
+      - fundamentals
+      - analyst_estimates
+      - price_targets
+      - ratings
+  finnhub:
+    role: secondary_quant_cross_check
+    required: true
+    use_cases:
+      - recommendation_trends
+      - price_targets
+      - earnings_calendar
+      - eps_surprises
+  estimize:
+    role: optional_alt_consensus
+    required: false
+    use_cases:
+      - alternative_consensus
+      - expectation_divergence
+
+source_hierarchy:
+  tier_1:
+    description: primary_company_and_counterparty_sources
+  tier_2:
+    description: independent_confirmation_sources
+  tier_3:
+    description: structured_market_data_sources
+  tier_4:
+    description: house_model_outputs
+
+hard_rules:
+  - no_core_business_claim_from_tier_3_only
+  - no_management_guidance_presented_as_fact
+  - no_final_report_with_fail_claims
+  - no_final_report_with_undefined_fields
+  - all_market_data_requires_as_of_date
+  - all_3y_5y_targets_require_house_view_label
+  - all_material_sentences_must_map_to_claim_id
+
+stages:
+  0:
+    name: universe_definition
+    owner: orchestrator
+    gate: adequate_disclosure_and_liquidity
+  1:
+    name: evidence_capture
+    owner: evidence_librarian
+    gate: all_material_claims_tagged
+  2:
+    name: quant_ingest
+    owner: market_data_ingestor
+    gate: successful_api_pull_and_timestamping
+  3:
+    name: quant_reconciliation
+    owner: reconciliation_analyst
+    gate: red_flags_resolved_or_disclosed
+  4:
+    name: sector_analysis
+    owner: [sector_compute, sector_power, sector_infra]
+    gate: four_box_stock_notes_complete
+  5:
+    name: valuation
+    owner: valuation_analyst
+    gate: all_names_have_driver_decomposition
+  6:
+    name: red_team
+    owner: red_team
+    gate: every_name_has_disconfirming_paths
+  7:
+    name: publication_gate
+    owner: associate_reviewer
+    gate: status_pass_or_pass_with_disclosure
+  8:
+    name: portfolio_construction
+    owner: portfolio_manager
+    gate: final_report_only_if_stage_7_passes
+  9:
+    name: monitoring
+    owner: [orchestrator, market_data_ingestor, reconciliation_analyst]
+    gate: stale_data_refreshed_before_reissue
+
+artifacts:
+  - claim_ledger.csv
+  - source_registry.csv
+  - market_snapshots.parquet
+  - consensus_snapshots.parquet
+  - ratings_snapshots.parquet
+  - reconciliation_report.csv
+  - valuation_cards.json
+  - redteam_memos.md
+  - reviewer_gate.json
+  - final_report.docx

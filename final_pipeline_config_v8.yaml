@@ -1,0 +1,196 @@
+version: v8
+project_name: ai_infrastructure_research_platform
+
+architecture:
+  philosophy:
+    - deterministic_work_in_code
+    - judgment_work_in_llm_agents
+    - all_stage_outputs_typed
+    - every_run_logged
+    - publication_gated
+    - every_claim_traceable
+
+data_providers:
+  primary:
+    - name: fmp
+      required: true
+      role: market_and_consensus_data
+    - name: finnhub
+      required: true
+      role: cross_check_and_event_data
+  optional:
+    - name: estimize
+      required: false
+      role: alternative_consensus
+
+services:
+  - name: market_data_ingestor
+    type: deterministic
+    stages: [2, 14]
+  - name: consensus_reconciliation_service
+    type: deterministic
+    stages: [3, 14]
+  - name: data_qa_lineage_service
+    type: deterministic
+    stages: [4, 14]
+  - name: dcf_model_engine
+    type: deterministic
+    stages: [7]
+  - name: risk_engine
+    type: deterministic
+    stages: [9]
+  - name: scenario_stress_engine
+    type: deterministic
+    stages: [9]
+  - name: run_registry_service
+    type: deterministic
+    stages: [0, 14]
+  - name: report_assembly_service
+    type: deterministic
+    stages: [13]
+  - name: scheduler_monitoring_service
+    type: deterministic
+    stages: [14]
+  - name: golden_test_harness
+    type: deterministic
+    stages: [0]
+
+agents:
+  - name: research_pipeline_orchestrator
+    type: llm
+    stages: [0, 1, 14]
+  - name: evidence_librarian
+    type: llm
+    stages: [5]
+  - name: sector_analyst_compute
+    type: llm
+    stages: [6]
+  - name: sector_analyst_power_energy
+    type: llm
+    stages: [6]
+  - name: sector_analyst_infrastructure
+    type: llm
+    stages: [6]
+  - name: valuation_analyst
+    type: llm
+    stages: [7]
+  - name: macro_regime_strategist
+    type: llm
+    stages: [8]
+  - name: political_geopolitical_risk_analyst
+    type: llm
+    stages: [8]
+  - name: red_team_analyst
+    type: llm
+    stages: [10]
+  - name: associate_reviewer
+    type: llm
+    stages: [11]
+  - name: portfolio_manager
+    type: llm
+    stages: [12]
+
+stages:
+  0:
+    name: configuration_and_bootstrap
+    owners: [research_pipeline_orchestrator, run_registry_service, golden_test_harness]
+  1:
+    name: universe_definition
+    owners: [research_pipeline_orchestrator]
+  2:
+    name: data_ingestion
+    owners: [market_data_ingestor]
+  3:
+    name: reconciliation
+    owners: [consensus_reconciliation_service]
+  4:
+    name: data_qa_and_lineage
+    owners: [data_qa_lineage_service]
+  5:
+    name: evidence_librarian_and_claim_register
+    owners: [evidence_librarian]
+  6:
+    name: sector_analysis
+    owners: [sector_analyst_compute, sector_analyst_power_energy, sector_analyst_infrastructure]
+  7:
+    name: valuation_and_modelling
+    owners: [valuation_analyst, dcf_model_engine]
+  8:
+    name: macro_and_political_overlay
+    owners: [macro_regime_strategist, political_geopolitical_risk_analyst]
+  9:
+    name: quant_risk_and_scenario_testing
+    owners: [risk_engine, scenario_stress_engine]
+  10:
+    name: red_team
+    owners: [red_team_analyst]
+  11:
+    name: associate_review_and_publish_gate
+    owners: [associate_reviewer]
+  12:
+    name: portfolio_construction
+    owners: [portfolio_manager]
+  13:
+    name: report_assembly
+    owners: [report_assembly_service]
+  14:
+    name: monitoring_registry_and_post_run_logging
+    owners: [research_pipeline_orchestrator, market_data_ingestor, consensus_reconciliation_service, data_qa_lineage_service, run_registry_service, scheduler_monitoring_service]
+
+thresholds:
+  reconciliation:
+    price_drift_amber_pct: 0.5
+    price_drift_red_pct: 2.0
+    target_divergence_amber_pct: 5.0
+    target_divergence_red_pct: 15.0
+    estimate_divergence_amber_pct: 5.0
+    estimate_divergence_red_pct: 20.0
+    stale_data_hours: 24
+  publish_gate:
+    max_fail_claims: 0
+    max_disclosure_claims: 3
+    require_methodology_tag_for_targets: true
+    require_date_for_all_numbers: true
+    require_traceable_claims: true
+  data_quality:
+    require_lineage_for_all_final_fields: true
+    allow_duplicate_rows: false
+    allow_currency_mismatch: false
+
+registry:
+  track:
+    - run_id
+    - config_hash
+    - agent_versions
+    - prompt_versions
+    - dataset_versions
+    - timestamps
+    - outputs
+    - final_status
+    - overrides
+
+testing:
+  enabled: true
+  golden_tests_required: true
+  categories:
+    - claim_classification
+    - reconciliation
+    - gating
+    - portfolio_output_stability
+    - report_generation
+
+portfolio_outputs:
+  required_variants:
+    - balanced
+    - higher_return
+    - lower_volatility
+
+report_outputs:
+  required_sections:
+    - executive_summary
+    - methodology
+    - stock_cards
+    - valuation_appendix
+    - risk_appendix
+    - self_audit_appendix
+    - claim_register_appendix
