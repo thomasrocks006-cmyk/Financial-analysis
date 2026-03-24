@@ -43,7 +43,7 @@ class BaseAgent(ABC):
     def __init__(
         self,
         name: str,
-        model: str = "gpt-4o",
+        model: str = "claude-opus-4-5",
         temperature: float = 0.2,
         max_retries: int = 3,
         prompts_dir: Path | None = None,
@@ -79,15 +79,71 @@ class BaseAgent(ABC):
     async def call_llm(
         self, messages: list[dict[str, str]], response_format: type | None = None
     ) -> str:
-        """Call the LLM with retry logic. Uses OpenAI client."""
+        """Call the LLM with retry logic. Supports Anthropic Claude and OpenAI."""
+        import os
+
+        is_anthropic = self.model.startswith("claude")
+
+        if is_anthropic:
+            return await self._call_anthropic(messages, os.getenv("ANTHROPIC_API_KEY", ""))
+        else:
+            return await self._call_openai(messages, os.getenv("OPENAI_API_KEY", ""), response_format)
+
+    async def _call_anthropic(self, messages: list[dict[str, str]], api_key: str) -> str:
+        """Call Anthropic Claude API."""
+        try:
+            import anthropic as _anthropic
+        except ImportError:
+            logger.warning("anthropic package not installed — returning mock response")
+            return json.dumps({"mock": True, "agent": self.name})
+
+        # Extract system prompt from messages if present
+        system = ""
+        user_messages = []
+        for m in messages:
+            if m["role"] == "system":
+                system = m["content"]
+            else:
+                user_messages.append(m)
+
+        client = _anthropic.AsyncAnthropic(api_key=api_key)
+
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                kwargs: dict[str, Any] = {
+                    "model": self.model,
+                    "max_tokens": 8192,
+                    "messages": user_messages,
+                    "temperature": self.temperature,
+                }
+                if system:
+                    kwargs["system"] = system
+
+                response = await client.messages.create(**kwargs)
+                return response.content[0].text
+            except Exception as exc:
+                logger.warning(
+                    "%s: Anthropic attempt %d failed: %s", self.name, attempt, exc
+                )
+                if attempt == self.max_retries:
+                    raise
+
+        return ""
+
+    async def _call_openai(
+        self,
+        messages: list[dict[str, str]],
+        api_key: str,
+        response_format: type | None = None,
+    ) -> str:
+        """Call OpenAI API."""
         try:
             from openai import AsyncOpenAI
         except ImportError:
             logger.warning("OpenAI not installed — returning mock response")
             return json.dumps({"mock": True, "agent": self.name})
 
-        import os
-        client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+        client = AsyncOpenAI(api_key=api_key)
 
         for attempt in range(1, self.max_retries + 1):
             try:
@@ -103,7 +159,7 @@ class BaseAgent(ABC):
                 return response.choices[0].message.content or ""
             except Exception as exc:
                 logger.warning(
-                    "%s: attempt %d failed: %s", self.name, attempt, exc
+                    "%s: OpenAI attempt %d failed: %s", self.name, attempt, exc
                 )
                 if attempt == self.max_retries:
                     raise
