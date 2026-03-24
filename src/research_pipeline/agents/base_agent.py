@@ -1,0 +1,154 @@
+"""Base agent class — shared infrastructure for all LLM agents."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+from abc import ABC, abstractmethod
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Optional, TypeVar, Generic
+
+from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
+
+T = TypeVar("T", bound=BaseModel)
+
+
+class AgentResult(BaseModel):
+    """Standard result wrapper for any agent call."""
+    agent_name: str
+    run_id: str
+    success: bool
+    raw_response: str = ""
+    parsed_output: Optional[dict[str, Any]] = None
+    error: Optional[str] = None
+    timestamp: datetime = datetime.now(timezone.utc)
+    prompt_hash: str = ""
+    retries_used: int = 0
+
+
+class BaseAgent(ABC):
+    """Base class for all LLM reasoning agents.
+
+    Each agent is a callable module with:
+    - system prompt
+    - input schema
+    - output schema
+    - retry / validation wrapper
+    """
+
+    def __init__(
+        self,
+        name: str,
+        model: str = "gpt-4o",
+        temperature: float = 0.2,
+        max_retries: int = 3,
+        prompts_dir: Path | None = None,
+    ):
+        self.name = name
+        self.model = model
+        self.temperature = temperature
+        self.max_retries = max_retries
+        self.prompts_dir = prompts_dir
+        self._system_prompt = self._load_system_prompt()
+
+    def _load_system_prompt(self) -> str:
+        """Load system prompt from file or use built-in."""
+        if self.prompts_dir:
+            prompt_file = self.prompts_dir / f"{self.name}.md"
+            if prompt_file.exists():
+                return prompt_file.read_text()
+        return self.default_system_prompt()
+
+    @abstractmethod
+    def default_system_prompt(self) -> str:
+        """Return the default system prompt for this agent."""
+        ...
+
+    @property
+    def prompt_hash(self) -> str:
+        return hashlib.sha256(self._system_prompt.encode()).hexdigest()[:16]
+
+    @property
+    def version(self) -> str:
+        return f"v8.0-{self.prompt_hash[:8]}"
+
+    async def call_llm(
+        self, messages: list[dict[str, str]], response_format: type | None = None
+    ) -> str:
+        """Call the LLM with retry logic. Uses OpenAI client."""
+        try:
+            from openai import AsyncOpenAI
+        except ImportError:
+            logger.warning("OpenAI not installed — returning mock response")
+            return json.dumps({"mock": True, "agent": self.name})
+
+        import os
+        client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                kwargs: dict[str, Any] = {
+                    "model": self.model,
+                    "messages": messages,
+                    "temperature": self.temperature,
+                }
+                if response_format:
+                    kwargs["response_format"] = response_format
+
+                response = await client.chat.completions.create(**kwargs)
+                return response.choices[0].message.content or ""
+            except Exception as exc:
+                logger.warning(
+                    "%s: attempt %d failed: %s", self.name, attempt, exc
+                )
+                if attempt == self.max_retries:
+                    raise
+
+        return ""
+
+    def build_messages(self, user_content: str) -> list[dict[str, str]]:
+        """Build standard message list with system prompt."""
+        return [
+            {"role": "system", "content": self._system_prompt},
+            {"role": "user", "content": user_content},
+        ]
+
+    async def run(self, run_id: str, inputs: dict[str, Any]) -> AgentResult:
+        """Execute the agent. Override in subclasses for custom logic."""
+        try:
+            user_content = self.format_input(inputs)
+            messages = self.build_messages(user_content)
+            raw = await self.call_llm(messages)
+            parsed = self.parse_output(raw)
+            return AgentResult(
+                agent_name=self.name,
+                run_id=run_id,
+                success=True,
+                raw_response=raw,
+                parsed_output=parsed,
+                prompt_hash=self.prompt_hash,
+            )
+        except Exception as exc:
+            logger.error("%s failed: %s", self.name, exc)
+            return AgentResult(
+                agent_name=self.name,
+                run_id=run_id,
+                success=False,
+                error=str(exc),
+                prompt_hash=self.prompt_hash,
+            )
+
+    def format_input(self, inputs: dict[str, Any]) -> str:
+        """Format structured inputs into the user message. Override as needed."""
+        return json.dumps(inputs, indent=2, default=str)
+
+    def parse_output(self, raw_response: str) -> dict[str, Any]:
+        """Parse raw LLM response into structured output. Override as needed."""
+        try:
+            return json.loads(raw_response)
+        except json.JSONDecodeError:
+            return {"raw_text": raw_response}

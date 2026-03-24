@@ -1,0 +1,188 @@
+version: v8
+project_name: ai_infrastructure_research_platform
+
+# ── Universe: AI-infrastructure investment research coverage ───────────
+universe:
+  tickers:
+    compute:
+      - { ticker: NVDA, name: "NVIDIA Corp", subtheme: compute }
+      - { ticker: AVGO, name: "Broadcom Inc", subtheme: compute }
+      - { ticker: TSM,  name: "Taiwan Semiconductor", subtheme: compute }
+
+    power_energy:
+      - { ticker: CEG,  name: "Constellation Energy", subtheme: power }
+      - { ticker: VST,  name: "Vistra Corp", subtheme: power }
+      - { ticker: GEV,  name: "GE Vernova", subtheme: power }
+      - { ticker: NLR,  name: "VanEck Uranium+Nuclear ETF", subtheme: etf }
+
+    infrastructure:
+      - { ticker: PWR,  name: "Quanta Services", subtheme: infrastructure }
+      - { ticker: ETN,  name: "Eaton Corporation", subtheme: infrastructure }
+      - { ticker: HUBB, name: "Hubbell Inc", subtheme: infrastructure }
+      - { ticker: APH,  name: "Amphenol Corp", subtheme: infrastructure }
+      - { ticker: FIX,  name: "Comfort Systems USA", subtheme: infrastructure }
+      - { ticker: FCX,  name: "Freeport-McMoRan", subtheme: materials }
+      - { ticker: BHP,  name: "BHP Group", subtheme: materials }
+      - { ticker: NXT,  name: "Nextdc Ltd", subtheme: data_centres }
+
+# ── Source hierarchy (from v6) ─────────────────────────────────────────
+source_hierarchy:
+  tier_1:
+    label: "Primary source — filings, transcripts, official releases"
+    confidence_floor: 0.85
+    examples:
+      - SEC filings (10-K, 10-Q, 8-K)
+      - Earnings call transcripts
+      - Industry regulator reports (EIA, FERC, IAEA)
+  tier_2:
+    label: "High-quality secondary — recognized data vendors"
+    confidence_floor: 0.70
+    examples:
+      - FMP / Finnhub consensus
+      - Bloomberg / FactSet (if available)
+      - USGS commodity data
+  tier_3:
+    label: "Reputable journalism and research"
+    confidence_floor: 0.55
+    examples:
+      - Wall Street Journal, Financial Times
+      - Utility Dive, S&P Global Commodity Insights
+  tier_4:
+    label: "Unverified or low-confidence"
+    confidence_floor: 0.0
+    examples:
+      - Social media, blog posts, forums
+
+# ── LLM configuration ─────────────────────────────────────────────────
+llm:
+  model: gpt-4o
+  temperature: 0.2
+  max_output_tokens: 4096
+  max_retries: 3
+  retry_delay_seconds: 2
+
+# ── Thresholds ─────────────────────────────────────────────────────────
+thresholds:
+  reconciliation:
+    price_drift_amber_pct: 0.5
+    price_drift_red_pct: 2.0
+    target_divergence_amber_pct: 5.0
+    target_divergence_red_pct: 15.0
+    estimate_divergence_amber_pct: 5.0
+    estimate_divergence_red_pct: 20.0
+    stale_data_hours: 24
+  publish_gate:
+    max_fail_claims: 0
+    max_disclosure_claims: 3
+    require_methodology_tag_for_targets: true
+    require_date_for_all_numbers: true
+    require_traceable_claims: true
+  data_quality:
+    require_lineage_for_all_final_fields: true
+    allow_duplicate_rows: false
+    allow_currency_mismatch: false
+
+# ── Portfolio construction constraints ─────────────────────────────────
+portfolio:
+  variants:
+    - balanced
+    - higher_return
+    - lower_volatility
+  constraints:
+    max_single_stock_pct: 15.0
+    max_subtheme_pct: 40.0
+    min_positions: 8
+    max_positions: 15
+    require_all_subthemes: true
+
+# ── Report generation ──────────────────────────────────────────────────
+reports:
+  required_sections:
+    - executive_summary
+    - methodology
+    - stock_cards
+    - valuation_appendix
+    - risk_appendix
+    - self_audit_appendix
+    - claim_register_appendix
+  format: markdown
+  output_dir: reports
+
+# ── Stage definitions ──────────────────────────────────────────────────
+stages:
+  0:
+    name: configuration_and_bootstrap
+    owners: [orchestrator, run_registry, golden_tests]
+  1:
+    name: universe_definition
+    owners: [orchestrator]
+  2:
+    name: data_ingestion
+    owners: [market_data_ingestor]
+  3:
+    name: reconciliation
+    owners: [consensus_reconciliation]
+  4:
+    name: data_qa_and_lineage
+    owners: [data_qa_lineage]
+  5:
+    name: evidence_and_claim_register
+    owners: [evidence_librarian]
+  6:
+    name: sector_analysis
+    owners: [sector_compute, sector_power, sector_infrastructure]
+  7:
+    name: valuation_and_modelling
+    owners: [valuation_analyst, dcf_engine]
+  8:
+    name: macro_and_political_overlay
+    owners: [macro_strategist, political_risk]
+  9:
+    name: quant_risk_and_scenarios
+    owners: [risk_engine, scenario_engine]
+  10:
+    name: red_team
+    owners: [red_team_analyst]
+  11:
+    name: associate_review_and_publish_gate
+    owners: [associate_reviewer]
+  12:
+    name: portfolio_construction
+    owners: [portfolio_manager]
+  13:
+    name: report_assembly
+    owners: [report_assembly]
+  14:
+    name: monitoring_and_logging
+    owners: [orchestrator, scheduler, run_registry]
+
+# ── Testing ────────────────────────────────────────────────────────────
+testing:
+  enabled: true
+  golden_tests_required: true
+  categories:
+    - claim_classification
+    - reconciliation
+    - gating
+    - portfolio_output_stability
+    - report_generation
+
+# ── Governance ─────────────────────────────────────────────────────────
+governance:
+  self_audit:
+    institutional_ceiling: >
+      This research is produced without the institutional backing, compliance
+      infrastructure, or multi-team review process of a regulated equity
+      research house. Conclusions should be treated as structured hypotheses
+      rather than professional investment advice.
+  registry:
+    track:
+      - run_id
+      - config_hash
+      - agent_versions
+      - prompt_versions
+      - dataset_versions
+      - timestamps
+      - outputs
+      - final_status
+      - overrides
