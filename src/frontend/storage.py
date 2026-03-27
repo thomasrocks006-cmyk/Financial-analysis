@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -21,14 +20,6 @@ REPORTS_DIR = ROOT / "reports"
 REPORTS_DIR.mkdir(exist_ok=True)
 
 
-# ── Serialisation helpers ─────────────────────────────────────────────────
-
-def _safe_dict(obj) -> dict:
-    """Convert a dataclass or dict to a plain dict, safely."""
-    try:
-        return asdict(obj)
-    except TypeError:
-        return dict(obj) if not isinstance(obj, dict) else obj
 
 
 def save_run(run_result) -> Path:

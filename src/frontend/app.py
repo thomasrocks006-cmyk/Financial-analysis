@@ -11,8 +11,7 @@ import asyncio
 import json
 import logging
 import sys
-import time
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 import streamlit as st
@@ -25,7 +24,7 @@ SRC  = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from frontend.mock_data import FULL_UNIVERSE, MARKET_SNAPSHOTS, DEMO_DATE
+from frontend.mock_data import MARKET_SNAPSHOTS, DEMO_DATE
 from frontend.pipeline_runner import STAGES, PipelineRunner, RunResult
 from frontend.cost_estimator import estimate_run_cost, calculate_actual_cost, format_cost
 from frontend.storage import save_run, list_saved_runs, load_run, delete_run, REPORTS_DIR
@@ -277,6 +276,10 @@ Waiting for pipeline to start…
 # ─────────────────────────────────────────────────────────────────────────
 # Session state bootstrap
 # ─────────────────────────────────────────────────────────────────────────
+# LLM stages that produce meaningful text for the live stream
+_LLM_STREAM_STAGES = {5, 6, 7, 8, 9, 10, 11, 12, 13}
+
+
 def _init_state():
     defaults: dict = {
         "run_result":     None,
@@ -286,6 +289,7 @@ def _init_state():
         "current_stage":  -1,
         "live_log":       [],
         "loaded_run":     None,
+        "pipeline_error": "",   # last pipeline crash message; shown until next run
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -523,6 +527,10 @@ with tab_pipeline:
     if not any_key:
         st.info("👈  Enter at least one API key in the sidebar to enable pipeline runs.")
 
+    # Show persistent error from last run (cleared when a new run starts)
+    if st.session_state.get("pipeline_error"):
+        st.error(f"❌ Last run failed: {st.session_state.pipeline_error}")
+
     # ── Two-column layout ─────────────────────────────────────────────────
     col_stages, col_live = st.columns([5, 7])
 
@@ -568,6 +576,7 @@ with tab_pipeline:
         st.session_state.stage_outputs  = {}
         st.session_state.run_result     = None
         st.session_state.live_log       = []
+        st.session_state.pipeline_error = ""   # clear any previous error
 
         progress_bar = progress_ph.progress(0, text="Initialising pipeline…")
 
@@ -593,13 +602,12 @@ with tab_pipeline:
                 _render_stage_card(ph, stage_num, stage_name, status,
                                    st.session_state.stage_outputs)
 
-            # Append to live log when stage finishes
-            if status == "done":
-                text = output if isinstance(output, str) else (
-                    json.dumps(output, default=str) if output else ""
-                )
+            # Append to live log only for LLM/report stages that carry text output
+            if status == "done" and stage_num in _LLM_STREAM_STAGES:
+                text = output if isinstance(output, str) else ""
                 if text:
                     st.session_state.live_log.append((stage_num, stage_name, text))
+            if status == "done":
                 done_count[0] += 1
                 pct = min(int(done_count[0] / total_stages * 95), 95)
                 progress_bar.progress(pct, text=f"Stage {stage_num}: {stage_name} ✓")
@@ -616,14 +624,14 @@ with tab_pipeline:
             run_result = loop.run_until_complete(_run_pipeline())
         except Exception as exc:
             st.session_state.running = False
-            status_ph.error(f"❌ Pipeline error: {exc}")
+            st.session_state.pipeline_error = str(exc)
             logger.exception("Pipeline crashed: %s", exc)
         finally:
             loop.close()
 
         if run_result is None:
+            # Re-render to show the error banner and re-enable the Run button
             st.rerun()
-            st.stop()
 
         # Sync authoritative stage statuses from RunResult
         for sr in run_result.stages:
@@ -803,7 +811,13 @@ with tab_report:
 
         # Report body
         st.markdown('<div class="report-wrap">', unsafe_allow_html=True)
-        st.markdown(report_md)
+        if report_md:
+            st.markdown(report_md)
+        else:
+            st.markdown(
+                "*Report content not available. "
+                "The pipeline may have completed without generating a final report.*"
+            )
         st.markdown("</div>", unsafe_allow_html=True)
 
         # Stage timing expander

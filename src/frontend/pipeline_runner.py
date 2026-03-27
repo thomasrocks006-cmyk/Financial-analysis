@@ -217,7 +217,9 @@ class PipelineRunner:
             sr.status = "failed"
             sr.error = str(exc)
         sr.elapsed_secs = time.monotonic() - t_start
-        cb(stage_num, stage_name, sr.status, sr.output)
+        # Pass raw_text for done stages so the UI receives the full LLM output.
+        # For failed/running stages raw_text is "" so sr.output ({}) is passed instead.
+        cb(stage_num, stage_name, sr.status, sr.raw_text or sr.output)
         return sr
 
     # ── LLM helpers ──────────────────────────────────────────────────────
