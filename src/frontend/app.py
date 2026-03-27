@@ -323,6 +323,19 @@ Waiting for pipeline to start…
     placeholder.markdown(html, unsafe_allow_html=True)
 
 
+def _render_stage_output(output) -> None:
+    """Render full stage output inside an already-open st.expander context."""
+    if output is None:
+        st.caption("No output recorded for this stage.")
+        return
+    if isinstance(output, str):
+        st.markdown(output)
+    elif isinstance(output, dict):
+        st.json(output)
+    else:
+        st.code(str(output))
+
+
 def _render_activity(placeholder, current_activity: str, running: bool) -> None:
     """Render the live activity strip showing the current in-flight operation."""
     if not current_activity:
@@ -632,13 +645,16 @@ with tab_pipeline:
         st.markdown('<div class="section-title">Stage Tracker</div>', unsafe_allow_html=True)
         stage_placeholders: dict[int, object] = {}
         for num, name in STAGES:
-            ph = st.empty()
-            stage_placeholders[num] = ph
-            _render_stage_card(
-                ph, num, name,
-                st.session_state.stage_statuses.get(num, "pending"),
-                st.session_state.stage_outputs,
-            )
+            status = st.session_state.stage_statuses.get(num, "pending")
+            output = st.session_state.stage_outputs.get(num)
+            # Compact status row — updated live during pipeline run
+            row_ph = st.empty()
+            stage_placeholders[num] = row_ph
+            _render_stage_card(row_ph, num, name, status, st.session_state.stage_outputs)
+            # Full-output expander — only rendered when stage is done with output
+            if status == "done" and output:
+                with st.expander(f"📄 S{num:02d} — view full output", expanded=False):
+                    _render_stage_output(output)
 
     with col_live:
         st.markdown('<div class="section-title">Live Activity</div>', unsafe_allow_html=True)

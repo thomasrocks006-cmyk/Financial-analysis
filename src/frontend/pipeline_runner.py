@@ -113,11 +113,21 @@ class PipelineRunner:
             if progress_callback:
                 progress_callback(stage_num, stage_name, status, output)
 
-        # ── Load demo market data ─────────────────────────────────────────
-        from frontend.mock_data import (
-            get_sector_snapshot, get_macro_context, get_claim_ledger
-        )
-        market_data = get_sector_snapshot("all", self.tickers)
+        # ── Load market data (live via yfinance, fallback to static) ────────
+        from frontend.mock_data import get_macro_context, get_claim_ledger
+        try:
+            from frontend.live_data import get_live_sector_snapshot
+            market_data = get_live_sector_snapshot(self.tickers)
+            logger.info(
+                "Live market data loaded: %d/%d tickers live",
+                market_data.get("live_count", 0), len(self.tickers),
+            )
+        except Exception as _live_exc:
+            logger.warning(
+                "Live data fetch failed (%s) — falling back to static data", _live_exc
+            )
+            from frontend.mock_data import get_sector_snapshot
+            market_data = get_sector_snapshot("all", self.tickers)
         macro_data = get_macro_context()
         claims = get_claim_ledger(self.tickers)
 
