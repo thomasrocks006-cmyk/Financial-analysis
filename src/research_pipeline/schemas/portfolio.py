@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
@@ -32,7 +32,7 @@ class PublicationStatus(str, Enum):
 class ValuationSnapshot(BaseModel):
     """Current valuation metrics for a name."""
     ticker: str
-    date: datetime = Field(default_factory=datetime.utcnow)
+    date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     price: float
     market_cap: Optional[float] = None
     trailing_pe: Optional[float] = None
@@ -68,7 +68,7 @@ class ValuationCard(BaseModel):
     """Complete valuation output for one name."""
     ticker: str
     run_id: str
-    date: datetime = Field(default_factory=datetime.utcnow)
+    date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     snapshot: ValuationSnapshot
     historical_context: str = ""
     peer_comparison: str = ""
@@ -90,7 +90,7 @@ class FourBoxOutput(BaseModel):
     ticker: str
     company_name: str
     analyst_role: str  # "compute", "power_energy", "infrastructure"
-    date: datetime = Field(default_factory=datetime.utcnow)
+    date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     run_id: str = ""
     box1_verified_facts: str = ""
     box2_management_guidance: str = ""
@@ -113,7 +113,7 @@ class RedTeamAssessment(BaseModel):
     """Red team output for one name or the portfolio."""
     target: str  # ticker or "PORTFOLIO"
     run_id: str
-    date: datetime = Field(default_factory=datetime.utcnow)
+    date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     what_is_priced_in: str = ""
     falsification_tests: list[FalsificationTest] = []
     thesis_integrity: ThesisIntegrity = ThesisIntegrity.MODERATE
@@ -126,7 +126,7 @@ class RedTeamAssessment(BaseModel):
 class MacroRegimeMemo(BaseModel):
     """Macro and regime strategist output."""
     run_id: str
-    date: datetime = Field(default_factory=datetime.utcnow)
+    date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     regime_classification: str = ""  # e.g. "late-cycle expansion"
     key_macro_variables: dict[str, str] = {}
     regime_winners: list[str] = []
@@ -138,7 +138,7 @@ class MacroRegimeMemo(BaseModel):
 class PoliticalRiskAssessment(BaseModel):
     """Political and geopolitical risk analyst output."""
     run_id: str
-    date: datetime = Field(default_factory=datetime.utcnow)
+    date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     ticker: str = ""
     policy_dependency_score: Optional[float] = None  # 0-10
     geopolitical_dependency_score: Optional[float] = None  # 0-10
@@ -164,7 +164,7 @@ class PortfolioVariant(BaseModel):
     """One of the three required portfolio variants."""
     variant_name: str  # "balanced", "higher_return", "lower_volatility"
     run_id: str
-    date: datetime = Field(default_factory=datetime.utcnow)
+    date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     positions: list[PortfolioPosition] = []
     total_weight_pct: float = 0.0
     implementation_notes: str = ""
@@ -202,7 +202,7 @@ class ReviewIssue(BaseModel):
 class AssociateReviewResult(BaseModel):
     """Associate reviewer gate output."""
     run_id: str
-    date: datetime = Field(default_factory=datetime.utcnow)
+    date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     status: PublicationStatus = PublicationStatus.FAIL
     issues: list[ReviewIssue] = []
     self_audit_score: Optional[float] = None

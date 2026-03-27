@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
@@ -43,7 +43,7 @@ class Source(BaseModel):
     source_type: str  # e.g. "10-K", "earnings_call", "FMP_API"
     tier: SourceTier
     published_date: Optional[datetime] = None
-    accessed_at: datetime = Field(default_factory=datetime.utcnow)
+    accessed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     notes: str = ""
 
 
@@ -63,7 +63,7 @@ class Claim(BaseModel):
     status: ClaimStatus = ClaimStatus.CAVEAT
     caveat_note: str = ""
     owner_agent: str = ""
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class ClaimLedger(BaseModel):

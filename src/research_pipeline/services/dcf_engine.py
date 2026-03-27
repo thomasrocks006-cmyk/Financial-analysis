@@ -97,12 +97,20 @@ class DCFEngine:
         net_debt: float,
         wacc: float,
         terminal_growth: float,
+        revenue_base: float,        # REQUIRED: current revenue ($M), NOT normalised
         years: int = 5,
         ebitda_margin: float = 0.30,
         capex_pct: float = 0.08,
         tax_rate: float = 0.21,
     ) -> float:
-        """Solve for the implied revenue CAGR that justifies the current price."""
+        """Solve for the implied revenue CAGR that justifies the current price.
+
+        The binary search compares compute_dcf(revenue_base, shares_outstanding)
+        against (current_price * shares_outstanding + net_debt) in the SAME
+        dollar units.  Previous version used revenue_base=1.0 / shares=1.0
+        (normalised), causing a multi-trillion EV vs sub-1 EV comparison that
+        always converged to the upper bound (50% CAGR).
+        """
         target_ev = current_price * shares_outstanding + net_debt
 
         # Binary search for growth rate
@@ -111,16 +119,16 @@ class DCFEngine:
             mid = (low + high) / 2
             assumptions = DCFAssumptions(
                 ticker=ticker,
-                revenue_base=1.0,  # normalized
+                revenue_base=revenue_base,          # actual revenue
                 revenue_growth_rates=[mid] * years,
                 ebitda_margin_path=[ebitda_margin] * years,
                 capex_pct_revenue=capex_pct,
                 tax_rate=tax_rate,
                 wacc=wacc,
                 terminal_growth=terminal_growth,
-                shares_outstanding=1.0,
+                shares_outstanding=shares_outstanding,  # actual share count
             )
-            result = self.compute_dcf(assumptions, net_debt=0)
+            result = self.compute_dcf(assumptions, net_debt=net_debt)
             if result.enterprise_value < target_ev:
                 low = mid
             else:

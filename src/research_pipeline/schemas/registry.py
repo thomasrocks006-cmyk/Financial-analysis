@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
 
@@ -20,7 +20,7 @@ class RunStatus(str, Enum):
 class RunRecord(BaseModel):
     """A complete run registry entry — every run is logged."""
     run_id: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     universe: list[str] = []
     config_hash: str = ""
     agent_versions: dict[str, str] = {}
@@ -45,7 +45,7 @@ class HumanOverride(BaseModel):
     reason: str
     original_status: str
     override_status: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class PromptVersion(BaseModel):
@@ -53,7 +53,7 @@ class PromptVersion(BaseModel):
     agent_name: str
     prompt_version: str
     prompt_hash: str
-    changed_at: datetime = Field(default_factory=datetime.utcnow)
+    changed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     owner: str = ""
     regression_status: str = "untested"
 
@@ -71,7 +71,7 @@ class GoldenTest(BaseModel):
 class SelfAudit(BaseModel):
     """Self-audit scorecard appended to every report."""
     run_id: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     source_tier_mix: dict[str, int] = {}  # tier -> count
     claim_counts_pass: int = 0
     claim_counts_caveat: int = 0

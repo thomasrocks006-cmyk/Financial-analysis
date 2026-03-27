@@ -127,11 +127,13 @@ class ConsensusReconciliationService:
         all_fields: list[ReconciliationField],
     ) -> ReconciliationReport:
         report = ReconciliationReport(run_id=run_id, fields=all_fields)
+        missing_count = sum(1 for f in all_fields if f.status == ReconciliationStatus.MISSING)
         logger.info(
-            "Reconciliation: %d fields — %d green, %d amber, %d red",
+            "Reconciliation: %d fields — %d green, %d amber, %d red, %d missing",
             len(all_fields),
-            len(all_fields) - report.amber_count - report.red_count,
+            len(all_fields) - report.amber_count - report.red_count - missing_count,
             report.amber_count,
             report.red_count,
+            missing_count,
         )
         return report

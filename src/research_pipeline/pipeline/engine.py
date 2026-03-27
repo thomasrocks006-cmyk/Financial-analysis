@@ -190,23 +190,47 @@ class PipelineEngine:
         ingest_data = self.stage_outputs.get(2, [])
         all_fields = []
 
+        from research_pipeline.schemas.market_data import ConsensusSnapshot
         for ticker_data in ingest_data:
+            # Skip tickers that had a TOTAL ingestion failure (set by ingest_universe
+            # outer try/except with singular "error" key).
             if "error" in ticker_data:
                 continue
             ticker = ticker_data["ticker"]
-            fmp_quote = MarketSnapshot(**ticker_data.get("fmp_quote", {}))
-            fmp_targets_data = ticker_data.get("fmp_targets", {})
-            finnhub_targets_data = ticker_data.get("finnhub_targets", {})
 
-            from research_pipeline.schemas.market_data import ConsensusSnapshot
-            fmp_consensus = ConsensusSnapshot(**fmp_targets_data)
-            finnhub_consensus = ConsensusSnapshot(**finnhub_targets_data)
+            # Build FMP quote snapshot — fmp_quote may be absent if FMP returned 402
+            fmp_quote_raw = ticker_data.get("fmp_quote") or {}
+            if not fmp_quote_raw:
+                # Minimal shell so reconcile_price can still classify as MISSING
+                fmp_quote = MarketSnapshot(ticker=ticker, source="fmp")
+            else:
+                fmp_quote = MarketSnapshot(**fmp_quote_raw)
+
+            # Extract Finnhub spot price for price cross-validation
+            finnhub_price: Optional[float] = (
+                (ticker_data.get("finnhub_quote") or {}).get("price")
+            )
+
+            # Build consensus snapshots
+            fmp_targets_raw = ticker_data.get("fmp_targets") or {}
+            finnhub_targets_raw = ticker_data.get("finnhub_targets") or {}
+            fmp_consensus = (
+                ConsensusSnapshot(**fmp_targets_raw)
+                if fmp_targets_raw
+                else ConsensusSnapshot(ticker=ticker, source="fmp")
+            )
+            finnhub_consensus = (
+                ConsensusSnapshot(**finnhub_targets_raw)
+                if finnhub_targets_raw
+                else ConsensusSnapshot(ticker=ticker, source="finnhub")
+            )
 
             fields = self.reconciliation.reconcile_ticker(
                 ticker=ticker,
                 fmp_quote=fmp_quote,
                 fmp_consensus=fmp_consensus,
                 finnhub_consensus=finnhub_consensus,
+                finnhub_price=finnhub_price,  # was never passed — price rec was always MISSING
             )
             all_fields.extend(fields)
 
@@ -219,9 +243,26 @@ class PipelineEngine:
         """Stage 4: Data QA & Lineage."""
         logger.info("═══ STAGE 4: Data QA & Lineage ═══")
         ingest_data = self.stage_outputs.get(2, [])
+
+        # Build parsed MarketSnapshot objects so outlier checks (negative price,
+        # extreme P/E, etc.) are actually exercised — without this the check is
+        # silently skipped because parsed_snapshots defaults to None.
+        parsed_snapshots: list[MarketSnapshot] = []
+        for td in ingest_data:
+            if "error" in td:
+                continue
+            for key in ("fmp_quote", "finnhub_quote"):
+                raw = td.get(key) or {}
+                if raw:
+                    try:
+                        parsed_snapshots.append(MarketSnapshot(**raw))
+                    except Exception:
+                        pass  # skip malformed records; schema errors caught by check_schema_validity
+
         report = self.data_qa.run_full_check(
             run_id=self.run_record.run_id,
             raw_snapshots=ingest_data,
+            parsed_snapshots=parsed_snapshots,
             max_age_hours=self.config.thresholds.reconciliation.stale_data_hours,
         )
         gate = self.gates.gate_4_data_qa(report)

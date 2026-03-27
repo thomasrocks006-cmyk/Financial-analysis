@@ -138,7 +138,9 @@ class RunRegistryService:
     # ── persistence helpers ────────────────────────────────────────────
     def _load_runs(self) -> dict[str, RunRecord]:
         data = self._load_json(self._runs_file, {})
-        return {k: RunRecord(**v) for k, v in data.items()}
+        # Use model_validate (not **v) so Pydantic handles forward refs,
+        # nested model deserialization, and enum coercion from JSON strings.
+        return {k: RunRecord.model_validate(v) for k, v in data.items()}
 
     def _save_run(self, record: RunRecord) -> None:
         runs = self._load_json(self._runs_file, {})

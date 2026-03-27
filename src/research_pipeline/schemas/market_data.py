@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
@@ -19,7 +19,7 @@ class ReconciliationStatus(str, Enum):
 class MarketSnapshot(BaseModel):
     """Point-in-time market data for a single ticker."""
     ticker: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     source: str  # "fmp" or "finnhub"
     price: Optional[float] = None
     market_cap: Optional[float] = None
@@ -35,7 +35,7 @@ class MarketSnapshot(BaseModel):
 class ConsensusSnapshot(BaseModel):
     """Analyst consensus data for a single ticker."""
     ticker: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     source: str
     target_low: Optional[float] = None
     target_median: Optional[float] = None
@@ -52,7 +52,7 @@ class ConsensusSnapshot(BaseModel):
 class RatingsSnapshot(BaseModel):
     """Ratings and recommendation trends."""
     ticker: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     source: str
     overall_rating: Optional[str] = None
     rating_score: Optional[float] = None  # 1-5 scale
@@ -78,7 +78,7 @@ class AnalystEstimate(BaseModel):
     ticker: str
     period: str  # "FY2026", "Q1_2026", etc.
     source: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     eps_estimate: Optional[float] = None
     revenue_estimate: Optional[float] = None
     ebitda_estimate: Optional[float] = None
@@ -103,7 +103,7 @@ class ReconciliationField(BaseModel):
 class ReconciliationReport(BaseModel):
     """Complete reconciliation output for a run."""
     run_id: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     fields: list[ReconciliationField] = []
 
     @property
@@ -124,7 +124,7 @@ class ReconciliationReport(BaseModel):
 class DataQualityReport(BaseModel):
     """Data QA & lineage check results."""
     run_id: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     schema_valid: bool = True
     timestamp_valid: bool = True
     currency_consistent: bool = True

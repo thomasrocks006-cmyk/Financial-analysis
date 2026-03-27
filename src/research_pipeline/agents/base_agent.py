@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional, TypeVar, Generic
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,9 @@ class AgentResult(BaseModel):
     raw_response: str = ""
     parsed_output: Optional[dict[str, Any]] = None
     error: Optional[str] = None
-    timestamp: datetime = datetime.now(timezone.utc)
+    # Field with default_factory so every instance gets its OWN timestamp;
+    # a bare `= datetime.now(...)` would evaluate ONCE at class definition time.
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     prompt_hash: str = ""
     retries_used: int = 0
 

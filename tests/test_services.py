@@ -43,10 +43,12 @@ class TestConsensusReconciliation:
         result = svc._classify(3.0, amber_thr=0.5, red_thr=2.0)
         assert result == ReconciliationStatus.RED
 
-    def test_classify_none_is_amber(self):
+    def test_classify_none_is_missing(self):
+        # None diff_pct means both sources absent — must return MISSING, not AMBER,
+        # so absent data is distinguishable from a genuine ~5% divergence.
         svc = self._make_service()
         result = svc._classify(None, amber_thr=0.5, red_thr=2.0)
-        assert result == ReconciliationStatus.AMBER
+        assert result == ReconciliationStatus.MISSING
 
     def test_pct_diff(self):
         diff = self._make_service()._pct_diff(100.0, 105.0)
@@ -101,6 +103,9 @@ class TestDCFEngine:
             net_debt=0,
             wacc=0.10,
             terminal_growth=0.03,
+            # revenue_base is now required so the search compares real-dollar EVs;
+            # NVDA FY2025 revenue ~$130B.
+            revenue_base=130e9,
         )
         assert isinstance(implied_growth, float)
         assert -0.10 <= implied_growth <= 0.50

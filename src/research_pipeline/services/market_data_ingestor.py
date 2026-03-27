@@ -40,18 +40,21 @@ class MarketDataIngestor:
 
     # ── helpers ─────────────────────────────────────────────────────────
     async def _get(self, url: str, params: dict[str, Any] | None = None) -> Any:
+        """GET with retry.  The AsyncClient is created ONCE per call, outside
+        the retry loop, so we don't pay the TCP handshake cost on every attempt.
+        """
         params = params or {}
-        for attempt in range(1, self.max_retries + 1):
-            try:
-                async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=30) as client:
+            for attempt in range(1, self.max_retries + 1):
+                try:
                     resp = await client.get(url, params=params)
                     resp.raise_for_status()
                     self._request_count += 1
                     return resp.json()
-            except (httpx.HTTPStatusError, httpx.ReadTimeout) as exc:
-                logger.warning("Attempt %d failed for %s: %s", attempt, url, exc)
-                if attempt == self.max_retries:
-                    raise
+                except (httpx.HTTPStatusError, httpx.ReadTimeout) as exc:
+                    logger.warning("Attempt %d failed for %s: %s", attempt, url, exc)
+                    if attempt == self.max_retries:
+                        raise
         return None
 
     # ── FMP endpoints ──────────────────────────────────────────────────

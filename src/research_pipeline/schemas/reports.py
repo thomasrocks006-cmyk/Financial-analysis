@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -34,7 +34,7 @@ class FinalReport(BaseModel):
     """The assembled final report package."""
     run_id: str
     title: str = "AI Infrastructure Investment Research"
-    date: datetime = Field(default_factory=datetime.utcnow)
+    date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     sections: list[ReportSection] = []
     stock_cards: list[StockCard] = []
     publication_status: str = "draft"
@@ -54,7 +54,7 @@ class DiffSummary(BaseModel):
     current_value: Optional[float] = None
     change_pct: Optional[float] = None
     flagged: bool = False
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class ScenarioResult(BaseModel):
@@ -69,7 +69,7 @@ class ScenarioResult(BaseModel):
 class RiskPacket(BaseModel):
     """Quantitative risk output for the portfolio."""
     run_id: str
-    date: datetime = Field(default_factory=datetime.utcnow)
+    date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     correlation_matrix: dict[str, dict[str, float]] = {}
     concentration_report: dict[str, float] = {}
     etf_overlap: dict[str, list[str]] = {}

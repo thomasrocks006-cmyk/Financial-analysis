@@ -144,7 +144,14 @@ class ScenarioStressEngine:
     def portfolio_stress_summary(
         self, tickers: list[str], weights: dict[str, float]
     ) -> dict[str, float]:
-        """Weighted portfolio-level impact per scenario."""
+        """Weighted portfolio-level impact per scenario.
+
+        Args:
+            tickers:  List of tickers in the portfolio.
+            weights:  Position weights as PERCENTAGES (0–100), not fractions.
+                      E.g. 33.3 for a 33.3% position.  Fractions will produce
+                      results ~100x too small.
+        """
         summary: dict[str, float] = {}
         for key in self.scenarios:
             results = self.apply_scenario(key, tickers)
