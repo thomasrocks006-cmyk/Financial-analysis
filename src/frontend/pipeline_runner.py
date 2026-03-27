@@ -61,6 +61,7 @@ class RunResult:
     final_report_md: str = ""
     success: bool = False
     publication_status: str = "PASS"
+    token_log: list[dict] = field(default_factory=list)
 
 
 ProgressCallback = Callable[[int, str, str, dict], None]
@@ -87,6 +88,7 @@ class PipelineRunner:
         # Backward compat: inject Anthropic key if present
         if ak := provider_keys.get("anthropic"):
             os.environ["ANTHROPIC_API_KEY"] = ak
+        self.token_log: list[dict] = []  # token usage accumulated across all LLM calls
 
     async def run(
         self,
@@ -189,6 +191,7 @@ class PipelineRunner:
 
         result.completed_at = datetime.now(timezone.utc).isoformat()
         result.success = all(s.status != "failed" for s in result.stages)
+        result.token_log = list(self.token_log)
 
         return result
 
@@ -227,7 +230,7 @@ class PipelineRunner:
         return "anthropic"
 
     async def _call_llm(self, system_prompt: str, user_content: str, stage_num: int = -1) -> str:
-        """Route to the correct provider; uses per-stage model override if configured."""
+        """Route to the correct provider; tracks token usage per stage."""
         model    = self.stage_models.get(stage_num, self.model)
         provider = self._provider_for(model)
         api_key  = self.provider_keys.get(provider, "")
@@ -237,12 +240,20 @@ class PipelineRunner:
                 f"(stage {stage_num}, model '{model}'). Add the key in the sidebar."
             )
         if provider == "openai":
-            return await self._call_openai(system_prompt, user_content, model, api_key)
-        if provider == "gemini":
-            return await self._call_gemini(system_prompt, user_content, model, api_key)
-        return await self._call_anthropic(system_prompt, user_content, model, api_key)
+            text, in_tok, out_tok = await self._call_openai(system_prompt, user_content, model, api_key)
+        elif provider == "gemini":
+            text, in_tok, out_tok = await self._call_gemini(system_prompt, user_content, model, api_key)
+        else:
+            text, in_tok, out_tok = await self._call_anthropic(system_prompt, user_content, model, api_key)
+        self.token_log.append({
+            "stage_num":     stage_num,
+            "model":         model,
+            "input_tokens":  in_tok,
+            "output_tokens": out_tok,
+        })
+        return text
 
-    async def _call_anthropic(self, system_prompt: str, user_content: str, model: str, api_key: str) -> str:
+    async def _call_anthropic(self, system_prompt: str, user_content: str, model: str, api_key: str) -> tuple[str, int, int]:
         import anthropic
         client = anthropic.AsyncAnthropic(api_key=api_key)
         last_exc: Exception | None = None
@@ -253,7 +264,9 @@ class PipelineRunner:
                     system=system_prompt,
                     messages=[{"role": "user", "content": user_content}],
                 )
-                return response.content[0].text or ""
+                in_tok  = getattr(response.usage, "input_tokens",  0) or 0
+                out_tok = getattr(response.usage, "output_tokens", 0) or 0
+                return response.content[0].text or "", in_tok, out_tok
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
                 logger.warning("Anthropic attempt %d/%d failed: %s", attempt, self.max_retries, exc)
@@ -261,7 +274,7 @@ class PipelineRunner:
                     await asyncio.sleep(2 ** attempt)
         raise last_exc  # type: ignore[misc]
 
-    async def _call_openai(self, system_prompt: str, user_content: str, model: str, api_key: str) -> str:
+    async def _call_openai(self, system_prompt: str, user_content: str, model: str, api_key: str) -> tuple[str, int, int]:
         import openai
         client = openai.AsyncOpenAI(api_key=api_key)
         last_exc: Exception | None = None
@@ -274,7 +287,10 @@ class PipelineRunner:
                         {"role": "user", "content": user_content},
                     ],
                 )
-                return response.choices[0].message.content or ""
+                usage   = response.usage
+                in_tok  = getattr(usage, "prompt_tokens",     0) or 0
+                out_tok = getattr(usage, "completion_tokens", 0) or 0
+                return response.choices[0].message.content or "", in_tok, out_tok
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
                 logger.warning("OpenAI attempt %d/%d failed: %s", attempt, self.max_retries, exc)
@@ -282,7 +298,7 @@ class PipelineRunner:
                     await asyncio.sleep(2 ** attempt)
         raise last_exc  # type: ignore[misc]
 
-    async def _call_gemini(self, system_prompt: str, user_content: str, model: str, api_key: str) -> str:
+    async def _call_gemini(self, system_prompt: str, user_content: str, model: str, api_key: str) -> tuple[str, int, int]:
         from google import genai
         from google.genai import types
         client = genai.Client(api_key=api_key)
@@ -297,7 +313,10 @@ class PipelineRunner:
                         temperature=self.temperature,
                     ),
                 )
-                return response.text or ""
+                meta    = getattr(response, "usage_metadata", None)
+                in_tok  = int(getattr(meta, "prompt_token_count",     0) or 0) if meta else 0
+                out_tok = int(getattr(meta, "candidates_token_count", 0) or 0) if meta else 0
+                return response.text or "", in_tok, out_tok
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
                 logger.warning("Gemini attempt %d/%d failed: %s", attempt, self.max_retries, exc)
