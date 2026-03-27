@@ -68,6 +68,12 @@ class DCFEngine:
             fcfs.append(fcf)
 
         # Terminal value (Gordon growth)
+        # Guard: WACC must exceed terminal growth to produce a finite terminal value.
+        if assumptions.wacc <= assumptions.terminal_growth:
+            raise ValueError(
+                f"WACC ({assumptions.wacc:.2%}) must be strictly greater than terminal_growth "
+                f"({assumptions.terminal_growth:.2%}) to compute a finite terminal value."
+            )
         terminal_fcf = fcfs[-1] * (1 + assumptions.terminal_growth)
         terminal_value = terminal_fcf / (assumptions.wacc - assumptions.terminal_growth)
 

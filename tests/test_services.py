@@ -120,6 +120,36 @@ class TestDCFEngine:
         assert len(table.grid) == len(table.row_values)
         assert len(table.grid[0]) == len(table.col_values)
 
+    def test_compute_dcf_wacc_equals_terminal_growth_raises(self):
+        """WACC == terminal_growth produces infinite TV; engine must raise, not silently divide by zero."""
+        import pytest
+        from research_pipeline.services.dcf_engine import DCFAssumptions, DCFEngine
+        engine = DCFEngine()
+        bad_assumptions = DCFAssumptions(
+            ticker="TEST",
+            revenue_base=10e9,
+            wacc=0.03,
+            terminal_growth=0.03,  # equal — division by zero in Gordon Growth formula
+            shares_outstanding=1e9,
+        )
+        with pytest.raises(ValueError, match="WACC"):
+            engine.compute_dcf(bad_assumptions)
+
+    def test_compute_dcf_wacc_less_than_terminal_growth_raises(self):
+        """WACC < terminal_growth produces a negative TV denominator; must also raise."""
+        import pytest
+        from research_pipeline.services.dcf_engine import DCFAssumptions, DCFEngine
+        engine = DCFEngine()
+        bad_assumptions = DCFAssumptions(
+            ticker="TEST",
+            revenue_base=10e9,
+            wacc=0.02,
+            terminal_growth=0.04,  # terminal_growth > wacc
+            shares_outstanding=1e9,
+        )
+        with pytest.raises(ValueError, match="WACC"):
+            engine.compute_dcf(bad_assumptions)
+
 
 # ── Scenario Stress Engine ─────────────────────────────────────────────────
 

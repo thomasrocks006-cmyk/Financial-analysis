@@ -92,7 +92,8 @@ class PipelineGates:
         if report.has_blocking_reds():
             reds = report.get_reds()
             for r in reds:
-                blockers.append(f"RED: {r.ticker} {r.field_name} — divergence {r.divergence_pct:.1f}%")
+                div_str = f"{r.divergence_pct:.1f}%" if r.divergence_pct is not None else "N/A"
+                blockers.append(f"RED: {r.ticker} {r.field_name} — divergence {div_str}")
         return GateResult(stage=3, passed=len(blockers) == 0, reason="Reconciliation check", blockers=blockers)
 
     # ── Stage 4: Data QA & Lineage ─────────────────────────────────────

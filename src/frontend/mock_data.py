@@ -12,7 +12,7 @@ DEMO_DATE = "2026-03-24"
 # ── Universe ──────────────────────────────────────────────────────────────
 FULL_UNIVERSE = {
     "compute": ["NVDA", "AVGO", "TSM"],
-    "power_energy": ["CEG", "VST", "GEV"],
+    "power": ["CEG", "VST", "GEV"],
     "infrastructure": ["PWR", "ETN", "APH", "FIX", "FCX", "NXT"],
 }
 
@@ -120,7 +120,7 @@ MARKET_SNAPSHOTS: dict[str, dict] = {
     "CEG": {
         "ticker": "CEG",
         "company_name": "Constellation Energy Corporation",
-        "subtheme": "power_energy",
+        "subtheme": "power",
         "price": 310.20,
         "market_cap_bn": 99,
         "revenue_ttm_bn": 24,
@@ -152,7 +152,7 @@ MARKET_SNAPSHOTS: dict[str, dict] = {
     "VST": {
         "ticker": "VST",
         "company_name": "Vistra Corp",
-        "subtheme": "power_energy",
+        "subtheme": "power",
         "price": 165.80,
         "market_cap_bn": 52,
         "revenue_ttm_bn": 17,
@@ -182,7 +182,7 @@ MARKET_SNAPSHOTS: dict[str, dict] = {
     "GEV": {
         "ticker": "GEV",
         "company_name": "GE Vernova",
-        "subtheme": "power_energy",
+        "subtheme": "power",
         "price": 398.60,
         "market_cap_bn": 108,
         "revenue_ttm_bn": 36,

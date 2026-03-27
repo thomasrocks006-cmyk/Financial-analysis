@@ -144,6 +144,23 @@ class TestGate3Reconciliation:
         assert result.passed is False
         assert any("RED" in b for b in result.blockers)
 
+    def test_with_red_and_none_divergence_pct(self):
+        """RED field with divergence_pct=None must not crash the gate (shows 'N/A')."""
+        report = ReconciliationReport(
+            run_id="test",
+            fields=[
+                ReconciliationField(
+                    field_name="price", ticker="NVDA",
+                    source_a="fmp", source_a_value=None,
+                    source_b="finnhub", source_b_value=None,
+                    divergence_pct=None, status=ReconciliationStatus.RED,
+                ),
+            ],
+        )
+        result = PipelineGates.gate_3_reconciliation(report=report)
+        assert result.passed is False
+        assert any("N/A" in b for b in result.blockers)
+
 
 class TestGate5Evidence:
     def test_valid_ledger(self):

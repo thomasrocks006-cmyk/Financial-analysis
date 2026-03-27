@@ -105,6 +105,7 @@ class PipelineEngine:
         self.run_record: Optional[RunRecord] = None
         self.gate_results: dict[int, GateResult] = {}
         self.stage_outputs: dict[int, Any] = {}
+        self._review_result: Optional[AssociateReviewResult] = None  # set by stage_11, read by stage_13
 
     # ── helpers ─────────────────────────────────────────────────────────
     def _save_stage_output(self, stage: int, data: Any) -> None:
@@ -297,21 +298,30 @@ class PipelineEngine:
         """Stage 6: Three sector analysts run in parallel."""
         logger.info("═══ STAGE 6: Sector Analysis (parallel) ═══")
 
-        # Route tickers to analysts
+        # Route tickers to analysts; skip agents whose subtheme has no tickers in this universe
         compute_tickers = [t for t in universe if t in {"NVDA", "AVGO", "TSM", "AMD", "ANET"}]
         power_tickers = [t for t in universe if t in {"CEG", "VST", "GEV", "NLR"}]
         infra_tickers = [t for t in universe if t in {"PWR", "ETN", "HUBB", "APH", "FIX", "FCX", "BHP", "NXT"}]
 
-        # Run in parallel
-        results = await asyncio.gather(
-            self.compute_analyst.run(self.run_record.run_id, {"tickers": compute_tickers, "market_data": self.stage_outputs.get(2, [])}),
-            self.power_analyst.run(self.run_record.run_id, {"tickers": power_tickers, "market_data": self.stage_outputs.get(2, [])}),
-            self.infra_analyst.run(self.run_record.run_id, {"tickers": infra_tickers, "market_data": self.stage_outputs.get(2, [])}),
-        )
+        agent_calls = []
+        expected_count = 0
+        mkt_data = self.stage_outputs.get(2, [])
+        for agent, tickers in [
+            (self.compute_analyst, compute_tickers),
+            (self.power_analyst, power_tickers),
+            (self.infra_analyst, infra_tickers),
+        ]:
+            if tickers:  # skip agents with no relevant tickers in this universe
+                agent_calls.append(agent.run(self.run_record.run_id, {"tickers": tickers, "market_data": mkt_data}))
+                expected_count += 1
+            else:
+                logger.info("Skipping %s — no tickers in universe", agent.name)
+
+        results = await asyncio.gather(*agent_calls)
 
         four_box_count = sum(1 for r in results if r.success)
         self._save_stage_output(6, [r.model_dump() for r in results])
-        gate = self.gates.gate_6_sector_analysis(four_box_count, expected_count=3)
+        gate = self.gates.gate_6_sector_analysis(four_box_count, expected_count=expected_count)
         return self._check_gate(gate)
 
     async def stage_7_valuation(self, universe: list[str]) -> bool:
@@ -402,6 +412,8 @@ class PipelineEngine:
             run_id=self.run_record.run_id,
             status=PublicationStatus.PASS_WITH_DISCLOSURE if result.success else PublicationStatus.FAIL,
         )
+        # Persist so stage_13 can use the actual review status rather than guessing.
+        self._review_result = review_result
         gate = self.gates.gate_11_review(review_result)
         return self._check_gate(gate)
 
@@ -435,7 +447,8 @@ class PipelineEngine:
     async def stage_13_report(self) -> bool:
         """Stage 13: Report Assembly."""
         logger.info("═══ STAGE 13: Report Assembly ═══")
-        review_result = AssociateReviewResult(
+        # Use the review result from stage 11 if available; fall back to PASS_WITH_DISCLOSURE.
+        review_result = self._review_result or AssociateReviewResult(
             run_id=self.run_record.run_id,
             status=PublicationStatus.PASS_WITH_DISCLOSURE,
         )

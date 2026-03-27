@@ -240,24 +240,42 @@ class PipelineRunner:
     async def _call_anthropic(self, system_prompt: str, user_content: str, model: str, api_key: str) -> str:
         import anthropic
         client = anthropic.AsyncAnthropic(api_key=api_key)
-        response = await client.messages.create(
-            model=model, max_tokens=8192, temperature=self.temperature,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_content}],
-        )
-        return response.content[0].text or ""
+        last_exc: Exception | None = None
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                response = await client.messages.create(
+                    model=model, max_tokens=8192, temperature=self.temperature,
+                    system=system_prompt,
+                    messages=[{"role": "user", "content": user_content}],
+                )
+                return response.content[0].text or ""
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                logger.warning("Anthropic attempt %d/%d failed: %s", attempt, self.max_retries, exc)
+                if attempt < self.max_retries:
+                    await asyncio.sleep(2 ** attempt)
+        raise last_exc  # type: ignore[misc]
 
     async def _call_openai(self, system_prompt: str, user_content: str, model: str, api_key: str) -> str:
         import openai
         client = openai.AsyncOpenAI(api_key=api_key)
-        response = await client.chat.completions.create(
-            model=model, max_tokens=8192, temperature=self.temperature,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content},
-            ],
-        )
-        return response.choices[0].message.content or ""
+        last_exc: Exception | None = None
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                response = await client.chat.completions.create(
+                    model=model, max_tokens=8192, temperature=self.temperature,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_content},
+                    ],
+                )
+                return response.choices[0].message.content or ""
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                logger.warning("OpenAI attempt %d/%d failed: %s", attempt, self.max_retries, exc)
+                if attempt < self.max_retries:
+                    await asyncio.sleep(2 ** attempt)
+        raise last_exc  # type: ignore[misc]
 
     async def _call_gemini(self, system_prompt: str, user_content: str, model: str, api_key: str) -> str:
         from google import genai
@@ -378,7 +396,7 @@ Please build the Evidence Library and Claim Ledger for this universe.
         return await self._call_llm(system, user_content, stage_num=5)
 
     async def _stage_sector(self, market_data: dict, claims: list[dict]) -> str:
-        stocks_by_sector: dict[str, list] = {"compute": [], "power_energy": [], "infrastructure": []}
+        stocks_by_sector: dict[str, list] = {"compute": [], "power": [], "infrastructure": []}
         for ticker, snap in market_data.get("stocks", {}).items():
             sector = snap.get("subtheme", "infrastructure")
             stocks_by_sector.get(sector, stocks_by_sector["infrastructure"]).append(snap)
