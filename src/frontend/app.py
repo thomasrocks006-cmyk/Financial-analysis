@@ -323,6 +323,36 @@ Waiting for pipeline to start…
     placeholder.markdown(html, unsafe_allow_html=True)
 
 
+def _render_activity(placeholder, current_activity: str, running: bool) -> None:
+    """Render the live activity strip showing the current in-flight operation."""
+    if not current_activity:
+        placeholder.markdown(
+            '<div class="activity-strip idle"><span class="dot"></span>'
+            '<span style="color:#8b949e;font-size:0.75rem">Idle — no pipeline running</span></div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    if running:
+        state_cls = ""
+        label = current_activity
+    elif "failed" in current_activity.lower() or "error" in current_activity.lower():
+        state_cls = " error"
+        label = current_activity
+    else:
+        state_cls = " done"
+        label = current_activity
+
+    safe = label.replace("<", "&lt;").replace(">", "&gt;")
+    html = (
+        f'<div class="activity-strip{state_cls}">'
+        f'<span class="dot"></span>'
+        f'<span style="font-size:0.75rem">{safe}</span>'
+        f'</div>'
+    )
+    placeholder.markdown(html, unsafe_allow_html=True)
+
+
 # ─────────────────────────────────────────────────────────────────────────
 # Session state bootstrap
 # ─────────────────────────────────────────────────────────────────────────
