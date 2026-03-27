@@ -331,6 +331,33 @@ class TestScheduler:
         assert "NVDA" in need_reval
         assert "AVGO" not in need_reval
 
+    def test_zero_price_transition_creates_flagged_diff(self):
+        """When a stock resumes from zero price, a flagged DiffSummary is created."""
+        from research_pipeline.services.scheduler import SchedulerMonitoringService
+        svc = SchedulerMonitoringService()
+        previous = [MarketSnapshot(ticker="NVDA", source="fmp", price=0.0)]
+        current  = [MarketSnapshot(ticker="NVDA", source="fmp", price=130.0)]
+        diffs = svc.compute_diffs(previous, current)
+        flagged = [d for d in diffs if d.field == "price" and d.flagged]
+        assert len(flagged) == 1
+        assert flagged[0].change_pct is None  # undefined for zero-origin
+
+    def test_generate_alert_log_none_change_pct_shows_up_from_zero(self):
+        """Alert log must not crash on change_pct=None and should label it '↑ from zero'."""
+        from research_pipeline.services.scheduler import SchedulerMonitoringService
+        svc = SchedulerMonitoringService()
+        diffs = [
+            DiffSummary(
+                ticker="NVDA", field="price",
+                previous_value=0.0, current_value=130.0,
+                change_pct=None, flagged=True,
+            )
+        ]
+        alerts = svc.generate_alert_log(diffs)
+        assert len(alerts) == 1
+        assert "NVDA" in alerts[0]
+        assert "from zero" in alerts[0]
+
 
 # ── Data QA & Lineage ────────────────────────────────────────────────────
 

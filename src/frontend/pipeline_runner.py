@@ -35,6 +35,7 @@ STAGES = [
     (11, "Associate Review / Publish Gate"),
     (12, "Portfolio Construction"),
     (13, "Report Assembly"),
+    (14, "Monitoring & Run Registry"),
 ]
 
 
@@ -148,12 +149,12 @@ class PipelineRunner:
         valuation_outputs = s7.raw_text
 
         # ── Stage 8: Macro & Political (LLM) ─────────────────────────────
-        s8 = await self._run_stage(8, "Macro & Political Overlay", _cb, self._stage_macro, macro_data)
+        s8 = await self._run_stage(8, "Macro & Political Overlay", _cb, self._stage_macro, macro_data, sector_outputs)
         result.stages.append(s8)
         macro_outputs = s8.raw_text
 
-        # ── Stage 9: Risk (deterministic) ────────────────────────────────
-        s9 = await self._run_stage(9, "Quant Risk & Scenario Testing", _cb, self._stage_risk, market_data, sector_outputs)
+        # ── Stage 9: Risk (LLM + quant) ──────────────────────────────────
+        s9 = await self._run_stage(9, "Quant Risk & Scenario Testing", _cb, self._stage_risk, market_data, sector_outputs, valuation_outputs, macro_outputs)
         result.stages.append(s9)
         risk_outputs = s9.raw_text
 
@@ -180,8 +181,12 @@ class PipelineRunner:
             red_team_outputs, review_output, portfolio_output,
         )
         result.stages.append(s13)
-
         result.final_report_md = s13.raw_text
+
+        # ── Stage 14: Monitoring & Run Registry ──────────────────────────
+        s14 = await self._run_stage(14, "Monitoring & Run Registry", _cb, self._stage_monitoring, run_id, result.stages)
+        result.stages.append(s14)
+
         result.completed_at = datetime.now(timezone.utc).isoformat()
         result.success = all(s.status != "failed" for s in result.stages)
 
@@ -527,7 +532,7 @@ Please produce the full valuation analysis for each stock.
 
         return await self._call_llm(system, user_content, stage_num=7)
 
-    async def _stage_macro(self, macro_data: dict) -> str:
+    async def _stage_macro(self, macro_data: dict, sector_outputs: str = "") -> str:
         system = textwrap.dedent("""
             You are the Macro & Regime Strategist and Political Risk Analyst for an institutional
             AI infrastructure research platform.
@@ -557,24 +562,26 @@ Please produce the full valuation analysis for each stock.
             and which stocks are most/least exposed.
         """).strip()
 
+        sector_ctx = f"\n\nSECTOR ANALYSIS CONTEXT (for overlay calibration):\n{sector_outputs[:2000]}..." if sector_outputs else ""
+
         user_content = f"""
 Date: {macro_data.get('date')}
 
 MACRO CONTEXT:
 {json.dumps(macro_data, indent=2)}
 
-PORTFOLIO UNIVERSE: {', '.join(self.tickers)}
+PORTFOLIO UNIVERSE: {', '.join(self.tickers)}{sector_ctx}
 
 Please produce the macro and political risk analysis.
         """.strip()
 
         return await self._call_llm(system, user_content, stage_num=8)
 
-    async def _stage_risk(self, market_data: dict, sector_outputs: str) -> str:
-        """Simplified quant risk summary (deterministic + LLM narrative)."""
+    async def _stage_risk(self, market_data: dict, sector_outputs: str, valuation_outputs: str = "", macro_outputs: str = "") -> str:
+        """Quant risk summary incorporating sector, valuation, and macro context."""
         stocks = market_data.get("stocks", {})
 
-        # Simple mock risk metrics
+        # Build risk metrics from market snapshot data
         risk_metrics = {}
         for ticker, snap in stocks.items():
             pe = snap.get("forward_pe", 25)
@@ -590,12 +597,14 @@ Please produce the macro and political risk analysis.
 
         system = textwrap.dedent("""
             You are the Risk Manager for an institutional AI infrastructure research platform.
-            Review the provided risk metrics and sector analysis, then produce:
+            Review the provided risk metrics, sector analysis, valuation scenarios, and macro overlay,
+            then produce:
 
             ## Portfolio Risk Summary
             - Concentration risk: compute vs power vs infrastructure allocation
             - Correlation risk: names that will move together in a sell-off
             - Factor exposures: AI capex beta, rates sensitivity, geopolitical beta
+            - How the current macro regime (rates, dollar, commodities) affects each sub-theme
 
             ## Scenario Stress Tests
             For each scenario, estimate approximate portfolio drawdown:
@@ -610,6 +619,9 @@ Please produce the macro and political risk analysis.
             For each stock in the universe.
         """).strip()
 
+        val_ctx = f"\n\nVALUATION SCENARIOS (for drawdown calibration):\n{valuation_outputs[:1500]}..." if valuation_outputs else ""
+        macro_ctx = f"\n\nMACRO REGIME OVERLAY:\n{macro_outputs[:1200]}..." if macro_outputs else ""
+
         user_content = f"""
 Date: {market_data.get('date')}
 Universe: {', '.join(self.tickers)}
@@ -618,7 +630,7 @@ RISK METRICS:
 {json.dumps(risk_metrics, indent=2)}
 
 SECTOR ANALYSIS EXCERPT:
-{sector_outputs[:2000]}...
+{sector_outputs[:2000]}...{val_ctx}{macro_ctx}
 
 Please produce the risk and scenario analysis.
         """.strip()
@@ -779,6 +791,29 @@ Please construct the three portfolio variants.
 
         return await self._call_llm(system, user_content, stage_num=12)
 
+    async def _stage_monitoring(self, run_id: str, stages: list) -> dict:
+        """Stage 14: Record final run summary (frontend equivalent of run registry update)."""
+        failed = [s.stage_name for s in stages if s.status == "failed"]
+        completed = [s.stage_name for s in stages if s.status == "done"]
+        total_elapsed = sum(s.elapsed_secs for s in stages)
+        return {
+            "run_id": run_id,
+            "status": "completed" if not failed else "completed_with_failures",
+            "stages_completed": len(completed),
+            "stages_failed": len(failed),
+            "failed_stage_names": failed,
+            "total_elapsed_secs": round(total_elapsed, 1),
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    def _model_display(self) -> str:
+        """Return a human-readable model label — shows overrides when per-stage models differ."""
+        if self.stage_models:
+            unique_models = set(self.stage_models.values())
+            if len(unique_models) > 1:
+                return f"{self.model} (+ per-stage overrides: {len(unique_models)} models)"
+        return self.model
+
     async def _stage_report_assembly(
         self,
         run_id: str,
@@ -813,7 +848,7 @@ Please construct the three portfolio variants.
 
 **Date:** {DEMO_DATE}
 **Run ID:** {run_id}
-**Model:** {self.model}
+**Model:** {self._model_display()}
 **Universe:** {tickers_list}
 **Publication Status:** PASS (demo run)
 
@@ -877,15 +912,15 @@ This report covers {len(self.tickers)} names across three AI infrastructure sub-
 
 ---
 
-## 7. Portfolio Construction (Stage 12)
+## 7. Associate Review & Self-Audit (Stage 11)
 
-{portfolio_output}
+{review_output}
 
 ---
 
-## 8. Associate Review & Self-Audit (Stage 11)
+## 8. Portfolio Construction (Stage 12)
 
-{review_output}
+{portfolio_output}
 
 ---
 
@@ -895,7 +930,7 @@ This report covers {len(self.tickers)} names across three AI infrastructure sub-
 |-------|-------|
 | Run ID | {run_id} |
 | Date | {DEMO_DATE} |
-| Model | {self.model} |
+| Model | {self._model_display()} |
 | Universe size | {len(self.tickers)} stocks |
 | Data source | Demo/illustrative |
 | Pipeline version | v8.0 |

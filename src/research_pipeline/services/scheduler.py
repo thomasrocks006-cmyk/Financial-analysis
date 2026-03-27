@@ -46,21 +46,31 @@ class SchedulerMonitoringService:
 
                 if old_val == 0:
                     change_pct = None
-                    # Still flag a transition FROM zero (e.g. halted stock resuming)
+                    # Flag a transition FROM zero (e.g. halted stock resuming)
                     flagged = new_val != 0
+                    if flagged:
+                        # Always record this — zero-origin means infinite % change
+                        diffs.append(DiffSummary(
+                            ticker=curr.ticker,
+                            field=field_name,
+                            previous_value=old_val,
+                            current_value=new_val,
+                            change_pct=None,
+                            flagged=True,
+                        ))
                 else:
                     change_pct = round((new_val - old_val) / abs(old_val) * 100, 2)
                     flagged = abs(change_pct) >= self.alert_threshold_pct
 
-                if change_pct is not None and abs(change_pct) > 0.01:
-                    diffs.append(DiffSummary(
-                        ticker=curr.ticker,
-                        field=field_name,
-                        previous_value=old_val,
-                        current_value=new_val,
-                        change_pct=change_pct,
-                        flagged=flagged,
-                    ))
+                    if abs(change_pct) > 0.01:
+                        diffs.append(DiffSummary(
+                            ticker=curr.ticker,
+                            field=field_name,
+                            previous_value=old_val,
+                            current_value=new_val,
+                            change_pct=change_pct,
+                            flagged=flagged,
+                        ))
 
         return diffs
 
@@ -69,8 +79,9 @@ class SchedulerMonitoringService:
         alerts = []
         for d in diffs:
             if d.flagged:
+                pct_str = f"{d.change_pct:+.1f}%" if d.change_pct is not None else "↑ from zero"
                 alerts.append(
-                    f"ALERT: {d.ticker} {d.field} changed {d.change_pct:+.1f}% "
+                    f"ALERT: {d.ticker} {d.field} changed {pct_str} "
                     f"({d.previous_value} → {d.current_value})"
                 )
         return alerts

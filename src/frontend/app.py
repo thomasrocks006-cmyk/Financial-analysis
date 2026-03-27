@@ -219,7 +219,7 @@ with st.sidebar:
 
     if selected_tickers:
         compute = [t for t in selected_tickers if MARKET_SNAPSHOTS.get(t, {}).get("subtheme") == "compute"]
-        power   = [t for t in selected_tickers if MARKET_SNAPSHOTS.get(t, {}).get("subtheme") == "power_energy"]
+        power   = [t for t in selected_tickers if MARKET_SNAPSHOTS.get(t, {}).get("subtheme") == "power"]
         infra   = [t for t in selected_tickers if MARKET_SNAPSHOTS.get(t, {}).get("subtheme") == "infrastructure"]
         st.caption(f"🖥️ Compute: {', '.join(compute) or 'none'}")
         st.caption(f"⚡ Power: {', '.join(power) or 'none'}")
@@ -332,20 +332,32 @@ with tab_pipeline:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
+        run_result: RunResult | None = None
         try:
-            # Run in a way that allows UI updates
             status_text.text("🚀 Starting pipeline...")
-            run_result: RunResult = loop.run_until_complete(_run())
+            run_result = loop.run_until_complete(_run())
+        except Exception as pipeline_exc:
+            # Reset running flag so the button becomes re-enabled
+            st.session_state.running = False
+            status_text.error(f"❌ Pipeline crashed: {pipeline_exc}")
+            logger.exception("Pipeline crashed: %s", pipeline_exc)
         finally:
             loop.close()
 
-        # Apply all pending updates at the end (Streamlit can't update mid-async easily)
-        for stage_num, stage_name, status, output in pending_updates:
+        # If crashed before producing a result, rerun to reset the UI
+        if run_result is None:
+            st.rerun()
+            st.stop()
+
+        # Apply all pending updates — also drives progress bar from 0→80%
+        total_stages = len(STAGES)
+        for i, (stage_num, stage_name, status, output) in enumerate(pending_updates):
             st.session_state.stage_statuses[stage_num] = status
             if output:
                 st.session_state.stage_outputs[stage_num] = output
+            progress_bar.progress(min(int((i + 1) / total_stages * 80), 80))
 
-        # Apply final stage outputs from run_result
+        # Apply authoritative final stage outputs from run_result (80→100%)
         for sr in run_result.stages:
             st.session_state.stage_statuses[sr.stage_num] = sr.status
             if sr.raw_text:
@@ -353,7 +365,7 @@ with tab_pipeline:
             elif sr.output:
                 st.session_state.stage_outputs[sr.stage_num] = sr.output
 
-        st.session_state.current_stage = 13
+        st.session_state.current_stage = 14
         st.session_state.run_result = run_result
         st.session_state.running = False
 

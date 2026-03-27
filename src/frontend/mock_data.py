@@ -18,7 +18,7 @@ FULL_UNIVERSE = {
 
 QUICK_DEMO_UNIVERSE = {
     "compute": ["NVDA"],
-    "power_energy": ["CEG"],
+    "power": ["CEG"],
     "infrastructure": ["PWR"],
 }
 
