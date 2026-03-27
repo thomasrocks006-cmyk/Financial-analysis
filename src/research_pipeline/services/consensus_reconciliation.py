@@ -42,7 +42,9 @@ class ConsensusReconciliationService:
         self, diff_pct: Optional[float], amber_thr: float, red_thr: float
     ) -> ReconciliationStatus:
         if diff_pct is None:
-            return ReconciliationStatus.AMBER  # missing data is amber
+            # One or both values absent — distinct from an actual price divergence.
+            # Callers that do not want to count this as AMBER should filter on MISSING.
+            return ReconciliationStatus.MISSING
         if diff_pct >= red_thr:
             return ReconciliationStatus.RED
         if diff_pct >= amber_thr:

@@ -13,6 +13,7 @@ class ReconciliationStatus(str, Enum):
     GREEN = "green"
     AMBER = "amber"
     RED = "red"
+    MISSING = "missing"  # both sources absent — distinct from a real divergence
 
 
 class MarketSnapshot(BaseModel):

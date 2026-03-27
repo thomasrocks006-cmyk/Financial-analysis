@@ -33,7 +33,8 @@ class MarketDataIngestor:
         self.fmp_key = fmp_key
         self.finnhub_key = finnhub_key
         self.max_retries = max_retries
-        self._fmp_base = "https://financialmodelingprep.com/api/v3"
+        # FMP migrated from /api/v3/ (deprecated Aug 2025) to /stable/
+        self._fmp_base = "https://financialmodelingprep.com/stable"
         self._finnhub_base = "https://finnhub.io/api/v1"
         self._request_count = 0
 
@@ -55,10 +56,11 @@ class MarketDataIngestor:
 
     # ── FMP endpoints ──────────────────────────────────────────────────
     async def fetch_fmp_quote(self, ticker: str) -> MarketSnapshot:
+        # FMP stable endpoint uses symbol= query param, not path segment
         data = await self._get(
-            f"{self._fmp_base}/quote/{ticker}", {"apikey": self.fmp_key}
+            f"{self._fmp_base}/quote", {"symbol": ticker, "apikey": self.fmp_key}
         )
-        row = data[0] if data else {}
+        row = data[0] if isinstance(data, list) and data else {}
         return MarketSnapshot(
             ticker=ticker,
             source="fmp",
@@ -73,17 +75,19 @@ class MarketDataIngestor:
 
     async def fetch_fmp_ratios(self, ticker: str) -> dict[str, Any]:
         data = await self._get(
-            f"{self._fmp_base}/ratios/{ticker}", {"apikey": self.fmp_key, "limit": 1}
+            f"{self._fmp_base}/ratios", {"symbol": ticker, "apikey": self.fmp_key, "limit": 1}
         )
-        return data[0] if data else {}
+        return data[0] if isinstance(data, list) and data else {}
 
     async def fetch_fmp_analyst_estimates(self, ticker: str) -> list[AnalystEstimate]:
         data = await self._get(
-            f"{self._fmp_base}/analyst-estimates/{ticker}",
-            {"apikey": self.fmp_key, "limit": 4},
+            f"{self._fmp_base}/analyst-estimates",
+            {"symbol": ticker, "apikey": self.fmp_key, "limit": 4},
         )
         results = []
         for row in (data or []):
+            if not isinstance(row, dict):
+                continue
             results.append(AnalystEstimate(
                 ticker=ticker,
                 period=row.get("date", "unknown"),
@@ -96,8 +100,8 @@ class MarketDataIngestor:
 
     async def fetch_fmp_price_targets(self, ticker: str) -> ConsensusSnapshot:
         data = await self._get(
-            f"{self._fmp_base}/price-target-consensus/{ticker}",
-            {"apikey": self.fmp_key},
+            f"{self._fmp_base}/price-target-consensus",
+            {"symbol": ticker, "apikey": self.fmp_key},
         )
         row = data[0] if isinstance(data, list) and data else (data or {})
         return ConsensusSnapshot(
@@ -110,6 +114,28 @@ class MarketDataIngestor:
         )
 
     # ── Finnhub endpoints ──────────────────────────────────────────────
+    async def fetch_finnhub_quote(self, ticker: str) -> MarketSnapshot:
+        """Fetch real-time quote from Finnhub (/quote endpoint).
+        Fields: c=current, d=change, dp=change%, h=day_high, l=day_low,
+                o=open, pc=prev_close, t=unix_timestamp.
+        """
+        data = await self._get(
+            f"{self._finnhub_base}/quote",
+            {"symbol": ticker, "token": self.finnhub_key},
+        )
+        data = data or {}
+        return MarketSnapshot(
+            ticker=ticker,
+            source="finnhub",
+            price=data.get("c"),       # current price
+            market_cap=None,           # not provided by /quote
+            ev=None,
+            trailing_pe=None,
+            forward_pe=None,
+            ev_to_ebitda=None,
+            dividend_yield=None,
+        )
+
     async def fetch_finnhub_recommendation(self, ticker: str) -> RatingsSnapshot:
         data = await self._get(
             f"{self._finnhub_base}/stock/recommendation",
@@ -141,7 +167,8 @@ class MarketDataIngestor:
             target_median=data.get("targetMedian"),
             target_high=data.get("targetHigh"),
             target_mean=data.get("targetMean"),
-            num_analysts=data.get("lastUpdated"),
+            # Bug fix: was mapping lastUpdated (a date string) to num_analysts
+            num_analysts=data.get("numberAnalysts"),
         )
 
     async def fetch_finnhub_earnings_calendar(
@@ -165,23 +192,47 @@ class MarketDataIngestor:
 
     # ── Full ingest for a ticker ───────────────────────────────────────
     async def ingest_ticker(self, ticker: str) -> dict[str, Any]:
-        """Run full ingest for a single ticker. Returns all raw snapshots."""
-        now = datetime.now(timezone.utc)
-        fmp_quote = await self.fetch_fmp_quote(ticker)
-        fmp_targets = await self.fetch_fmp_price_targets(ticker)
-        fmp_estimates = await self.fetch_fmp_analyst_estimates(ticker)
-        finnhub_rec = await self.fetch_finnhub_recommendation(ticker)
-        finnhub_targets = await self.fetch_finnhub_price_target(ticker)
+        """Run full ingest for a single ticker.
 
-        return {
-            "ticker": ticker,
-            "timestamp": now.isoformat(),
-            "fmp_quote": fmp_quote.model_dump(),
-            "fmp_targets": fmp_targets.model_dump(),
-            "fmp_estimates": [e.model_dump() for e in fmp_estimates],
-            "finnhub_recommendation": finnhub_rec.model_dump(),
-            "finnhub_targets": finnhub_targets.model_dump(),
-        }
+        Each source call is individually error-handled so that a 402 (FMP free
+        tier limit) or a network error on one endpoint does not discard data
+        from other endpoints that succeeded.
+        """
+        now = datetime.now(timezone.utc)
+        result: dict[str, Any] = {"ticker": ticker, "timestamp": now.isoformat(), "errors": {}}
+
+        # FMP — treated as primary but optional (free tier covers limited universe)
+        for fetch_fn, key in [
+            (self.fetch_fmp_quote,             "fmp_quote"),
+            (self.fetch_fmp_price_targets,      "fmp_targets"),
+            (self.fetch_fmp_analyst_estimates,  "fmp_estimates"),
+        ]:
+            try:
+                value = await fetch_fn(ticker)
+                result[key] = (
+                    [e.model_dump() for e in value]
+                    if isinstance(value, list)
+                    else value.model_dump()
+                )
+            except Exception as exc:
+                code = getattr(getattr(exc, "response", None), "status_code", "ERR")
+                result["errors"][key] = f"{code}: {exc}"
+                logger.warning("[%s] %s failed (%s): %s", ticker, key, code, exc)
+
+        # Finnhub — free tier covers all tickers; primary fallback for price
+        for fetch_fn, key in [
+            (self.fetch_finnhub_quote,          "finnhub_quote"),
+            (self.fetch_finnhub_recommendation,  "finnhub_recommendation"),
+            (self.fetch_finnhub_price_target,    "finnhub_targets"),
+        ]:
+            try:
+                result[key] = (await fetch_fn(ticker)).model_dump()
+            except Exception as exc:
+                code = getattr(getattr(exc, "response", None), "status_code", "ERR")
+                result["errors"][key] = f"{code}: {exc}"
+                logger.warning("[%s] %s failed (%s): %s", ticker, key, code, exc)
+
+        return result
 
     async def ingest_universe(self, tickers: list[str]) -> list[dict[str, Any]]:
         """Ingest all tickers in the universe."""
@@ -198,5 +249,9 @@ class MarketDataIngestor:
 
     def detect_stale(self, snapshot: MarketSnapshot, max_hours: int = 24) -> bool:
         """Return True if the snapshot is older than max_hours."""
-        age = (datetime.now(timezone.utc) - snapshot.timestamp.replace(tzinfo=timezone.utc))
+        ts = snapshot.timestamp
+        # Normalise to tz-aware: if naive, assume UTC
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        age = datetime.now(timezone.utc) - ts
         return age.total_seconds() > max_hours * 3600
