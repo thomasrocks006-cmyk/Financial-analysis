@@ -30,6 +30,24 @@ from frontend.cost_estimator import estimate_run_cost, calculate_actual_cost, fo
 from frontend.storage import save_run, list_saved_runs, load_run, delete_run, REPORTS_DIR
 
 
+# ── .env loader ───────────────────────────────────────────────────────────
+def _read_env() -> dict[str, str]:
+    """Parse ROOT/.env and return a {KEY: VALUE} dict (ignores comments)."""
+    env: dict[str, str] = {}
+    env_file = ROOT / ".env"
+    if not env_file.exists():
+        return env
+    for line in env_file.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        env[key.strip()] = val.strip()
+    return env
+
+_ENV = _read_env()
+
+
 # ── Page config ───────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="AI Infra Research Pipeline",
@@ -294,6 +312,13 @@ def _init_state():
     for k, v in defaults.items():
         if k not in st.session_state:
             st.session_state[k] = v
+    # Pre-seed API key fields from .env on first load only
+    if "key_ant" not in st.session_state:
+        st.session_state.key_ant = _ENV.get("ANTHROPIC_API_KEY", "")
+    if "key_oai" not in st.session_state:
+        st.session_state.key_oai = _ENV.get("OPENAI_API_KEY", "")
+    if "key_gem" not in st.session_state:
+        st.session_state.key_gem = _ENV.get("GOOGLE_API_KEY", "")
 
 _init_state()
 
@@ -353,16 +378,19 @@ with st.sidebar:
     # ── API Keys ──────────────────────────────────────────────────────────
     st.markdown('<div class="section-title">API Keys</div>', unsafe_allow_html=True)
     anthropic_key = st.text_input(
-        "Anthropic", type="password", key="key_ant", placeholder="sk-ant-…",
-        label_visibility="collapsed"
+        "Anthropic", type="password", key="key_ant",
+        placeholder="sk-ant-…",
+        label_visibility="collapsed",
     )
     openai_key = st.text_input(
-        "OpenAI", type="password", key="key_oai", placeholder="sk-… (OpenAI)",
-        label_visibility="collapsed"
+        "OpenAI", type="password", key="key_oai",
+        placeholder="sk-… (OpenAI)",
+        label_visibility="collapsed",
     )
     gemini_key = st.text_input(
-        "Google", type="password", key="key_gem", placeholder="AIza… (Gemini)",
-        label_visibility="collapsed"
+        "Google", type="password", key="key_gem",
+        placeholder="AIza… (Gemini)",
+        label_visibility="collapsed",
     )
 
     provider_keys: dict[str, str] = {k: v for k, v in {
@@ -376,6 +404,8 @@ with st.sidebar:
         if openai_key:    badges.append("🟢 OpenAI")
         if gemini_key:    badges.append("🟢 Google")
         st.caption("  ".join(badges))
+        if _ENV:
+            st.caption("🔑 Auto-loaded from `.env`")
 
     st.divider()
 
