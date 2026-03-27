@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import textwrap
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -78,6 +79,7 @@ class PipelineRunner:
         self.provider_keys = provider_keys  # {"anthropic": key, "openai": key, "gemini": key}
         self.model = model          # default / display model
         self.temperature = temperature
+        self.max_retries = 3
         self.tickers = tickers or ["NVDA", "CEG", "PWR"]
         self.stage_models = stage_models or {}  # {stage_num: model_id}
 
@@ -166,7 +168,7 @@ class PipelineRunner:
         review_output = s11.raw_text
 
         # ── Stage 12: Portfolio Construction (LLM) ────────────────────────
-        s12 = await self._run_stage(12, "Portfolio Construction", _cb, self._stage_portfolio, sector_outputs, valuation_outputs, risk_outputs)
+        s12 = await self._run_stage(12, "Portfolio Construction", _cb, self._stage_portfolio, sector_outputs, valuation_outputs, risk_outputs, review_output)
         result.stages.append(s12)
         portfolio_output = s12.raw_text
 
@@ -196,7 +198,7 @@ class PipelineRunner:
     ) -> StageResult:
         sr = StageResult(stage_num=stage_num, stage_name=stage_name, status="running")
         cb(stage_num, stage_name, "running", {})
-        t_start = asyncio.get_event_loop().time()
+        t_start = time.monotonic()
         try:
             result = await fn(*args)
             sr.raw_text = result if isinstance(result, str) else json.dumps(result, indent=2, default=str)
@@ -206,7 +208,7 @@ class PipelineRunner:
             logger.error("Stage %d failed: %s", stage_num, exc)
             sr.status = "failed"
             sr.error = str(exc)
-        sr.elapsed_secs = asyncio.get_event_loop().time() - t_start
+        sr.elapsed_secs = time.monotonic() - t_start
         cb(stage_num, stage_name, sr.status, sr.output)
         return sr
 
@@ -243,7 +245,7 @@ class PipelineRunner:
             system=system_prompt,
             messages=[{"role": "user", "content": user_content}],
         )
-        return response.content[0].text
+        return response.content[0].text or ""
 
     async def _call_openai(self, system_prompt: str, user_content: str, model: str, api_key: str) -> str:
         import openai
@@ -255,21 +257,30 @@ class PipelineRunner:
                 {"role": "user", "content": user_content},
             ],
         )
-        return response.choices[0].message.content
+        return response.choices[0].message.content or ""
 
     async def _call_gemini(self, system_prompt: str, user_content: str, model: str, api_key: str) -> str:
         from google import genai
         from google.genai import types
         client = genai.Client(api_key=api_key)
-        response = await client.aio.models.generate_content(
-            model=model, contents=user_content,
-            config=types.GenerateContentConfig(
-                system_instruction=system_prompt,
-                max_output_tokens=8192,
-                temperature=self.temperature,
-            ),
-        )
-        return response.text
+        last_exc: Exception | None = None
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                response = await client.aio.models.generate_content(
+                    model=model, contents=user_content,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_prompt,
+                        max_output_tokens=8192,
+                        temperature=self.temperature,
+                    ),
+                )
+                return response.text or ""
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                logger.warning("Gemini attempt %d/%d failed: %s", attempt, self.max_retries, exc)
+                if attempt < self.max_retries:
+                    await asyncio.sleep(2 ** attempt)
+        raise last_exc  # type: ignore[misc]
 
     # ── Individual stage implementations ─────────────────────────────────
 
@@ -691,7 +702,7 @@ Please conduct the full associate review and produce the self-audit scorecard.
 
         return await self._call_llm(system, user_content, stage_num=11)
 
-    async def _stage_portfolio(self, sector_outputs: str, valuation_outputs: str, risk_outputs: str) -> str:
+    async def _stage_portfolio(self, sector_outputs: str, valuation_outputs: str, risk_outputs: str, review_output: str = "") -> str:
         system = textwrap.dedent("""
             You are the Portfolio Manager for an institutional AI infrastructure research platform.
             Using the research from the team, construct THREE portfolio variants.
@@ -738,6 +749,12 @@ VALUATION OUTPUTS (excerpt):
 
 RISK ANALYSIS (excerpt):
 {risk_outputs[:1500]}
+
+ASSOCIATE REVIEW (full — mandatory constraint):
+{review_output or '(not available)'}
+
+HARD RULE: If the associate review contains a FAIL decision, you must note it explicitly
+and flag that any portfolio recommendation is provisional pending remediation.
 
 Please construct the three portfolio variants.
         """.strip()

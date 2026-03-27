@@ -188,7 +188,7 @@ with st.sidebar:
     # Warn if a chosen model's provider key is missing
     def _prov(m: str) -> str:
         if m.startswith("claude"): return "anthropic"
-        if m.startswith("gpt") or m.startswith("o1"): return "openai"
+        if m.startswith("gpt") or m.startswith("o1") or m.startswith("o3"): return "openai"
         return "gemini"
     missing_keys = {_prov(m) for m in stage_models.values()} - set(provider_keys)
     if missing_keys and any_key:
@@ -301,7 +301,7 @@ with tab_pipeline:
                     st.write(out)
 
     # ── Run logic ─────────────────────────────────────────────────────────
-    if run_btn and api_key and selected_tickers:
+    if run_btn and any_key and selected_tickers:
         st.session_state.running = True
         st.session_state.stage_statuses = {i: "pending" for i, _ in STAGES}
         st.session_state.stage_outputs  = {}

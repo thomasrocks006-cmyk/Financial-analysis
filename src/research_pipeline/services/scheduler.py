@@ -46,10 +46,11 @@ class SchedulerMonitoringService:
 
                 if old_val == 0:
                     change_pct = None
+                    # Still flag a transition FROM zero (e.g. halted stock resuming)
+                    flagged = new_val != 0
                 else:
                     change_pct = round((new_val - old_val) / abs(old_val) * 100, 2)
-
-                flagged = change_pct is not None and abs(change_pct) >= self.alert_threshold_pct
+                    flagged = abs(change_pct) >= self.alert_threshold_pct
 
                 if change_pct is not None and abs(change_pct) > 0.01:
                     diffs.append(DiffSummary(

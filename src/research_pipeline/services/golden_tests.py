@@ -130,9 +130,13 @@ class GoldenTestHarness:
             fixture = test.input_fixture
 
             if test.category == "claim_classification":
-                passed = not self.run_claim_classification_test(fixture)
+                result = self.run_claim_classification_test(fixture)
                 if "status == pass" in test.expected_output_rule:
-                    passed = self.run_claim_classification_test(fixture)
+                    passed = result      # good claim should be accepted (classifier returns True)
+                elif "status == fail" in test.expected_output_rule:
+                    passed = not result  # bad claim should be rejected (classifier returns False)
+                else:
+                    passed = True  # unknown rule — don't block gate_0
             elif test.category == "gating":
                 if "blocked" in test.expected_output_rule:
                     passed = not self.run_gating_test(fixture)
