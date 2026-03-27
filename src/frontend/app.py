@@ -144,6 +144,38 @@ p, li, label, span      { color: #c9d1d9; }
     word-wrap: break-word;
 }
 
+/* ── Live activity strip ── */
+.activity-strip {
+    background: #0f1923;
+    border: 1px solid #1f3a5f;
+    border-left: 3px solid #58a6ff;
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    font-size: 0.80rem;
+    color: #c9d1d9;
+    font-family: 'SF Mono', monospace;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.activity-strip .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #58a6ff;
+    flex-shrink: 0;
+    animation: blink 1s ease-in-out infinite;
+}
+.activity-strip.idle {
+    border-left-color: #30363d; background: #0d1117; opacity: 0.5;
+}
+.activity-strip.idle .dot { background: #30363d; animation: none; }
+.activity-strip.error { border-left-color: #f85149; background: #1c0f0f; }
+.activity-strip.error .dot { background: #f85149; animation: none; }
+.activity-strip.done { border-left-color: #3fb950; background: #0d1f0f; }
+.activity-strip.done .dot { background: #3fb950; animation: none; }
+
+@keyframes blink { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.3;transform:scale(0.7)} }
+
 /* ── Report ── */
 .report-wrap {
     background: #161b22;
@@ -300,14 +332,16 @@ _LLM_STREAM_STAGES = {5, 6, 7, 8, 9, 10, 11, 12, 13}
 
 def _init_state():
     defaults: dict = {
-        "run_result":     None,
-        "stage_statuses": {i: "pending" for i, _ in STAGES},
-        "stage_outputs":  {},
-        "running":        False,
-        "current_stage":  -1,
-        "live_log":       [],
-        "loaded_run":     None,
-        "pipeline_error": "",   # last pipeline crash message; shown until next run
+        "run_result":       None,
+        "stage_statuses":   {i: "pending" for i, _ in STAGES},
+        "stage_outputs":    {},
+        "running":          False,
+        "current_stage":    -1,
+        "live_log":         [],
+        "loaded_run":       None,
+        "pipeline_error":   "",
+        "current_activity": "",   # what the pipeline is doing RIGHT NOW
+        "activity_feed":    [],   # list of (stage_num, event_msg) for recent events
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -577,7 +611,12 @@ with tab_pipeline:
             )
 
     with col_live:
-        st.markdown('<div class="section-title">Live Output Stream</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Live Activity</div>', unsafe_allow_html=True)
+        activity_ph = st.empty()   # live activity strip (updates every callback)
+        _render_activity(activity_ph, st.session_state.current_activity,
+                         running=st.session_state.running)
+        st.markdown('<div class="section-title" style="margin-top:10px">Completed Stage Outputs</div>',
+                    unsafe_allow_html=True)
         stream_ph = st.empty()
         _render_stream(stream_ph, st.session_state.live_log)
 
@@ -607,6 +646,8 @@ with tab_pipeline:
         st.session_state.run_result     = None
         st.session_state.live_log       = []
         st.session_state.pipeline_error = ""   # clear any previous error
+        st.session_state.current_activity = "Initialising pipeline…"
+        st.session_state.activity_feed    = []
 
         progress_bar = progress_ph.progress(0, text="Initialising pipeline…")
 
@@ -626,26 +667,48 @@ with tab_pipeline:
             if output is not None:
                 st.session_state.stage_outputs[stage_num] = output
 
-            # Refresh stage card
+            # Refresh stage card immediately
             ph = stage_placeholders.get(stage_num)
             if ph:
                 _render_stage_card(ph, stage_num, stage_name, status,
                                    st.session_state.stage_outputs)
 
-            # Append to live log only for LLM/report stages that carry text output
-            if status == "done" and stage_num in _LLM_STREAM_STAGES:
-                text = output if isinstance(output, str) else ""
-                if text:
-                    st.session_state.live_log.append((stage_num, stage_name, text))
-            if status == "done":
+            if status == "running":
+                # Update live activity strip with what stage just started
+                msg = f"S{stage_num:02d}: {stage_name} — starting…"
+                st.session_state.current_activity = msg
+                _render_activity(activity_ph, msg, running=True)
+                # Progress bar: give small increment for early stages
+                pct = max(1, int(stage_num / total_stages * 15))
+                progress_bar.progress(pct, text=f"Stage {stage_num}/{total_stages}: {stage_name}…")
+
+            elif status == "done":
+                # Append text output to live log for LLM stages
+                if stage_num in _LLM_STREAM_STAGES:
+                    text = output if isinstance(output, str) else ""
+                    if text:
+                        st.session_state.live_log.append((stage_num, stage_name, text))
+                _render_stream(stream_ph, st.session_state.live_log)
                 done_count[0] += 1
                 pct = min(int(done_count[0] / total_stages * 95), 95)
                 progress_bar.progress(pct, text=f"Stage {stage_num}: {stage_name} ✓")
 
-            _render_stream(stream_ph, st.session_state.live_log)
+            elif status == "failed":
+                msg = f"S{stage_num:02d}: {stage_name} — ❌ FAILED"
+                st.session_state.current_activity = msg
+                _render_activity(activity_ph, msg, running=False)
+
+        def _activity_cb(msg: str) -> None:
+            """Called from _call_llm before each API request."""
+            st.session_state.current_activity = msg
+            st.session_state.activity_feed.append(msg)
+            _render_activity(activity_ph, msg, running=True)
 
         async def _run_pipeline() -> RunResult:
-            return await runner.run(progress_callback=_progress_cb)
+            return await runner.run(
+                progress_callback=_progress_cb,
+                activity_callback=_activity_cb,
+            )
 
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -685,12 +748,18 @@ with tab_pipeline:
 
         if run_result.token_log:
             c = calculate_actual_cost(run_result.token_log)
+            st.session_state.current_activity = (
+                f"Pipeline complete — {format_cost(c.total_cost_usd)} actual cost"
+            )
+            _render_activity(activity_ph, st.session_state.current_activity, running=False)
             status_ph.success(
                 f"✅ {run_result.run_id} complete · "
                 f"Cost: **{format_cost(c.total_cost_usd)}** · "
                 f"{c.total_input_tokens + c.total_output_tokens:,} tokens · Auto-saved"
             )
         else:
+            st.session_state.current_activity = "Pipeline complete"
+            _render_activity(activity_ph, "Pipeline complete", running=False)
             status_ph.success(f"✅ {run_result.run_id} complete · Auto-saved to disk")
 
         st.rerun()

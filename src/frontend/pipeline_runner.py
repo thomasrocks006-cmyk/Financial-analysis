@@ -65,6 +65,7 @@ class RunResult:
 
 
 ProgressCallback = Callable[[int, str, str, dict], None]
+ActivityCallback = Callable[[str], None]
 
 
 class PipelineRunner:
@@ -89,12 +90,15 @@ class PipelineRunner:
         if ak := provider_keys.get("anthropic"):
             os.environ["ANTHROPIC_API_KEY"] = ak
         self.token_log: list[dict] = []  # token usage accumulated across all LLM calls
+        self._activity_cb: Optional[ActivityCallback] = None  # set in run()
 
     async def run(
         self,
         progress_callback: Optional[ProgressCallback] = None,
+        activity_callback: Optional[ActivityCallback] = None,
     ) -> RunResult:
         """Execute the full pipeline and return a RunResult."""
+        self._activity_cb = activity_callback
         run_id = f"DEMO-{uuid.uuid4().hex[:8].upper()}"
         started_at = datetime.now(timezone.utc).isoformat()
 
@@ -241,6 +245,10 @@ class PipelineRunner:
                 f"No API key for provider '{provider}' "
                 f"(stage {stage_num}, model '{model}'). Add the key in the sidebar."
             )
+        # Emit live activity so the UI knows exactly what the pipeline is doing
+        if self._activity_cb:
+            prov_label = {"anthropic": "Anthropic", "openai": "OpenAI", "gemini": "Google"}.get(provider, provider.title())
+            self._activity_cb(f"S{stage_num} → {prov_label} / {model} (sending request…)")
         if provider == "openai":
             text, in_tok, out_tok = await self._call_openai(system_prompt, user_content, model, api_key)
         elif provider == "gemini":
