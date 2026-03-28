@@ -145,7 +145,10 @@ class GoldenTestHarness:
             elif test.category == "reconciliation":
                 passed = self.run_reconciliation_test(fixture)
             else:
-                passed = True  # placeholder for custom categories
+                # Unknown category — fail by default so new categories must
+                # have real test functions before they can pass.
+                passed = False
+                logger.warning("Unknown golden test category '%s' for %s — marked FAIL", test.category, test.test_id)
 
             test.last_run = datetime.now(timezone.utc)
             test.passed = passed

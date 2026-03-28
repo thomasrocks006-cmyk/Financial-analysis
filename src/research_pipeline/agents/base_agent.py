@@ -17,6 +17,11 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
 
 
+class StructuredOutputError(Exception):
+    """Raised when an agent returns output that cannot be parsed into structured JSON."""
+    pass
+
+
 class AgentResult(BaseModel):
     """Standard result wrapper for any agent call."""
     agent_name: str
@@ -176,37 +181,82 @@ class BaseAgent(ABC):
         ]
 
     async def run(self, run_id: str, inputs: dict[str, Any]) -> AgentResult:
-        """Execute the agent. Override in subclasses for custom logic."""
-        try:
-            user_content = self.format_input(inputs)
-            messages = self.build_messages(user_content)
-            raw = await self.call_llm(messages)
-            parsed = self.parse_output(raw)
-            return AgentResult(
-                agent_name=self.name,
-                run_id=run_id,
-                success=True,
-                raw_response=raw,
-                parsed_output=parsed,
-                prompt_hash=self.prompt_hash,
-            )
-        except Exception as exc:
-            logger.error("%s failed: %s", self.name, exc)
-            return AgentResult(
-                agent_name=self.name,
-                run_id=run_id,
-                success=False,
-                error=str(exc),
-                prompt_hash=self.prompt_hash,
-            )
+        """Execute the agent with structured output enforcement.
+
+        Retries on StructuredOutputError up to max_retries times.
+        """
+        last_error = None
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                user_content = self.format_input(inputs)
+                messages = self.build_messages(user_content)
+                raw = await self.call_llm(messages)
+                parsed = self.parse_output(raw)
+                return AgentResult(
+                    agent_name=self.name,
+                    run_id=run_id,
+                    success=True,
+                    raw_response=raw,
+                    parsed_output=parsed,
+                    prompt_hash=self.prompt_hash,
+                    retries_used=attempt - 1,
+                )
+            except StructuredOutputError as exc:
+                logger.warning(
+                    "%s: structured output parse failed (attempt %d/%d): %s",
+                    self.name, attempt, self.max_retries, exc,
+                )
+                last_error = str(exc)
+                if attempt == self.max_retries:
+                    return AgentResult(
+                        agent_name=self.name,
+                        run_id=run_id,
+                        success=False,
+                        error=f"Structured output failed after {self.max_retries} attempts: {last_error}",
+                        prompt_hash=self.prompt_hash,
+                        retries_used=attempt,
+                    )
+            except Exception as exc:
+                logger.error("%s failed: %s", self.name, exc)
+                return AgentResult(
+                    agent_name=self.name,
+                    run_id=run_id,
+                    success=False,
+                    error=str(exc),
+                    prompt_hash=self.prompt_hash,
+                    retries_used=attempt - 1,
+                )
+        # Should not reach here, but safety net
+        return AgentResult(
+            agent_name=self.name,
+            run_id=run_id,
+            success=False,
+            error=f"Exhausted retries: {last_error}",
+            prompt_hash=self.prompt_hash,
+        )
 
     def format_input(self, inputs: dict[str, Any]) -> str:
         """Format structured inputs into the user message. Override as needed."""
         return json.dumps(inputs, indent=2, default=str)
 
     def parse_output(self, raw_response: str) -> dict[str, Any]:
-        """Parse raw LLM response into structured output. Override as needed."""
+        """Parse raw LLM response into structured output.
+
+        Fail closed: malformed JSON raises a StructuredOutputError
+        rather than silently degrading to raw_text.
+        """
+        # Strip markdown code fences if present
+        cleaned = raw_response.strip()
+        if cleaned.startswith("```"):
+            lines = cleaned.split("\n")
+            # Remove first line (```json or ```) and last line (```)
+            lines = [l for l in lines if not l.strip().startswith("```")]
+            cleaned = "\n".join(lines).strip()
+
         try:
-            return json.loads(raw_response)
-        except json.JSONDecodeError:
-            return {"raw_text": raw_response}
+            return json.loads(cleaned)
+        except json.JSONDecodeError as exc:
+            raise StructuredOutputError(
+                f"Agent '{self.name}' returned malformed JSON: {exc}. "
+                f"First 200 chars: {raw_response[:200]}"
+            ) from exc

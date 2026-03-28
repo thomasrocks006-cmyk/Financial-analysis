@@ -278,19 +278,50 @@ class PipelineEngine:
             {"tickers": universe, "market_data": self.stage_outputs.get(2, [])},
         )
         self._save_stage_output(5, result.model_dump())
-        # For gate: create a minimal ledger from the result
+
+        # Build a real ClaimLedger from structured agent output — no synthetic claims.
+        from research_pipeline.schemas.claims import Claim, ClaimStatus, EvidenceClass, ConfidenceLevel, SourceTier, Source
         ledger = ClaimLedger(run_id=self.run_record.run_id)
+
         if result.success and result.parsed_output:
-            claims_data = result.parsed_output.get("raw_text", result.parsed_output)
-            # The ledger is populated — for MVP, assume it passes if agent succeeded
-            if result.success:
-                from research_pipeline.schemas.claims import Claim, ClaimStatus, EvidenceClass, ConfidenceLevel
-                ledger.claims.append(Claim(
-                    claim_id="INIT-001", run_id=self.run_record.run_id,
-                    ticker="INIT", claim_text="Initialization claim",
-                    evidence_class=EvidenceClass.HOUSE_INFERENCE,
-                    source_id="system", status=ClaimStatus.PASS,
-                ))
+            parsed = result.parsed_output
+            # Agent may return {"claims": [...], "sources": [...]}
+            raw_claims = parsed.get("claims", [])
+            raw_sources = parsed.get("sources", [])
+
+            for rc in raw_claims:
+                if isinstance(rc, dict):
+                    try:
+                        ledger.claims.append(Claim(
+                            claim_id=rc.get("claim_id", f"CLM-{len(ledger.claims)+1:03d}"),
+                            run_id=self.run_record.run_id,
+                            ticker=rc.get("ticker", "UNKNOWN"),
+                            claim_text=rc.get("claim_text", ""),
+                            evidence_class=EvidenceClass(rc.get("evidence_class", "house_inference")),
+                            source_id=rc.get("source_id", "agent"),
+                            source_url=rc.get("source_url"),
+                            corroborated=rc.get("corroborated", False),
+                            confidence=ConfidenceLevel(rc.get("confidence", "medium")),
+                            status=ClaimStatus(rc.get("status", "caveat")),
+                            owner_agent="evidence_librarian",
+                        ))
+                    except (ValueError, KeyError) as exc:
+                        logger.warning("Skipping malformed claim: %s", exc)
+
+            for rs in raw_sources:
+                if isinstance(rs, dict):
+                    try:
+                        ledger.sources.append(Source(
+                            source_id=rs.get("source_id", f"SRC-{len(ledger.sources)+1:03d}"),
+                            source_type=rs.get("source_type", "unknown"),
+                            tier=SourceTier(rs.get("tier", 4)),
+                            url=rs.get("url"),
+                            notes=rs.get("notes", ""),
+                        ))
+                    except (ValueError, KeyError) as exc:
+                        logger.warning("Skipping malformed source: %s", exc)
+
+        # Fail-closed: if agent failed or returned no structurally valid claims, the gate blocks.
         gate = self.gates.gate_5_evidence(ledger)
         return self._check_gate(gate)
 
@@ -407,12 +438,46 @@ class PipelineEngine:
             },
         )
         self._save_stage_output(11, result.model_dump())
-        # For MVP, create review result based on agent output
+
+        # Build review result from structured agent output — fail closed on missing data.
         review_result = AssociateReviewResult(
             run_id=self.run_record.run_id,
-            status=PublicationStatus.PASS_WITH_DISCLOSURE if result.success else PublicationStatus.FAIL,
+            status=PublicationStatus.FAIL,  # default: fail closed
         )
-        # Persist so stage_13 can use the actual review status rather than guessing.
+
+        if result.success and result.parsed_output:
+            parsed = result.parsed_output
+            # Agent must return explicit {"status": "pass"|"pass_with_disclosure"|"fail", ...}
+            raw_status = parsed.get("status", "fail").lower().replace(" ", "_")
+            try:
+                review_result.status = PublicationStatus(raw_status)
+            except ValueError:
+                logger.warning("Invalid review status '%s' — defaulting to FAIL", raw_status)
+                review_result.status = PublicationStatus.FAIL
+
+            # Parse issues list
+            from research_pipeline.schemas.portfolio import ReviewIssue
+            for issue_data in parsed.get("issues", []):
+                if isinstance(issue_data, dict):
+                    review_result.issues.append(ReviewIssue(
+                        severity=issue_data.get("severity", "major"),
+                        description=issue_data.get("description", ""),
+                        ticker=issue_data.get("ticker"),
+                        stage=issue_data.get("stage"),
+                        resolution=issue_data.get("resolution", ""),
+                    ))
+
+            review_result.self_audit_score = parsed.get("self_audit_score")
+            review_result.unresolved_count = parsed.get("unresolved_count", 0)
+            review_result.methodology_tags_complete = parsed.get("methodology_tags_complete", False)
+            review_result.dates_complete = parsed.get("dates_complete", False)
+            review_result.claim_mapping_complete = parsed.get("claim_mapping_complete", False)
+            review_result.notes = parsed.get("notes", "")
+        else:
+            # Agent failure = automatic FAIL. No fallback to PASS.
+            review_result.status = PublicationStatus.FAIL
+            review_result.notes = f"Agent error: {result.error or 'no structured output'}"
+
         self._review_result = review_result
         gate = self.gates.gate_11_review(review_result)
         return self._check_gate(gate)
@@ -447,11 +512,12 @@ class PipelineEngine:
     async def stage_13_report(self) -> bool:
         """Stage 13: Report Assembly."""
         logger.info("═══ STAGE 13: Report Assembly ═══")
-        # Use the review result from stage 11 if available; fall back to PASS_WITH_DISCLOSURE.
-        review_result = self._review_result or AssociateReviewResult(
-            run_id=self.run_record.run_id,
-            status=PublicationStatus.PASS_WITH_DISCLOSURE,
-        )
+        # Use the review result from stage 11. Fail closed if missing — never assume approval.
+        if self._review_result is None:
+            logger.error("Stage 13: No review result from Stage 11 — cannot assemble report")
+            gate = self.gates.gate_13_report(report_generated=False, all_sections_approved=False)
+            return self._check_gate(gate)
+        review_result = self._review_result
 
         # Build self-audit
         audit = self.registry.build_self_audit(self.run_record.run_id, ClaimLedger(run_id=self.run_record.run_id))

@@ -79,7 +79,7 @@ def list_saved_runs() -> list[dict]:
                     word_count, json_path, md_path
     """
     entries = []
-    for jf in sorted(REPORTS_DIR.glob("DEMO-*.json"), reverse=True):
+    for jf in sorted(REPORTS_DIR.glob("*.json"), reverse=True):
         try:
             data = json.loads(jf.read_text(encoding="utf-8"))
             md_path = jf.with_suffix(".md")
