@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from research_pipeline.schemas.reports import ScenarioResult
+
+if TYPE_CHECKING:
+    from research_pipeline.schemas.macro_economy import MacroScenario
 
 logger = logging.getLogger(__name__)
 
@@ -161,3 +165,52 @@ class ScenarioStressEngine:
             )
             summary[self.scenarios[key].name] = round(weighted_impact, 2)
         return summary
+
+    def register_macro_scenarios(self, macro_scenario: "MacroScenario") -> list[str]:
+        """Session 12: register MacroScenario bear axes as stress scenarios.
+
+        Converts the bear outcome from each macro scenario axis into a
+        ScenarioConfig and registers it with this engine. This allows
+        AU/US macro-driven stress tests to run alongside the built-in
+        AI infrastructure scenarios.
+
+        Returns the list of newly registered scenario keys.
+        """
+        # Axis definitions: (axis_name, bear_description, base_impact_pct, high_exposure, low_exposure)
+        # Impact percentages are indicative — AU/global macro bear scenarios
+        MACRO_AXIS_IMPACTS = [
+            ("au_rates_bear", macro_scenario.au_rates.bear, -10.0,
+             ["CBA.AX", "WBC.AX", "ANZ.AX", "NAB.AX", "MQG.AX", "WES.AX"],  # rate-sensitive AU names
+             ["BHP.AX", "CSL.AX", "GMG.AX"]),
+            ("us_rates_bear", macro_scenario.us_rates.bear, -12.0,
+             ["NVDA", "AVGO", "NXT", "ANET"],  # duration-sensitive growth names
+             ["FCX", "BHP", "CEG"]),
+            ("au_inflation_bear", macro_scenario.au_inflation.bear, -8.0,
+             ["WOW.AX", "WES.AX", "CBA.AX"],  # consumer / margin-squeeze names
+             ["BHP.AX", "CSL.AX"]),
+            ("au_housing_bear", macro_scenario.au_housing.bear, -14.0,
+             ["CBA.AX", "WBC.AX", "ANZ.AX", "NAB.AX"],  # bank mortgage book
+             ["GMG.AX", "CSL.AX", "BHP.AX"]),
+            ("aud_usd_bear", macro_scenario.aud_usd.bear, -6.0,
+             ["WOW.AX", "WES.AX"],              # import-cost exposed AU names
+             ["BHP.AX", "CSL.AX",               # exporters benefit from weak AUD
+              "NVDA", "AVGO"]),                  # USD assets: AUD return improves
+        ]
+
+        registered: list[str] = []
+        for key, description, impact_pct, high_exp, low_exp in MACRO_AXIS_IMPACTS:
+            if key not in self.scenarios:
+                self.scenarios[key] = ScenarioConfig(
+                    name=f"Macro Bear — {key.replace('_', ' ').title()}",
+                    description=description,
+                    default_impact_pct=impact_pct,
+                    high_exposure_tickers=high_exp,
+                    low_exposure_tickers=low_exp,
+                )
+                registered.append(key)
+
+        logger.info(
+            "ScenarioStressEngine: registered %d macro scenarios from MacroScenario (run_id=%s)",
+            len(registered), macro_scenario.run_id,
+        )
+        return registered

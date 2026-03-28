@@ -929,11 +929,13 @@ These are concrete defects in the current code — not design gaps but bugs or u
 | ACT-S11-2 | **Sector-weight drift alert** — compare current vs baseline sector weights; alert if drift > threshold | `engine.py`, `app.py` | Portfolio Management | Low |
 | ACT-S11-3 | **Agent retry telemetry** — log per-agent retry counts and model-fallback events to `SelfAuditPacket` | `agents/base_agent.py`, `schemas/governance.py` | Global Research | Medium |
 | ACT-S11-4 | **ESG mandate score trend** — store last-N ESG composite scores; display trending chart in Streamlit | `services/esg_service.py`, `app.py` | Client Solutions | Low |
-| ACT-S11-5 | **Tests** — session 11 verification tests targeting 635+ total | `tests/test_session11.py` | Operations | Low |
+| ACT-S11-5 | **Tests** — 60 new tests; 667 total passing (ARC-1–10 + ISS-1/3/4/9/10/20) | `tests/test_session11.py` | Operations | ✅ `2b6a360` |
+
+**Session 11 outcome:** All 10 ARC pipeline wiring bugs fixed. ISS-1 (MacroContextPacket schema), ISS-3 (GenericSectorAnalystAgent), ISS-4 (StockCard adapter), ISS-9 (_VALIDATION_FATAL), ISS-10 (Gemini fallback), ISS-20 (adapter key fix) resolved. 60 new tests. 667 / 667 passing. Phase 1 adapter truthfulness complete.
 
 ---
 
-*Document updated: session 10 — ACT-S10-1 (live BHB data_source), ACT-S10-2 (ESG CSV export), ACT-S10-3 (agent quality gate), ACT-S10-4 (factor live data), ACT-S10-5 (28 tests). Test count: 607 passing. Session 11 plan in §12.12.*
+*Document updated: session 11 — ARC-1 through ARC-10 pipeline wiring fixes, ISS-1/3/4/9/10/20 resolved, Phase 1 adapter fixes complete. Test count: 667 passing. Session 12 plan: Macro Economy Module (EconomicIndicatorService, MacroScenarioService, EconomyAnalystAgent, MarketConfig + ASX support).*
 
 ---
 

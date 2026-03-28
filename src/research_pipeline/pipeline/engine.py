@@ -90,6 +90,19 @@ from research_pipeline.schemas.macro import MacroContextPacket
 # ARC-5: Externalised sector routing
 from research_pipeline.config.loader import SECTOR_ROUTING
 
+# Session 12: Macro Economy module
+from research_pipeline.agents.economy_analyst import EconomyAnalystAgent
+from research_pipeline.services.economic_indicator_service import EconomicIndicatorService
+from research_pipeline.services.macro_scenario_service import MacroScenarioService
+from research_pipeline.schemas.macro_economy import (
+    EconomicIndicators,
+    EconomyAnalysis,
+    MacroScenario,
+)
+
+# Session 12 (ISS-13): ASX sector analyst
+from research_pipeline.agents.sector_analyst_asx import SectorAnalystASX, is_asx_ticker
+
 logger = logging.getLogger(__name__)
 
 
@@ -163,6 +176,7 @@ class PipelineEngine:
         self.power_analyst = SectorAnalystPowerEnergy(**agent_kwargs)
         self.infra_analyst = SectorAnalystInfrastructure(**agent_kwargs)
         self.generic_analyst = GenericSectorAnalystAgent(**agent_kwargs)  # ARC-5: fallback for unmapped tickers
+        self.asx_analyst = SectorAnalystASX(**agent_kwargs)  # ISS-13: ASX sector specialist
         self.valuation_agent = ValuationAnalystAgent(**agent_kwargs)
         self.macro_agent = MacroStrategistAgent(**agent_kwargs)
         self.political_agent = PoliticalRiskAnalystAgent(**agent_kwargs)
@@ -172,6 +186,12 @@ class PipelineEngine:
         self.quant_analyst_agent = QuantResearchAnalystAgent(**agent_kwargs)
         self.fixed_income_agent = FixedIncomeAnalystAgent(**agent_kwargs)
         self.esg_analyst_agent = EsgAnalystAgent(**agent_kwargs)
+        # Session 12: Economy Analyst Agent + data services
+        self.economy_analyst = EconomyAnalystAgent(**agent_kwargs)
+        self.economic_indicator_svc = EconomicIndicatorService(
+            fred_api_key=config.market_config.fred_api_key
+        )
+        self.macro_scenario_svc = MacroScenarioService()
 
         # Run state
         self.run_record: Optional[RunRecord] = None
@@ -750,8 +770,10 @@ class PipelineEngine:
         compute_tickers    = [t for t in universe if t in routing.get("compute", [])]
         power_tickers      = [t for t in universe if t in routing.get("power_energy", [])]
         infra_tickers      = [t for t in universe if t in routing.get("infrastructure", [])]
+        # ISS-13: Route ASX-suffixed tickers (.AX / .ASX) to the specialised AU analyst
+        asx_tickers        = [t for t in universe if is_asx_ticker(t)]
         # Any ticker not in any bucket goes to the GenericSectorAnalystAgent
-        all_routed = set(compute_tickers) | set(power_tickers) | set(infra_tickers)
+        all_routed = set(compute_tickers) | set(power_tickers) | set(infra_tickers) | set(asx_tickers)
         generic_tickers = [t for t in universe if t not in all_routed]
 
         agent_calls = []
@@ -768,6 +790,22 @@ class PipelineEngine:
                 expected_count += 1
             else:
                 logger.info("Skipping %s — no tickers in universe", agent.name)
+
+        # ISS-13: Run ASX analyst for AU-listed tickers
+        if asx_tickers:
+            logger.info("Routing %d ASX tickers to SectorAnalystASX: %s", len(asx_tickers), asx_tickers)
+            stage_8_data = self.stage_outputs.get(8, {})
+            economy_ctx = stage_8_data.get("economy_analysis", {})
+            agent_calls.append(self.asx_analyst.run(
+                self.run_record.run_id,
+                {
+                    "tickers": asx_tickers,
+                    "market_data": mkt_data,
+                    "macro_context_summary": macro_ctx.summary_text(),
+                    "economy_analysis": economy_ctx,
+                },
+            ))
+            expected_count += 1
 
         # ARC-5: run GenericSectorAnalystAgent for any tickers not in the routing table
         if generic_tickers:
@@ -845,23 +883,67 @@ class PipelineEngine:
         return self._check_gate(gate)
 
     async def stage_8_macro(self, universe: list[str]) -> bool:
-        """Stage 8: Macro & Political Overlay."""
+        """Stage 8: Macro & Political Overlay — extended with EconomyAnalystAgent (Session 12)."""
         logger.info("═══ STAGE 8: Macro & Political Overlay ═══")
         # ARC-9: Enrich macro agent with reconciled market data (stage 2) and
         # reconciliation flags (stage 3) so it can reference actual market conditions.
         ingested_data = self.stage_outputs.get(2, [])
         reconciliation_report = self.stage_outputs.get(3, {})
+
+        # Session 12: Run EconomicIndicatorService + MacroScenarioService + EconomyAnalystAgent
+        # These run before MacroStrategistAgent so the regime classification is enriched.
+        economy_analysis: Optional[EconomyAnalysis] = None
+        macro_scenario: Optional[MacroScenario] = None
+        economic_indicators: Optional[EconomicIndicators] = None
+        try:
+            economic_indicators = self.economic_indicator_svc.get_indicators_sync(
+                run_id=self.run_record.run_id
+            )
+            macro_scenario = self.macro_scenario_svc.build_scenario(economic_indicators)
+            economy_analysis = await self.economy_analyst.run_economy_analysis(
+                indicators=economic_indicators,
+                scenario=macro_scenario,
+                run_id=self.run_record.run_id,
+            )
+            logger.info(
+                "EconomyAnalystAgent complete — rba_stance=%s fed_stance=%s",
+                economy_analysis.rba_stance.value,
+                economy_analysis.fed_stance.value,
+            )
+        except Exception as _exc:
+            logger.warning("Session 12 economy pipeline failed (non-blocking): %s", _exc)
+
+        # Build economy context dict for downstream agents
+        economy_context: dict = {}
+        if economy_analysis:
+            economy_context = {
+                "rba_cash_rate_thesis": economy_analysis.rba_cash_rate_thesis,
+                "fed_funds_thesis": economy_analysis.fed_funds_thesis,
+                "au_cpi_assessment": economy_analysis.au_cpi_assessment,
+                "aud_usd_outlook": economy_analysis.aud_usd_outlook,
+                "asx200_vs_sp500_divergence": economy_analysis.asx200_vs_sp500_divergence,
+                "key_risks_au": economy_analysis.key_risks_au,
+                "key_risks_us": economy_analysis.key_risks_us,
+                "rba_stance": economy_analysis.rba_stance.value,
+                "fed_stance": economy_analysis.fed_stance.value,
+                "confidence": economy_analysis.confidence,
+            }
+
         macro_result, political_result = await asyncio.gather(
             self.macro_agent.run(self.run_record.run_id, {
                 "universe": universe,
                 "market_data": ingested_data,
                 "reconciliation_summary": reconciliation_report,
+                "economy_analysis": economy_context,
             }),
             self.political_agent.run(self.run_record.run_id, {"tickers": universe}),
         )
         self._save_stage_output(8, {
             "macro": macro_result.model_dump(),
             "political": political_result.model_dump(),
+            "economy_analysis": economy_analysis.model_dump() if economy_analysis else {},
+            "macro_scenario": macro_scenario.model_dump() if macro_scenario else {},
+            "economic_indicators": economic_indicators.model_dump() if economic_indicators else {},
         })
         gate = self.gates.gate_8_macro(
             regime_memo_present=macro_result.success,
@@ -1003,6 +1085,10 @@ class PipelineEngine:
                     "Interpret using internal heuristics."
                 ),
             }
+            # Session 12: Enrich FI inputs with AU/US economy analysis and macro scenario
+            stage_8_fi = self.stage_outputs.get(8, {})
+            economy_analysis_fi = stage_8_fi.get("economy_analysis", {})
+            macro_scenario_fi = stage_8_fi.get("macro_scenario", {})
             # Assemble fixed-income context packet
             fi_inputs = {
                 "universe": universe,
@@ -1017,6 +1103,13 @@ class PipelineEngine:
                     (s.model_dump() if hasattr(s, "model_dump") else s)
                     for s in scenario_results
                 ],
+                "economy_analysis": economy_analysis_fi,
+                "macro_scenario": {
+                    "composite": macro_scenario_fi.get("composite_scenario", ""),
+                    "au_rates_base": (macro_scenario_fi.get("au_rates") or {}).get("base", ""),
+                    "us_rates_base": (macro_scenario_fi.get("us_rates") or {}).get("base", ""),
+                    "au_fixed_income_impact": macro_scenario_fi.get("au_fixed_income_impact", ""),
+                },
             }
             fi_result = await self.fixed_income_agent.run(
                 self.run_record.run_id, fi_inputs
@@ -1220,7 +1313,11 @@ class PipelineEngine:
             logger.warning("Mandate violations on baseline: %s", [v.description for v in mandate_check.violations])
 
         # ARC-8: Wire macro context into PM agent so it can factor regime into allocations
+        # Session 12: Also pass economy analysis (AU/US macro) for regime-aware construction
         macro_ctx_pm = self._get_macro_context()
+        stage_8_outputs = self.stage_outputs.get(8, {})
+        economy_analysis_pm = stage_8_outputs.get("economy_analysis", {})
+        macro_scenario_pm = stage_8_outputs.get("macro_scenario", {})
         result = await self.pm_agent.run(
             self.run_record.run_id,
             {
@@ -1234,6 +1331,8 @@ class PipelineEngine:
                 "mandate_check": mandate_check.model_dump(),
                 "baseline_weights": baseline_weights,
                 "macro_context": macro_ctx_pm.model_dump(mode="json"),
+                "economy_analysis": economy_analysis_pm,
+                "macro_scenario": macro_scenario_pm,
             },
         )
 
