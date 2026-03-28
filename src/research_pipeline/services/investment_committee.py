@@ -192,9 +192,10 @@ class InvestmentCommitteeService:
         if review_result and review_result.get("status") == "fail":
             return CommitteeVote.REJECT, "Associate reviewer rejected", []
 
-        if review_result and review_result.get("status") == "pass_with_disclosure":
-            conditions.append("Reviewer passed with disclosure — address disclosures")
-            return CommitteeVote.APPROVE_WITH_CONDITIONS, "Approved with disclosure conditions", conditions
+        # pass_with_disclosure is no longer a valid outcome (binary PASS/FAIL only).
+        # If an unexpected value appears here treat it conservatively as FAIL.
+        if review_result and review_result.get("status") not in ("pass", None):
+            return CommitteeVote.REJECT, f"Unexpected review status '{review_result.get('status')}' — treated as FAIL", []
 
         return CommitteeVote.APPROVE, "Portfolio quality satisfactory", []
 

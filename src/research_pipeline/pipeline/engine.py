@@ -74,6 +74,7 @@ from research_pipeline.agents.macro_political import MacroStrategistAgent, Polit
 from research_pipeline.agents.red_team_analyst import RedTeamAnalystAgent
 from research_pipeline.agents.associate_reviewer import AssociateReviewerAgent
 from research_pipeline.agents.portfolio_manager import PortfolioManagerAgent
+from research_pipeline.agents.quant_research_analyst import QuantResearchAnalystAgent
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +150,7 @@ class PipelineEngine:
         self.red_team_agent = RedTeamAnalystAgent(**agent_kwargs)
         self.reviewer_agent = AssociateReviewerAgent(**agent_kwargs)
         self.pm_agent = PortfolioManagerAgent(**agent_kwargs)
+        self.quant_analyst_agent = QuantResearchAnalystAgent(**agent_kwargs)
 
         # Run state
         self.run_record: Optional[RunRecord] = None
@@ -506,6 +508,29 @@ class PipelineEngine:
         except Exception as exc:
             logger.warning("ETF overlap analysis failed: %s", exc)
 
+        # Quant Research Analyst — LLM interpretation of all deterministic quant outputs
+        try:
+            quant_agent_result = await self.quant_analyst_agent.run(
+                self.run_record.run_id,
+                {
+                    "factor_exposures": factor_data,
+                    "var_metrics": risk_output.get("var_95"),
+                    "benchmark_analytics": risk_output.get("portfolio_factor_exposure"),
+                    "etf_overlap": risk_output.get("etf_overlap"),
+                    "risk_engine": {
+                        "scenario_count": len(scenario_results),
+                        "drawdown_analysis": risk_output.get("drawdown_analysis"),
+                    },
+                    "scenario_results": [s.model_dump() if hasattr(s, "model_dump") else s for s in scenario_results],
+                },
+            )
+            if quant_agent_result.success and quant_agent_result.parsed_output:
+                risk_output["quant_research_commentary"] = quant_agent_result.parsed_output
+            else:
+                logger.warning("Quant Research Analyst agent did not produce output — continuing")
+        except Exception as exc:
+            logger.warning("Quant Research Analyst agent failed: %s", exc)
+
         self._save_stage_output(9, risk_output)
         gate = self.gates.gate_9_risk(
             risk_packet_present=True,
@@ -553,7 +578,7 @@ class PipelineEngine:
 
         if result.success and result.parsed_output:
             parsed = result.parsed_output
-            # Agent must return explicit {"status": "pass"|"pass_with_disclosure"|"fail", ...}
+            # Agent must return explicit {"status": "pass"|"fail", ...}
             raw_status = parsed.get("status", "fail").lower().replace(" ", "_")
             try:
                 review_result.status = PublicationStatus(raw_status)

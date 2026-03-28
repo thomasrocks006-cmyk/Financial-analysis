@@ -24,7 +24,6 @@ class ThesisIntegrity(str, Enum):
 
 class PublicationStatus(str, Enum):
     PASS = "pass"
-    PASS_WITH_DISCLOSURE = "pass_with_disclosure"
     FAIL = "fail"
 
 
@@ -214,4 +213,4 @@ class AssociateReviewResult(BaseModel):
 
     @property
     def is_publishable(self) -> bool:
-        return self.status in (PublicationStatus.PASS, PublicationStatus.PASS_WITH_DISCLOSURE)
+        return self.status == PublicationStatus.PASS

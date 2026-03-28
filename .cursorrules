@@ -1,0 +1,106 @@
+# AI Infrastructure Research Platform — Cursor Rules
+# These rules guide Cursor's AI when working in this project.
+
+## Project Overview
+This is an **institutional-grade AI infrastructure equity research platform** (v8.0.0).
+It runs a multi-agent pipeline that:
+- Analyses AI infrastructure stocks (semiconductors, power, data centres, cloud)
+- Uses LLM agents (OpenAI GPT-4o, Claude, Gemini) to generate research reports
+- Produces institutional-quality PDF/Markdown reports and portfolio recommendations
+- Exposes a Streamlit web frontend on port 8501
+
+## Tech Stack
+- **Python 3.11+** — strict type hints everywhere (Pydantic v2 models)
+- **Streamlit** — frontend dashboard (`src/frontend/app.py`)
+- **Pydantic v2** — all data models in `src/research_pipeline/schemas/`
+- **asyncio** — pipeline is fully async (`src/research_pipeline/pipeline/engine.py`)
+- **pytest** — all tests in `tests/`, run with `pytest`
+- **YAML configs** — pipeline config in `configs/`, main config `final_pipeline_config_v8.yaml`
+
+## Directory Structure
+```
+src/
+  cli/            → CLI entry point (typer app)
+  frontend/       → Streamlit UI
+  research_pipeline/
+    agents/       → All AI agents (orchestrator, sector, valuation, etc.)
+    pipeline/     → Engine + quality gates
+    schemas/      → Pydantic models
+    services/     → External service integrations
+    config/       → Config loading
+configs/          → YAML config files
+prompts/          → Agent system prompt Jinja2 templates
+tests/            → pytest tests
+reports/          → Generated output reports
+scripts/          → One-off/utility scripts
+```
+
+## Agent Architecture
+The pipeline has these agents (all inherit from `BaseAgent`):
+1. **Orchestrator** — top-level pipeline coordinator
+2. **EvidenceLibrarian** — gathers public-source data
+3. **SectorAnalysts** — compute / infrastructure / power-energy verticals
+4. **ValuationAnalyst** — DCF + comps models
+5. **MacroPolitical** — macro and geopolitical risk
+6. **RedTeamAnalyst** — challenges and stress-tests the thesis
+7. **AssociateReviewer** — QA layer before final output
+8. **PortfolioManager** — position sizing and portfolio construction
+9. **PortfolioSynthesiser** — final report assembly
+
+## Coding Standards
+- Always use **Pydantic v2** syntax (`model_config = ConfigDict(...)`, not `class Config`)
+- All agents must be **async** — use `async def run(...)` 
+- Use **type hints** on all function signatures
+- Imports: stdlib → third-party → local (separated by blank line)
+- Line length: 100 chars (`ruff` enforced)
+- Never use `print()` — use `rich.console.Console` or Python `logging`
+- All new schemas go in `src/research_pipeline/schemas/`
+- Config values come from `src/research_pipeline/config/settings.py` — not from env directly in agent code
+
+## Running the Project
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the Streamlit frontend
+streamlit run src/frontend/app.py
+
+# Run the CLI pipeline
+python -m cli.main run --config configs/pipeline.yaml
+
+# Run tests
+pytest tests/ -v
+
+# Lint
+ruff check src/
+```
+
+## Environment Variables
+All secrets live in `.env` (copy from `.env.example`).
+Key variables: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`
+
+## Key Files to Know
+- `final_pipeline_config_v8.yaml` — master pipeline config
+- `src/research_pipeline/pipeline/engine.py` — pipeline execution engine
+- `src/research_pipeline/agents/orchestrator.py` — top-level agent
+- `src/frontend/app.py` — Streamlit UI entry point
+- `ARCHITECTURE.md` — full architecture diagram
+- `PIPELINE_STAGES.md` — stage-by-stage pipeline walkthrough
+
+## When Adding New Agents
+1. Inherit from `BaseAgent` in `src/research_pipeline/agents/base_agent.py`
+2. Add the agent to the orchestrator's agent registry
+3. Create a prompt template in `prompts/`
+4. Add the agent config to `final_pipeline_config_v8.yaml`
+5. Write tests in `tests/`
+
+## When Adding New Schemas
+1. Create in `src/research_pipeline/schemas/`
+2. Use Pydantic v2 `BaseModel` with full type annotations
+3. Export from `src/research_pipeline/schemas/__init__.py`
+
+## Common Gotchas
+- The pipeline is async throughout — do NOT add sync blocking calls inside agents
+- `yfinance` is used for market data — it can be slow; always wrap in try/except
+- Pydantic validator syntax in this project uses `@model_validator` and `@field_validator` (v2 style)
+- Tests use `pytest-asyncio` with `asyncio_mode = "auto"` — no need for `@pytest.mark.asyncio`

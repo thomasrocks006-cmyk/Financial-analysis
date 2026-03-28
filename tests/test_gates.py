@@ -205,13 +205,15 @@ class TestGate11Review:
         result = PipelineGates.gate_11_review(result=review)
         assert result.passed is True
 
-    def test_review_pass_with_disclosure(self):
+    def test_review_fail_blocks_gate(self):
+        """PASS_WITH_DISCLOSURE is no longer a valid status; any non-PASS review must block."""
         review = AssociateReviewResult(
-            run_id="test", status=PublicationStatus.PASS_WITH_DISCLOSURE,
+            run_id="test", status=PublicationStatus.FAIL,
             issues=[ReviewIssue(severity="minor", description="Stale data note")],
         )
         result = PipelineGates.gate_11_review(result=review)
-        assert result.passed is True
+        assert result.passed is False
+        assert len(result.blockers) >= 1
 
     def test_review_fail(self):
         review = AssociateReviewResult(

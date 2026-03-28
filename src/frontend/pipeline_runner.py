@@ -1,5 +1,17 @@
 """Pipeline runner for the Streamlit frontend.
 
+.. deprecated::
+   This module (1851 lines) duplicates stage logic that now lives in
+   ``research_pipeline.pipeline.engine.PipelineEngine``.
+   New code should use the thin adapter instead::
+
+       from frontend.pipeline_adapter import STAGES, PipelineRunner, RunResult
+
+   ``pipeline_adapter.PipelineRunner`` is a drop-in replacement that
+   delegates all execution to PipelineEngine and returns the same RunResult.
+   This file is retained for backward compatibility and will be archived
+   once app.py switches to the adapter.
+
 Drives the full 15-stage institutional research pipeline.
 Uses FMP + Finnhub for live market data, yfinance as fallback.
 Injects client investment profile context into every LLM agent.

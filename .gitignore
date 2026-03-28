@@ -1,6 +1,8 @@
 # Environment / secrets
 .env
-.env.*
+.env.local
+.env.*.local
+# .env.example is intentionally NOT ignored — it's a safe template
 
 # Virtual environment
 .venv/
@@ -38,3 +40,4 @@ coverage.xml
 # Pipeline outputs
 outputs/
 runs/
+*.pyc

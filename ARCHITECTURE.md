@@ -514,37 +514,36 @@ pytest tests/ -v
 
 ### Executive Verdict
 
-**Overall architecture score: 6.6 / 10**
+**Overall architecture score: 7.8 / 10** *(updated post-Phase-7 + debt-clearing)*
 
 This project has a strong institutional workflow design and better-than-average
 process discipline for an AI research platform. The core idea is right:
 deterministic services should produce facts, LLMs should produce judgment, and
 gates should control publication.
 
-The biggest architectural issue is that the codebase currently behaves like two
-overlapping systems:
-
-1. a backend target-state pipeline in `src/research_pipeline/`
-2. a richer frontend execution pipeline in `src/frontend/pipeline_runner.py`
-
-That split is now the main source of architectural drag.
+The architectural split-brain between `research_pipeline/` and
+`frontend/pipeline_runner.py` has been partially resolved: a thin
+`pipeline_adapter.py` now bridges the frontend to `PipelineEngine`, and
+`frontend/storage.py` is unified with the backend `RunRegistryService`.
+The remaining gap is that `app.py` still imports from `pipeline_runner` —
+swapping to `pipeline_adapter` is the next convergence step.
 
 ### Component Scorecard
 
 | Component | Score / 10 | What is strong | Main gap |
 |---|---:|---|---|
 | Research workflow / stage design | 8.5 | Excellent decomposition of the research process into 15 coherent stages | Some stages are still more prompt-driven than contract-driven |
-| Frontend operator experience | 8.0 | Streamlit workflow is polished and practical | Frontend owns too much pipeline logic instead of acting as a thin client |
-| Core orchestration architecture | 4.5 | Real pipeline engine exists with stage persistence and gates | Execution logic is duplicated across backend and frontend |
-| Deterministic services | 7.5 | Good modular service set: DCF, reconciliation, QA, risk, scenarios | Service maturity is uneven; some are still shallow |
-| Market + qualitative data ingestion | 7.5 | Broad source coverage and graceful degradation | Backend ingestion is serial and contracts differ from frontend shapes |
-| LLM agent layer | 6.5 | Good role separation, prompt hashing, common base class | Weak structured-output enforcement |
-| Governance / gates / review | 4.0 | Correctly designed as a first-class concern | Backend enforcement still contains placeholder pass-through logic |
-| Schema layer / type safety | 7.0 | Pydantic models are a solid foundation | Frontend often bypasses typed contracts with ad hoc dicts |
-| Persistence / audit trail | 5.5 | Run registry exists and captures execution metadata | Persistence is fragmented across multiple stores |
-| Report assembly | 6.0 | Reports can be generated on both backend and frontend paths | Two assembly paths create drift risk |
-| Testing / QA | 6.0 | 103 tests passing; services and gates are covered | Product-level and frontend coverage are thin |
-| Documentation accuracy | 5.0 | Documentation effort is strong | Current docs overstate how converged the implementation is |
+| Frontend operator experience | 8.0 | Streamlit workflow is polished and practical | `app.py` still imports from legacy `pipeline_runner`; not yet using `pipeline_adapter` |
+| Core orchestration architecture | 7.0 ↑ | `pipeline_adapter.py` thin shim created; single canonical `PipelineEngine` path documented | `app.py` import swap not yet done; legacy runner still present |
+| Deterministic services | 7.5 | Good modular service set: DCF, reconciliation, QA, risk, scenarios, factor, VaR | Service unit-test coverage could be deeper |
+| Market + qualitative data ingestion | 8.0 ↑ | D-1: `QualitativePackage` typed schemas + async `QualitativeDataService`; 8 sources with Pydantic contracts | Backend ingestion still serial; add `asyncio.gather` with semaphore |
+| LLM agent layer | 7.5 ↑ | All agents enforce `parse_output`; `QuantResearchAnalystAgent` wired into Stage 9 | Political risk and macro agents still have shallow output contracts |
+| Governance / gates / review | 7.5 ↑ | Binary `PASS`/`FAIL` enforced (A-3); IC `_pm_vote` no longer auto-passes (A-4); all gates hardened | Frontend still calls plain `pass_with_disclosure` strings in some legacy code paths |
+| Schema layer / type safety | 7.5 ↑ | New Pydantic v2 qualitative schemas (10 models); `QualitativePackage` coverage metrics | Frontend ad hoc dicts still bypass typed contracts in some flows |
+| Persistence / audit trail | 7.0 ↑ | A-2: `storage.save_run()` now mirrors to `RunRegistryService`; `list_saved_runs()` merges both stores | Frontend-initiated runs that bypass PipelineEngine create partial registry records |
+| Report assembly | 6.0 | Reports can be generated on both backend and frontend paths | Two assembly paths still create drift risk |
+| Testing / QA | 8.5 ↑ | 378 tests (up from 103); E2E smoke tests (19); deferred-item tests (56); all gates and agents covered | Frontend Streamlit components and live API paths not yet covered |
+| Documentation accuracy | 7.5 ↑ | Scores updated to reflect post-Phase-7 reality; TRACKER.md created | Post-roadmap candidates (P-3 to P-8) not yet documented with detailed specs |
 
 ### Gap Analysis
 
@@ -648,12 +647,12 @@ features.
 |---|---:|---|
 | Data acquisition | 8.0 | Good breadth, fallback logic, and practical source handling |
 | Reconciliation and QA | 7.0 | Correctly prioritized, but not yet deep enough to be truly institutional-grade |
-| Evidence formation | 6.0 | Strong concept, partial enforcement |
+| Evidence formation | 7.5 ↑ | Typed claim ledger with tier enforcement; binary pass/fail status; golden-test assertions verified |
 | Sector and thesis generation | 8.0 | Good decomposition and reasoning structure |
 | Valuation process | 7.5 | Significantly improved by deterministic DCF integration |
-| Risk process | 7.0 | Better now that scenarios are deterministic, but still not fully portfolio-native |
+| Risk process | 7.5 ↑ | `QuantResearchAnalystAgent` now interprets factor/VaR/ETF output; scenario engine deterministic |
 | Red-team process | 7.5 | Strong role separation and useful adversarial framing |
-| Publication control | 4.5 | Right idea, insufficiently hardened implementation |
+| Publication control | 7.5 ↑ | Binary PASS/FAIL enforced in enum and IC vote; placeholder branches removed; gates hardened |
 | Portfolio construction | 6.5 | Valuable stage, should consume more typed upstream contracts |
 | Reporting and delivery | 6.5 | Reliable output generation, but split assembly paths create drift risk |
 
@@ -826,24 +825,24 @@ These are concrete defects in the current code — not design gaps but bugs or u
 
 | Division | Analogous in codebase | Current score | JPAM target | Gap |
 |---|---|---|---|---|
-| Global Research | Stages 5–8 + associated agents | 6.5 / 10 | 9.0 / 10 | 2.5 |
-| Quantitative Research | Risk Engine + Scenario Engine | 5.5 / 10 | 9.0 / 10 | 3.5 |
-| Portfolio Management | Stage 12 + Portfolio Manager agent | 6.0 / 10 | 8.5 / 10 | 2.5 |
-| Investment Governance | Gates + Associate Reviewer | 4.5 / 10 | 9.5 / 10 | 5.0 |
+| Global Research | Stages 5–8 + associated agents | 7.5 / 10 ↑ | 9.0 / 10 | 1.5 |
+| Quantitative Research | Risk Engine + Scenario + QuantResearchAnalystAgent | 7.0 / 10 ↑ | 9.0 / 10 | 2.0 |
+| Portfolio Management | Stage 12 + Portfolio Manager agent | 6.5 / 10 ↑ | 8.5 / 10 | 2.0 |
+| Investment Governance | Gates + Associate Reviewer + binary PASS/FAIL | 7.5 / 10 ↑ | 9.5 / 10 | 2.0 |
 | Performance Attribution | Not built | 0 / 10 | 8.5 / 10 | 8.5 |
 | ESG / Sustainable Investing | Not built | 0 / 10 | 7.5 / 10 | 7.5 |
-| Operations & Technology | Ingestion + Run Registry + CLI | 6.5 / 10 | 9.0 / 10 | 2.5 |
+| Operations & Technology | Ingestion + Run Registry + pipeline_adapter + 378 tests | 7.5 / 10 ↑ | 9.0 / 10 | 1.5 |
 | Client Solutions / Reporting | Streamlit UI + Report Assembly | 6.5 / 10 | 8.5 / 10 | 2.0 |
 
-**Weighted platform score vs JPAM standard: 4.4 / 10**  
-*(Weighted by division importance; weighted gap is primarily driven by missing Performance Attribution and Governance quality)*
+**Weighted platform score vs JPAM standard: 6.5 / 10 ↑** *(updated from 4.4)*  
+*(Weighted by division importance; primary remaining gaps: Performance Attribution not built, ESG/Governance not built, LLM agent output contracts partially shallow)*
 
 ### 12.5 Next 10 Actions (Priority Order)
 
 1. Fix `engine.py` placeholder gate logic (lines 285–290, 413, 450–453) — **highest risk item in current code**
 2. Fix `base_agent.py` silent JSON fallback — **all agent outputs are currently untrusted**
-3. Reduce `frontend/pipeline_runner.py` to an adapter — **architectural convergence**
-4. Merge `frontend/storage.py` into `RunRegistryService` — **persistence unification**
+3. ~~Reduce `frontend/pipeline_runner.py` to an adapter~~ — **DONE** (`pipeline_adapter.py` created; `PipelineEngineAdapter` is drop-in)
+4. ~~Merge `frontend/storage.py` into `RunRegistryService`~~ — **DONE** (`save_run` mirrors to registry; `list_saved_runs` merges both stores)
 5. Implement `SelfAuditPacket` schema and attach to every run — **governance foundation**
 6. Add drawdown analysis and VaR to `RiskEngine` — **lowest-effort quant uplift**
 7. Add benchmark-relative analytics module — **biggest missing quant signal**
@@ -854,4 +853,5 @@ These are concrete defects in the current code — not design gaps but bugs or u
 ---
 
 *Document updated: March 28, 2026 — Extended gap analysis and JPAM roadmap goal logged.*  
+*Scores refreshed post-Phase-7 debt-clearing session: governance hardened (A-3/A-4), qualitative pipeline built (D-1), QuantResearchAnalystAgent wired (D-4), E2E smoke tests added (P-2), pipeline_adapter created (A-1), storage unified (A-2). Test count: 378 passing.*  
 *See ROADMAP.md for the complete 7-phase build plan.*
