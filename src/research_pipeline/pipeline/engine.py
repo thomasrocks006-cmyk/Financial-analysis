@@ -14,6 +14,7 @@ from research_pipeline.config.loader import PipelineConfig, load_pipeline_config
 from research_pipeline.config.settings import Settings
 from research_pipeline.pipeline.gates import GateResult, PipelineGates
 from research_pipeline.schemas.claims import ClaimLedger
+from research_pipeline.schemas.governance import ResearchTrend, SelfAuditPacket
 from research_pipeline.schemas.market_data import (
     DataQualityReport,
     MarketSnapshot,
@@ -40,7 +41,11 @@ from research_pipeline.services.risk_engine import RiskEngine
 from research_pipeline.services.scenario_engine import ScenarioStressEngine
 from research_pipeline.services.run_registry import RunRegistryService
 from research_pipeline.services.report_assembly import ReportAssemblyService
+from research_pipeline.services.report_html_service import ReportHtmlService
 from research_pipeline.services.golden_tests import GoldenTestHarness
+from research_pipeline.services.qualitative_data_service import QualitativeDataService
+from research_pipeline.services.economic_indicators import EconomicIndicatorService
+from research_pipeline.services.macro_scenario import MacroScenarioService
 
 # New Quantitative & Governance Services
 from research_pipeline.services.factor_engine import FactorExposureEngine
@@ -58,9 +63,11 @@ from research_pipeline.services.cache_layer import CacheLayer, QuotaManager
 from research_pipeline.services.rebalancing_engine import RebalancingEngine
 from research_pipeline.services.live_return_store import LiveReturnStore  # ACT-S8-1
 from research_pipeline.services.prompt_registry import PromptRegistry  # ACT-S8-4
-
-# Governance schemas
-from research_pipeline.schemas.governance import SelfAuditPacket
+from research_pipeline.services.research_memory import ResearchMemory
+from research_pipeline.services.australian_tax_service import AustralianTaxService
+from research_pipeline.services.superannuation_mandate_service import (
+    SuperannuationMandateService,
+)
 
 # New Phase 7 Services
 from research_pipeline.services.etf_overlap_engine import ETFOverlapEngine
@@ -83,6 +90,7 @@ from research_pipeline.agents.portfolio_manager import PortfolioManagerAgent
 from research_pipeline.agents.quant_research_analyst import QuantResearchAnalystAgent
 from research_pipeline.agents.fixed_income_analyst import FixedIncomeAnalystAgent
 from research_pipeline.agents.esg_analyst import EsgAnalystAgent
+from research_pipeline.agents.economy_analyst import EconomyAnalystAgent
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +121,16 @@ class PipelineEngine:
         self.risk_engine = RiskEngine()
         self.scenario_engine = ScenarioStressEngine()
         self.report_assembly = ReportAssemblyService()
+        self.html_report_service = ReportHtmlService()
         self.golden_tests = GoldenTestHarness()
+        self.qualitative_service = QualitativeDataService(
+            fmp_key=settings.api_keys.fmp_api_key,
+            finnhub_key=settings.api_keys.finnhub_api_key,
+        )
+        self.economic_indicator_service = EconomicIndicatorService(
+            fred_api_key=settings.api_keys.fred_api_key
+        )
+        self.macro_scenario_service = MacroScenarioService()
 
         # New services — Quantitative Research Division
         self.factor_engine = FactorExposureEngine()
@@ -127,6 +144,9 @@ class PipelineEngine:
         self.esg_service = ESGService()
         self.investment_committee = InvestmentCommitteeService()
         self.audit_exporter = AuditExporter(output_dir=settings.storage_dir / "audits")
+        self.research_memory = ResearchMemory(settings.storage_dir / "research_memory.db")
+        self.australian_tax_service = AustralianTaxService()
+        self.super_mandate_service = SuperannuationMandateService()
 
         # New services — Performance & Monitoring Division
         self.performance_tracker = PerformanceTracker(storage_dir=settings.storage_dir)
@@ -165,6 +185,29 @@ class PipelineEngine:
         self.quant_analyst_agent = QuantResearchAnalystAgent(**agent_kwargs)
         self.fixed_income_agent = FixedIncomeAnalystAgent(**agent_kwargs)
         self.esg_analyst_agent = EsgAnalystAgent(**agent_kwargs)
+        self.economy_analyst_agent = EconomyAnalystAgent(**agent_kwargs)
+
+        for agent in [
+            self.orchestrator_agent,
+            self.evidence_agent,
+            self.compute_analyst,
+            self.power_analyst,
+            self.infra_analyst,
+            self.valuation_agent,
+            self.macro_agent,
+            self.political_agent,
+            self.red_team_agent,
+            self.reviewer_agent,
+            self.pm_agent,
+            self.quant_analyst_agent,
+            self.fixed_income_agent,
+            self.esg_analyst_agent,
+            self.economy_analyst_agent,
+        ]:
+            agent.configure_llm_chain(
+                fallback_chain=self.config.llm.fallback_chain,
+                local_stub_enabled=self.config.llm.local_stub_enabled,
+            )
 
         # Run state
         self.run_record: Optional[RunRecord] = None
@@ -293,12 +336,46 @@ class PipelineEngine:
         # ── Mandate & ESG from Stage 12 ──────────────────────────────────
             mandate = stage12.get("mandate_compliance") or {}
             packet.mandate_compliant = mandate.get("is_compliant")
-            esg_excl = stage12.get("esg_exclusions") or []
+            esg_excl = (
+                stage12.get("esg_exclusions")
+                or (stage12.get("esg_compliance") or {}).get("excluded_tickers")
+                or []
+            )
             if isinstance(esg_excl, list):
                 packet.esg_exclusions = [
                     e.get("ticker", str(e)) if isinstance(e, dict) else str(e)
                     for e in esg_excl
                 ]
+            packet.research_trends = [
+                ResearchTrend.model_validate(item)
+                for item in self.stage_outputs.get(14, {}).get("research_trends", [])
+                if isinstance(item, dict)
+            ]
+            retry_telemetry: list[dict[str, Any]] = []
+            providers_used: list[str] = []
+            for stage_num in [5, 7, 8, 10, 11, 12]:
+                payload = self.stage_outputs.get(stage_num)
+                if isinstance(payload, dict):
+                    for nested in payload.values() if stage_num == 8 else [payload]:
+                        if isinstance(nested, dict) and nested.get("agent_name"):
+                            retries = int(nested.get("retries_used", 0) or 0)
+                            packet.total_retries += retries
+                            retry_telemetry.append(
+                                {
+                                    "stage": stage_num,
+                                    "agent_name": nested.get("agent_name"),
+                                    "retries_used": retries,
+                                    "provider_used": nested.get("provider_used", ""),
+                                    "model_used": nested.get("model_used", ""),
+                                    "fallback_events": nested.get("fallback_events", []),
+                                }
+                            )
+                            provider = nested.get("provider_used")
+                            if provider:
+                                providers_used.append(str(provider))
+            packet.agent_retry_telemetry = retry_telemetry
+            if providers_used:
+                packet.llm_provider_used = providers_used[-1]
 
         # ── Compute quality score ────────────────────────────────────────
         packet.compute_quality_score()
@@ -326,6 +403,132 @@ class PipelineEngine:
         if isinstance(raw, list):
             return raw
         return []
+
+    def _get_macro_context(self) -> dict[str, Any]:
+        """Return a stable macro context wrapper from Stage 8 output."""
+        stage8 = self.stage_outputs.get(8, {})
+        if not isinstance(stage8, dict):
+            return {}
+        return {
+            "macro": (stage8.get("macro") or {}).get("parsed_output", {}),
+            "political": (stage8.get("political") or {}).get("parsed_output", {}),
+            "economy_analysis": (stage8.get("economy_analysis") or {}).get("parsed_output", {}),
+            "economic_indicators": stage8.get("economic_indicators", {}),
+            "macro_scenarios": stage8.get("macro_scenarios", {}),
+        }
+
+    def _aggregate_portfolio_returns(
+        self,
+        returns: dict[str, list[float]],
+        weights: dict[str, float] | None = None,
+    ) -> list[float]:
+        """Aggregate per-ticker return series into a portfolio-level series."""
+        if not returns:
+            return []
+        tickers = [ticker for ticker, series in returns.items() if series]
+        if not tickers:
+            return []
+        min_len = min(len(returns[ticker]) for ticker in tickers)
+        if min_len == 0:
+            return []
+        if weights:
+            total_weight = sum(weights.get(ticker, 0.0) for ticker in tickers) or len(tickers)
+            norm_weights = {
+                ticker: (weights.get(ticker, 0.0) / total_weight) if total_weight else 1.0 / len(tickers)
+                for ticker in tickers
+            }
+        else:
+            equal = 1.0 / len(tickers)
+            norm_weights = {ticker: equal for ticker in tickers}
+        portfolio_returns = []
+        for idx in range(min_len):
+            portfolio_returns.append(
+                sum(returns[ticker][idx] * norm_weights[ticker] for ticker in tickers)
+            )
+        return portfolio_returns
+
+    def _map_sector_label(self, ticker: str) -> str:
+        """Map a ticker to a configured sector routing label."""
+        for sector, routed_tickers in self.config.sector_routing.items():
+            if ticker in routed_tickers:
+                return sector
+        if ticker.endswith(".AX"):
+            return "infrastructure"
+        return "generic"
+
+    def _extract_valuation_entries(self) -> list[dict[str, Any]]:
+        """Extract Stage 7 valuation entries irrespective of wrapper shape."""
+        stage7 = self.stage_outputs.get(7, {})
+        if not isinstance(stage7, dict):
+            return []
+        parsed = stage7.get("parsed_output") or {}
+        if isinstance(parsed, dict):
+            entries = parsed.get("valuations", [])
+            return entries if isinstance(entries, list) else []
+        if isinstance(parsed, list):
+            return parsed
+        return []
+
+    def _build_stock_cards(self, universe: list[str]) -> list[dict[str, Any]]:
+        """Construct report stock cards from sector, valuation, red-team, and PM outputs."""
+        sector_summaries: dict[str, dict[str, Any]] = {}
+        for result in self._get_sector_outputs():
+            parsed = (result or {}).get("parsed_output") or {}
+            entries = parsed.get("sector_outputs", parsed if isinstance(parsed, list) else [])
+            if not isinstance(entries, list):
+                continue
+            for entry in entries:
+                if isinstance(entry, dict) and entry.get("ticker"):
+                    sector_summaries[entry["ticker"]] = entry
+
+        valuation_entries = {
+            entry.get("ticker"): entry
+            for entry in self._extract_valuation_entries()
+            if isinstance(entry, dict) and entry.get("ticker")
+        }
+
+        red_team_entries: dict[str, dict[str, Any]] = {}
+        stage10 = self.stage_outputs.get(10, {})
+        if isinstance(stage10, dict):
+            parsed10 = stage10.get("parsed_output") or {}
+            assessments = parsed10.get("assessments", [])
+            if isinstance(assessments, list):
+                for entry in assessments:
+                    if isinstance(entry, dict) and entry.get("ticker"):
+                        red_team_entries[entry["ticker"]] = entry
+
+        balanced_weights: dict[str, float] = {}
+        stage12 = self.stage_outputs.get(12, {})
+        if isinstance(stage12, dict):
+            pm_result = stage12.get("pm_result", {})
+            pm_parsed = pm_result.get("parsed_output", {})
+            portfolios = pm_parsed.get("portfolios", []) if isinstance(pm_parsed, dict) else []
+            for portfolio in portfolios:
+                if isinstance(portfolio, dict) and portfolio.get("variant") == "balanced":
+                    for position in portfolio.get("positions", []):
+                        if isinstance(position, dict) and position.get("ticker"):
+                            balanced_weights[position["ticker"]] = position.get("weight_pct")
+
+        cards: list[dict[str, Any]] = []
+        for ticker in universe:
+            sector_entry = sector_summaries.get(ticker, {})
+            valuation_entry = valuation_entries.get(ticker, {})
+            red_team_entry = red_team_entries.get(ticker, {})
+            cards.append(
+                {
+                    "ticker": ticker,
+                    "company_name": sector_entry.get("company_name", ticker),
+                    "subtheme": self._map_sector_label(ticker),
+                    "four_box_summary": sector_entry.get("box4_analyst_judgment", ""),
+                    "valuation_summary": valuation_entry.get("section_2_historical_context", ""),
+                    "entry_quality": valuation_entry.get("entry_quality", ""),
+                    "thesis_integrity": red_team_entry.get("thesis_integrity_score", ""),
+                    "key_risks": sector_entry.get("key_risks", []),
+                    "red_team_summary": red_team_entry.get("summary", ""),
+                    "weight_in_balanced": balanced_weights.get(ticker),
+                }
+            )
+        return cards
 
     def _emit_audit_packet(self, universe: list[str]) -> "Optional[SelfAuditPacket]":
         """Build, persist and attach the SelfAuditPacket for every pipeline exit.
@@ -569,11 +772,23 @@ class PipelineEngine:
         return self._check_gate(gate)
 
     async def stage_2_ingestion(self, universe: list[str]) -> bool:
-        """Stage 2: Data Ingestion from FMP + Finnhub."""
+        """Stage 2: Data Ingestion from FMP + Finnhub plus qualitative signals."""
         logger.info("═══ STAGE 2: Data Ingestion ═══")
-        results = await self.ingestor.ingest_universe(universe)
-        gate = self.gates.gate_2_ingestion(results, universe)
-        self._save_stage_output(2, results)
+        market_results, qualitative_results = await asyncio.gather(
+            self.ingestor.ingest_universe(universe),
+            self.qualitative_service.ingest_universe(universe),
+        )
+        enriched_results: list[dict[str, Any]] = []
+        for ticker_data in market_results:
+            ticker = ticker_data.get("ticker")
+            if ticker:
+                qualitative_pkg = qualitative_results.get(ticker)
+                ticker_data["qualitative"] = (
+                    qualitative_pkg.model_dump(mode="json") if qualitative_pkg else {}
+                )
+            enriched_results.append(ticker_data)
+        gate = self.gates.gate_2_ingestion(enriched_results, universe)
+        self._save_stage_output(2, enriched_results)
         return self._check_gate(gate)
 
     async def stage_3_reconciliation(self) -> bool:
@@ -717,24 +932,34 @@ class PipelineEngine:
         return self._check_gate(gate)
 
     async def stage_6_sector_analysis(self, universe: list[str]) -> bool:
-        """Stage 6: Three sector analysts run in parallel."""
+        """Stage 6: Sector analysts run in parallel with config routing."""
         logger.info("═══ STAGE 6: Sector Analysis (parallel) ═══")
-
-        # Route tickers to analysts; skip agents whose subtheme has no tickers in this universe
-        compute_tickers = [t for t in universe if t in {"NVDA", "AVGO", "TSM", "AMD", "ANET"}]
-        power_tickers = [t for t in universe if t in {"CEG", "VST", "GEV", "NLR"}]
-        infra_tickers = [t for t in universe if t in {"PWR", "ETN", "HUBB", "APH", "FIX", "FCX", "BHP", "NXT"}]
+        routed = self._route_sector_tickers(universe)
+        compute_tickers = routed["compute"]
+        power_tickers = routed["power"]
+        infra_tickers = routed["infrastructure"]
 
         agent_calls = []
         expected_count = 0
         mkt_data = self.stage_outputs.get(2, [])
+        qualitative_data = self._get_qualitative_context()
         for agent, tickers in [
             (self.compute_analyst, compute_tickers),
             (self.power_analyst, power_tickers),
             (self.infra_analyst, infra_tickers),
         ]:
             if tickers:  # skip agents with no relevant tickers in this universe
-                agent_calls.append(agent.run(self.run_record.run_id, {"tickers": tickers, "market_data": mkt_data}))
+                agent_calls.append(
+                    agent.run(
+                        self.run_record.run_id,
+                        {
+                            "tickers": tickers,
+                            "market_data": mkt_data,
+                            "qualitative_data": {t: qualitative_data.get(t, {}) for t in tickers},
+                            "macro_context": self._get_macro_context(),
+                        },
+                    )
+                )
                 expected_count += 1
             else:
                 logger.info("Skipping %s — no tickers in universe", agent.name)
@@ -761,6 +986,7 @@ class PipelineEngine:
                     "tickers": universe,
                     "sector_outputs": [r.model_dump() for r in results],
                     "market_data": mkt_data,
+                    "qualitative_data": qualitative_data,
                     "esg_baseline_profiles": esg_baseline,  # ACT-S7-2
                 },
             )
@@ -776,6 +1002,7 @@ class PipelineEngine:
         self._save_stage_output(6, {
             "sector_outputs": [r.model_dump() for r in results],
             "esg_output": esg_result_dump,
+            "routing": routed,
         })
         gate = self.gates.gate_6_sector_analysis(four_box_count, expected_count=expected_count)
         return self._check_gate(gate)
@@ -789,6 +1016,8 @@ class PipelineEngine:
                 "tickers": universe,
                 "sector_outputs": self._get_sector_outputs(),
                 "market_data": self.stage_outputs.get(2, []),
+                "macro_context": self._get_macro_context(),
+                "economy_analysis": self._get_macro_context().get("economy_analysis", {}),
             },
         )
         self._save_stage_output(7, result.model_dump())
@@ -801,11 +1030,58 @@ class PipelineEngine:
     async def stage_8_macro(self, universe: list[str]) -> bool:
         """Stage 8: Macro & Political Overlay."""
         logger.info("═══ STAGE 8: Macro & Political Overlay ═══")
-        macro_result, political_result = await asyncio.gather(
-            self.macro_agent.run(self.run_record.run_id, {"universe": universe}),
-            self.political_agent.run(self.run_record.run_id, {"tickers": universe}),
+        indicators = await self.economic_indicator_service.get_indicators()
+        macro_scenarios = self.macro_scenario_service.build_scenarios(indicators)
+        ingestion_summary = self.stage_outputs.get(2, [])
+        reconciliation_flags = self.stage_outputs.get(3, {})
+        economy_result, macro_result, political_result = await asyncio.gather(
+            self.economy_analyst_agent.run(
+                self.run_record.run_id,
+                {
+                    "universe": universe,
+                    "economic_indicators": indicators.model_dump(mode="json"),
+                    "macro_scenarios": macro_scenarios.model_dump(mode="json"),
+                    "ingestion_summary": ingestion_summary,
+                    "reconciliation_flags": reconciliation_flags,
+                },
+            ),
+            self.macro_agent.run(
+                self.run_record.run_id,
+                {
+                    "universe": universe,
+                    "economic_indicators": indicators.model_dump(mode="json"),
+                    "macro_scenarios": macro_scenarios.model_dump(mode="json"),
+                    "economy_analysis": {},
+                    "ingestion_summary": ingestion_summary,
+                    "reconciliation_flags": reconciliation_flags,
+                },
+            ),
+            self.political_agent.run(
+                self.run_record.run_id,
+                {
+                    "tickers": universe,
+                    "economic_indicators": indicators.model_dump(mode="json"),
+                    "macro_scenarios": macro_scenarios.model_dump(mode="json"),
+                },
+            ),
         )
+        macro_payload = economy_result.parsed_output if economy_result.success else {}
+        if macro_payload:
+            macro_result = await self.macro_agent.run(
+                self.run_record.run_id,
+                {
+                    "universe": universe,
+                    "economic_indicators": indicators.model_dump(mode="json"),
+                    "macro_scenarios": macro_scenarios.model_dump(mode="json"),
+                    "economy_analysis": macro_payload,
+                    "ingestion_summary": ingestion_summary,
+                    "reconciliation_flags": reconciliation_flags,
+                },
+            )
         self._save_stage_output(8, {
+            "economic_indicators": indicators.model_dump(mode="json"),
+            "macro_scenarios": macro_scenarios.model_dump(mode="json"),
+            "economy_analysis": economy_result.model_dump(),
             "macro": macro_result.model_dump(),
             "political": political_result.model_dump(),
         })
@@ -848,21 +1124,21 @@ class PipelineEngine:
         if weights:
             portfolio_factor_exp = self.factor_engine.portfolio_factor_exposure(factor_exposures, weights)
 
-        # VaR analysis (using synthetic returns if no market data available)
+        # VaR analysis from live/blended return series, not synthetic random draws
         var_result = None
         drawdown_result = None
+        portfolio_returns = self._aggregate_portfolio_returns(
+            live_factor_returns,
+            weights={t: 1.0 / len(universe) for t in universe} if universe else None,
+        )
         try:
-            import numpy as np
-            np.random.seed(42)
-            # Generate synthetic returns based on factor betas for demonstration
-            synthetic_returns = np.random.normal(0.001, 0.02, 252).tolist()
             var_result = self.var_engine.parametric_var(
                 run_id=self.run_record.run_id,
-                portfolio_returns=synthetic_returns,
+                portfolio_returns=portfolio_returns,
                 confidence_level=0.95,
             )
             drawdown_result = self.var_engine.compute_drawdown_analysis(
-                self.run_record.run_id, synthetic_returns
+                self.run_record.run_id, portfolio_returns
             )
         except Exception as exc:
             logger.warning("VaR computation failed: %s", exc)
@@ -870,8 +1146,8 @@ class PipelineEngine:
         risk_packet = self.risk_engine.build_risk_packet(
             run_id=self.run_record.run_id,
             weights={t: 1.0 / len(universe) for t in universe},
-            returns={t: [] for t in universe},   # synthetic returns present in var_result
-            subthemes={t: "compute" for t in universe},
+            returns=live_factor_returns,
+            subthemes=self._ticker_subthemes(universe),
             var_result=var_result,
             drawdown=drawdown_result,
         )
@@ -927,20 +1203,14 @@ class PipelineEngine:
 
         # P-7: Fixed Income Analyst — macro rate/credit context for equity thesis
         try:
-            # Assemble fixed-income context packet
+            leverage_data = {
+                ticker: card.get("net_debt") or card.get("consensus_target_median")
+                for ticker, card in self._get_valuation_cards().items()
+            }
             fi_inputs = {
                 "universe": universe,
-                "macro_context": {
-                    "note": (
-                        "Live yield/spread data not available in this run. "
-                        "Interpret using internal heuristics."
-                    ),
-                },
-                "leverage_data": {
-                    # Pull ND/EBITDA from DCF assumptions where available
-                    t: self.stage_outputs.get(7, {}).get(t, {}).get("net_debt")
-                    for t in universe
-                },
+                "macro_context": self._get_macro_context(),
+                "leverage_data": leverage_data,
                 "var_metrics": risk_output.get("var_95", {}),
                 "scenario_results": [
                     (s.model_dump() if hasattr(s, "model_dump") else s)
@@ -984,6 +1254,9 @@ class PipelineEngine:
                 "tickers": universe,
                 "sector_outputs": self._get_sector_outputs(),
                 "valuation_outputs": self.stage_outputs.get(7, {}),
+                "macro_context": self._get_macro_context(),
+                "risk_scenarios": self.stage_outputs.get(9, {}).get("scenario_results", []),
+                "risk_outputs": self.stage_outputs.get(9, {}),
             },
         )
         self._save_stage_output(10, result.model_dump())
@@ -1003,6 +1276,9 @@ class PipelineEngine:
                 "evidence_ledger": self.stage_outputs.get(5, {}),
                 "valuation_outputs": self.stage_outputs.get(7, {}),
                 "red_team_outputs": self.stage_outputs.get(10, {}),
+                "macro_context": self._get_macro_context(),
+                "risk_scenarios": self.stage_outputs.get(9, {}).get("scenario_results", []),
+                "risk_outputs": self.stage_outputs.get(9, {}),
             },
         )
         self._save_stage_output(11, result.model_dump())
@@ -1069,6 +1345,14 @@ class PipelineEngine:
 
         # Position sizing (equal weight as baseline)
         baseline_weights = self.position_sizing.equal_weight(esg_clean_universe)
+        macro_context = self._get_macro_context()
+        tax_assessment = self.australian_tax_service.assess(
+            client_type=self.config.au_client.client_type,
+            includes_us_equities=any(not ticker.endswith(".AX") for ticker in esg_clean_universe),
+        )
+        super_profile = self.super_mandate_service.get_limits(
+            self.config.au_client.super_mandate_type
+        )
 
         # ACT-S7-4: Portfolio optimisation — risk parity and min-variance
         optimisation_results: dict[str, Any] = {}
@@ -1083,6 +1367,15 @@ class PipelineEngine:
             max_sharpe = self.portfolio_optimisation.compute_max_sharpe(
                 esg_clean_universe, synth_returns
             )
+            valuation_cards = self._get_valuation_cards()
+            analyst_views = {}
+            analyst_conf = {}
+            for ticker, payload in valuation_cards.items():
+                median_target = payload.get("consensus_target_median")
+                if median_target:
+                    analyst_views[ticker] = round(float(median_target) / 100.0, 4)
+                    analyst_conf[ticker] = 0.65
+
             optimisation_results = {
                 "risk_parity": {
                     "weights": risk_parity.weights,
@@ -1103,6 +1396,26 @@ class PipelineEngine:
                     "sharpe_ratio": max_sharpe.sharpe_ratio,
                 },
             }
+            if analyst_views:
+                market_cap_weights = {
+                    ticker: self._extract_market_cap(ticker) or baseline_weights.get(ticker, 0.0)
+                    for ticker in esg_clean_universe
+                }
+                black_litterman = self.portfolio_optimisation.compute_black_litterman(
+                    esg_clean_universe,
+                    synth_returns,
+                    self.portfolio_optimisation.BlLittermanInputs(  # type: ignore[attr-defined]
+                        market_cap_weights=market_cap_weights,
+                        views=analyst_views,
+                        view_confidences=analyst_conf,
+                    ),
+                )
+                optimisation_results["black_litterman"] = {
+                    "weights": black_litterman.weights,
+                    "expected_return_pct": black_litterman.expected_return,
+                    "expected_volatility_pct": black_litterman.expected_volatility,
+                    "sharpe_ratio": black_litterman.sharpe_ratio,
+                }
             logger.info(
                 "Portfolio optimisation complete — risk_parity vol=%.1f%% max_sharpe=%.2f",
                 risk_parity.expected_volatility,
@@ -1150,9 +1463,13 @@ class PipelineEngine:
                 "red_team_outputs": self.stage_outputs.get(10, {}),
                 "risk_outputs": self.stage_outputs.get(9, {}),
                 "review_outputs": self.stage_outputs.get(11, {}),
+                "macro_context": macro_context,
                 "esg_result": esg_result,
                 "mandate_check": mandate_check.model_dump(),
                 "baseline_weights": baseline_weights,
+                "optimisation_results": optimisation_results,
+                "tax_overlay": tax_assessment.__dict__,
+                "super_mandate": super_profile,
             },
         )
 
@@ -1201,6 +1518,9 @@ class PipelineEngine:
             "ic_record": ic_record.model_dump(),
             "ic_approved": ic_record.is_approved,
             "audit_trail": audit_trail.model_dump(),
+            "macro_context": macro_context,
+            "tax_overlay": tax_assessment.__dict__,
+            "super_mandate": super_profile,
         })
 
         # Check mandate compliance violations for gate
@@ -1225,23 +1545,72 @@ class PipelineEngine:
             return self._check_gate(gate)
         review_result = self._review_result
 
-        # Build self-audit
-        audit = self.registry.build_self_audit(self.run_record.run_id, ClaimLedger(run_id=self.run_record.run_id))
+        valuation_cards = self._get_valuation_cards()
+        stock_cards = self._build_stock_cards()
+        investor_document = (
+            self.stage_outputs.get(12, {})
+            .get("pm_result", {})
+            .get("parsed_output", {})
+            .get("investor_document", {})
+        )
+        executive_summary = "\n\n".join(
+            [
+                str(investor_document.get("section_1_investment_case", "")).strip(),
+                str(investor_document.get("section_2_portfolio_composition", "")).strip(),
+            ]
+        ).strip()
+        methodology = "\n".join(
+            [
+                "Public-source institutional-style research methodology.",
+                "Macro overlays include AU/US rates, inflation, housing, FX, and credit context.",
+                "Portfolio construction includes mandate, ESG, IC, and tax overlays.",
+            ]
+        )
+        valuation_appendix = json.dumps(valuation_cards, indent=2, default=str)
+        risk_appendix = json.dumps(self.stage_outputs.get(9, {}), indent=2, default=str)
+        self_audit_text = json.dumps(self._build_self_audit_packet(self.run_record.universe), indent=2, default=str)
+        claim_register_text = json.dumps(
+            self.stage_outputs.get(5, {}).get("parsed_output", {}).get("claims", []),
+            indent=2,
+            default=str,
+        )
+        disclosures = (
+            "AFSL / FSG / ASIC 1013D notice: This output is generated for institutional "
+            "research workflow support. Australian clients should review mandate, tax, "
+            "and disclosure considerations before implementation."
+        )
 
         report = self.report_assembly.assemble_report(
             run_id=self.run_record.run_id,
             review_result=review_result,
             sections={
-                "executive_summary": "AI Infrastructure Investment Research — Executive Summary",
-                "methodology": "Public-source institutional-style research methodology.",
+                "executive_summary": executive_summary or "Investor document unavailable.",
+                "methodology": methodology,
+                "valuation_appendix": valuation_appendix,
+                "risk_appendix": risk_appendix,
+                "self_audit_appendix": self_audit_text,
+                "claim_register_appendix": claim_register_text,
+                "disclosures": disclosures,
             },
-            stock_cards=[],
-            self_audit_text=json.dumps(audit.model_dump(), indent=2, default=str),
+            stock_cards=stock_cards,
+            self_audit_text=self_audit_text,
+            claim_register_text=claim_register_text,
         )
 
         # Save report
         output_path = self.report_assembly.save_report(report, self.settings.reports_dir)
-        self._save_stage_output(13, {"report_path": str(output_path), "status": report.publication_status})
+        report_markdown = self.report_assembly.render_markdown(report)
+        html_path = self.html_report_service.save(report.model_dump(mode="json"), self.settings.reports_dir)
+        self._save_stage_output(
+            13,
+            {
+                "report_path": str(output_path),
+                "html_report_path": str(html_path),
+                "status": report.publication_status,
+                "report_markdown": report_markdown,
+                "final_report": report.model_dump(mode="json"),
+            },
+        )
         gate = self.gates.gate_13_report(
             report_generated=True,
             all_sections_approved=review_result.is_publishable,  # use reviewer verdict, not hardcoded True
@@ -1314,25 +1683,18 @@ class PipelineEngine:
         attribution_output: dict[str, Any] = {}
         if baseline_weights:
             try:
-                from research_pipeline.services.benchmark_module import BENCHMARK_CONSTITUENTS
-
                 tickers = list(baseline_weights.keys())
                 # ACT-S10-1: track data source for attribution accuracy reporting
                 live_raw = self.live_return_store.fetch(tickers)
                 data_source_port = "live" if live_raw and len(live_raw) == len(tickers) else "blended" if live_raw else "synthetic"
                 synth_returns = self._get_returns(tickers, seed_offset=1)  # blends live + synthetic
-                bench_tickers = list(BENCHMARK_CONSTITUENTS.get("SPY", {}).keys())
+                bench_name = self.config.market.benchmark
+                bench_weights_norm = self.benchmark_module.get_benchmark_weights(bench_name)
+                bench_tickers = list(bench_weights_norm.keys())
                 live_bench = self.live_return_store.fetch(bench_tickers)
                 data_source_bench = "live" if live_bench and len(live_bench) == len(bench_tickers) else "blended" if live_bench else "synthetic"
                 bench_returns = self._get_returns(bench_tickers, seed_offset=2)
                 attribution_data_source = "live" if data_source_port == "live" and data_source_bench == "live" else "blended" if (data_source_port in ("live", "blended") or data_source_bench in ("live", "blended")) else "synthetic"
-
-                # Normalised benchmark weights (SPY proxy)
-                raw_bench_w = BENCHMARK_CONSTITUENTS.get("SPY", {})
-                total_bw = sum(raw_bench_w.get(t, 0) for t in bench_tickers) or 100
-                benchmark_weights_norm = {
-                    t: raw_bench_w.get(t, 0) / total_bw for t in bench_tickers
-                }
 
                 # Per-ticker synthetic portfolio returns (annualised mean)
                 port_returns_annualised = {
@@ -1372,12 +1734,30 @@ class PipelineEngine:
                     run_id=self.run_record.run_id,
                     portfolio_weights=baseline_weights,
                     portfolio_returns=port_returns_annualised,
-                    benchmark_weights=benchmark_weights_norm,
+                    benchmark_weights={t: w / 100 for t, w in bench_weights_norm.items()},
                     benchmark_returns=bench_returns_annualised,
                     sector_map=sector_map,
                 )
                 attribution_output = bhb.model_dump(mode="json")
                 attribution_output["data_source"] = attribution_data_source  # ACT-S10-1
+                benchmark_series = self._aggregate_return_series(bench_returns)
+                portfolio_series = self._aggregate_return_series(synth_returns)
+                benchmark_comparison = self.benchmark_module.full_comparison(
+                    run_id=self.run_record.run_id,
+                    portfolio_returns=portfolio_series,
+                    benchmark_returns=benchmark_series,
+                    benchmark_name=bench_name,
+                )
+                fx_returns = self._get_returns([self.config.market.aud_usd_symbol], seed_offset=4).get(
+                    self.config.market.aud_usd_symbol,
+                    [],
+                )
+                currency_attr = self.benchmark_module.compute_currency_attribution(
+                    local_returns=portfolio_series,
+                    fx_returns=fx_returns,
+                )
+                attribution_output["benchmark_comparison"] = benchmark_comparison.model_dump(mode="json")
+                attribution_output["currency_attribution"] = currency_attr.model_dump(mode="json")
                 logger.info(
                     "BHB attribution (%s) — excess_return=%.2f%% allocation=%.2f%% selection=%.2f%%",
                     attribution_data_source,
@@ -1388,6 +1768,10 @@ class PipelineEngine:
             except Exception as exc:
                 logger.warning("BHB attribution failed (non-blocking): %s", exc)
 
+        trends = self.research_memory.detect_metric_trends(
+            self.run_record.run_id,
+            self._build_metric_snapshot(),
+        )
         self._save_stage_output(14, {
             "final_status": final_status.value,
             "stages_completed": [s for s, g in self.gate_results.items() if g.passed],
@@ -1395,6 +1779,7 @@ class PipelineEngine:
             "gate_summary": {s: g.reason for s, g in self.gate_results.items()},
             "cache_stats": self.cache.stats,
             "attribution": attribution_output,  # ACT-S7-1
+            "research_trends": trends,
         })
         logger.info("Pipeline run %s finished with status: %s", self.run_record.run_id, final_status.value)
 

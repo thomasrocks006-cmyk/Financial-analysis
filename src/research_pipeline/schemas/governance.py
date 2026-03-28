@@ -122,6 +122,9 @@ class ESGScore(BaseModel):
     environmental_score: float = 5.0  # 0-10
     social_score: float = 5.0
     governance_score: float = 5.0
+    carbon_intensity_tco2e_per_m_revenue: float = 0.0
+    tcfd_alignment_flag: bool = False
+    apra_cps230_alignment_flag: bool = False
     controversy_flag: bool = False
     excluded: bool = False
     exclusion_reason: str = ""
@@ -164,6 +167,20 @@ class AuditTrail(BaseModel):
         ))
 
 
+# ── Research trend monitoring ───────────────────────────────────────────────
+
+class ResearchTrend(BaseModel):
+    """Cross-run change alert for a tracked research metric."""
+
+    ticker: str
+    metric: str
+    current_value: float
+    prior_value: float
+    delta_pct: float
+    alert_level: str = "info"  # "info" | "warning" | "critical"
+    run_id: str = ""
+
+
 # ── Self-Audit Packet ────────────────────────────────────────────────────────
 
 class SelfAuditPacket(BaseModel):
@@ -195,6 +212,8 @@ class SelfAuditPacket(BaseModel):
     agents_succeeded: list[str] = []
     agents_failed: list[str] = []
     total_retries: int = 0
+    llm_provider_used: str = ""
+    agent_retry_telemetry: list[dict[str, Any]] = Field(default_factory=list)
 
     # Gate outcomes
     gates_passed: list[int] = []
@@ -221,6 +240,9 @@ class SelfAuditPacket(BaseModel):
 
     # Rebalancing snapshot (ACT-S9-3)
     rebalancing_summary: dict = Field(default_factory=dict)  # turnover, trade count, impact
+
+    # Cross-run change detection
+    research_trends: list[ResearchTrend] = Field(default_factory=list)
 
     # Summary verdict
     publication_quality_score: float = 0.0  # 0-10 derived metric

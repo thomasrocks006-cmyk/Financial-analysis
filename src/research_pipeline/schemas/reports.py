@@ -89,6 +89,10 @@ class RiskPacket(BaseModel):
     drawdown_analysis: Optional[dict[str, Any]] = None  # DrawdownAnalysis.model_dump()
     var_method: str = ""                              # "parametric" | "historical"
     confidence_level: Optional[float] = None          # e.g. 0.95
+    garch_vol_forecast: dict[str, float] = {}
+    macro_scenarios: dict[str, Any] = {}
+    benchmark_comparison: Optional[dict[str, Any]] = None
+    currency_attribution: Optional[dict[str, Any]] = None
     # Convenience read-only properties
     @property
     def var_pct(self) -> Optional[float]:

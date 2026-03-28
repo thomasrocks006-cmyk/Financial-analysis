@@ -268,6 +268,65 @@ class ResearchMemory:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def detect_metric_trends(
+        self,
+        run_id: str,
+        metrics: dict[str, dict[str, float]],
+        threshold_pct: float = 10.0,
+    ) -> list[dict[str, Any]]:
+        """Compare current ticker metrics with the most recent prior stored values."""
+        conn = self._get_conn()
+        trends: list[dict[str, Any]] = []
+        for ticker, metric_map in metrics.items():
+            row = conn.execute(
+                """
+                SELECT content
+                FROM documents
+                WHERE ticker = ? AND doc_type = 'metric_snapshot' AND run_id != ?
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (ticker, run_id),
+            ).fetchone()
+            if not row:
+                continue
+            try:
+                prior_payload = json.loads(row["content"])
+            except json.JSONDecodeError:
+                continue
+            prior_metrics = prior_payload.get("metrics", {})
+            for metric_name, current_value in metric_map.items():
+                prior_value = prior_metrics.get(metric_name)
+                if prior_value in (None, 0):
+                    continue
+                delta_pct = ((current_value - prior_value) / abs(prior_value)) * 100
+                if abs(delta_pct) < threshold_pct:
+                    continue
+                alert_level = "critical" if abs(delta_pct) >= 20 else "warning"
+                trends.append(
+                    {
+                        "ticker": ticker,
+                        "metric": metric_name,
+                        "current_value": round(current_value, 4),
+                        "prior_value": round(float(prior_value), 4),
+                        "delta_pct": round(delta_pct, 2),
+                        "alert_level": alert_level,
+                        "run_id": run_id,
+                    }
+                )
+
+        for ticker, metric_map in metrics.items():
+            self.store_document(
+                doc_id=f"{run_id}-metric-{ticker}",
+                run_id=run_id,
+                doc_type="metric_snapshot",
+                ticker=ticker,
+                title=f"Metric snapshot {ticker}",
+                content=json.dumps({"metrics": metric_map}),
+            )
+
+        return trends
+
     # ── Statistics ────────────────────────────────────────────────────
     @property
     def stats(self) -> dict[str, int]:

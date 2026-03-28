@@ -39,6 +39,18 @@ class BHBAttribution(BaseModel):
     sector_selection: dict[str, float] = {}  # sector -> selection effect
 
 
+class CurrencyAttributionResult(BaseModel):
+    """Decompose offshore returns into local, FX, and interaction effects."""
+
+    base_currency: str = "AUD"
+    foreign_currency: str = "USD"
+    local_return_pct: float = 0.0
+    currency_return_pct: float = 0.0
+    interaction_return_pct: float = 0.0
+    total_unhedged_return_pct: float = 0.0
+    total_hedged_return_pct: float = 0.0
+
+
 # ── Factor Attribution ──────────────────────────────────────────────────────
 
 class FactorExposure(BaseModel):

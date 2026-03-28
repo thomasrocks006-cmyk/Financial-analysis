@@ -15,21 +15,25 @@ logger = logging.getLogger(__name__)
 # Heuristic ESG scores based on public reporting profiles for AI infra tickers.
 # Real implementation would pull from MSCI, Sustainalytics, or ISS.
 _DEFAULT_ESG_SCORES: dict[str, dict[str, Any]] = {
-    "NVDA": {"overall": "AA", "e": 6.5, "s": 7.0, "g": 8.0, "controversy": False},
-    "AMD": {"overall": "A", "e": 6.0, "s": 6.5, "g": 7.5, "controversy": False},
-    "AVGO": {"overall": "A", "e": 5.5, "s": 6.0, "g": 7.0, "controversy": False},
-    "MRVL": {"overall": "BBB", "e": 5.0, "s": 5.5, "g": 6.5, "controversy": False},
-    "ARM": {"overall": "A", "e": 6.0, "s": 7.0, "g": 7.5, "controversy": False},
-    "TSM": {"overall": "AA", "e": 7.0, "s": 6.5, "g": 7.0, "controversy": False},
-    "MSFT": {"overall": "AAA", "e": 8.5, "s": 8.0, "g": 9.0, "controversy": False},
-    "AMZN": {"overall": "A", "e": 6.0, "s": 5.5, "g": 7.0, "controversy": False},
-    "GOOGL": {"overall": "AA", "e": 7.5, "s": 7.0, "g": 7.5, "controversy": False},
-    "META": {"overall": "BBB", "e": 5.5, "s": 4.5, "g": 6.0, "controversy": True},
-    "EQIX": {"overall": "AA", "e": 7.5, "s": 6.5, "g": 8.0, "controversy": False},
-    "DLR": {"overall": "A", "e": 7.0, "s": 6.0, "g": 7.5, "controversy": False},
-    "VRT": {"overall": "BBB", "e": 5.5, "s": 5.5, "g": 6.0, "controversy": False},
-    "DELL": {"overall": "A", "e": 6.0, "s": 6.0, "g": 7.0, "controversy": False},
-    "SMCI": {"overall": "BB", "e": 4.0, "s": 4.5, "g": 4.0, "controversy": True},
+    "NVDA": {"overall": "AA", "e": 6.5, "s": 7.0, "g": 8.0, "controversy": False, "carbon": 42.0},
+    "AMD": {"overall": "A", "e": 6.0, "s": 6.5, "g": 7.5, "controversy": False, "carbon": 47.0},
+    "AVGO": {"overall": "A", "e": 5.5, "s": 6.0, "g": 7.0, "controversy": False, "carbon": 58.0},
+    "MRVL": {"overall": "BBB", "e": 5.0, "s": 5.5, "g": 6.5, "controversy": False, "carbon": 61.0},
+    "ARM": {"overall": "A", "e": 6.0, "s": 7.0, "g": 7.5, "controversy": False, "carbon": 38.0},
+    "TSM": {"overall": "AA", "e": 7.0, "s": 6.5, "g": 7.0, "controversy": False, "carbon": 54.0},
+    "MSFT": {"overall": "AAA", "e": 8.5, "s": 8.0, "g": 9.0, "controversy": False, "carbon": 16.0},
+    "AMZN": {"overall": "A", "e": 6.0, "s": 5.5, "g": 7.0, "controversy": False, "carbon": 29.0},
+    "GOOGL": {"overall": "AA", "e": 7.5, "s": 7.0, "g": 7.5, "controversy": False, "carbon": 21.0},
+    "META": {"overall": "BBB", "e": 5.5, "s": 4.5, "g": 6.0, "controversy": True, "carbon": 24.0},
+    "EQIX": {"overall": "AA", "e": 7.5, "s": 6.5, "g": 8.0, "controversy": False, "carbon": 84.0},
+    "DLR": {"overall": "A", "e": 7.0, "s": 6.0, "g": 7.5, "controversy": False, "carbon": 79.0},
+    "VRT": {"overall": "BBB", "e": 5.5, "s": 5.5, "g": 6.0, "controversy": False, "carbon": 63.0},
+    "DELL": {"overall": "A", "e": 6.0, "s": 6.0, "g": 7.0, "controversy": False, "carbon": 52.0},
+    "SMCI": {"overall": "BB", "e": 4.0, "s": 4.5, "g": 4.0, "controversy": True, "carbon": 73.0},
+    "BHP.AX": {"overall": "BBB", "e": 4.5, "s": 6.0, "g": 7.0, "controversy": False, "carbon": 310.0},
+    "CBA.AX": {"overall": "A", "e": 6.2, "s": 7.1, "g": 7.9, "controversy": False, "carbon": 12.0},
+    "CSL.AX": {"overall": "AA", "e": 7.0, "s": 7.6, "g": 8.1, "controversy": False, "carbon": 19.0},
+    "NXT.AX": {"overall": "A", "e": 6.7, "s": 6.3, "g": 7.2, "controversy": False, "carbon": 88.0},
 }
 
 
@@ -57,6 +61,9 @@ class ESGService:
                 environmental_score=profile["e"],
                 social_score=profile["s"],
                 governance_score=profile["g"],
+                carbon_intensity_tco2e_per_m_revenue=profile.get("carbon", 0.0),
+                tcfd_alignment_flag=profile.get("e", 5.0) >= 6.0,
+                apra_cps230_alignment_flag=ticker.endswith(".AX"),
                 controversy_flag=profile["controversy"],
                 excluded=ticker in self.config.exclusion_list,
                 source="heuristic_profiles",
@@ -69,6 +76,7 @@ class ESGService:
                 environmental_score=5.0,
                 social_score=5.0,
                 governance_score=5.0,
+                carbon_intensity_tco2e_per_m_revenue=45.0,
                 source="default_unknown",
             )
 
@@ -151,11 +159,16 @@ class ESGService:
             weighted_e = sum(self.get_score(t).environmental_score * weights.get(t, 0) / 100 for t in tickers)
             weighted_s = sum(self.get_score(t).social_score * weights.get(t, 0) / 100 for t in tickers)
             weighted_g = sum(self.get_score(t).governance_score * weights.get(t, 0) / 100 for t in tickers)
+            weighted_carbon = sum(
+                self.get_score(t).carbon_intensity_tco2e_per_m_revenue * weights.get(t, 0) / 100
+                for t in tickers
+            )
             results["portfolio_weighted_esg"] = {
                 "environmental": round(weighted_e, 2),
                 "social": round(weighted_s, 2),
                 "governance": round(weighted_g, 2),
                 "composite": round((weighted_e + weighted_s + weighted_g) / 3, 2),
+                "portfolio_carbon_tco2e_per_m_revenue": round(weighted_carbon, 2),
             }
 
         return results
