@@ -42,6 +42,27 @@ class SentimentLabel(str, Enum):
     BEARISH = "bearish"
 
 
+# ── E-10: FinBERT / NLP Sentiment Packet ─────────────────────────────────
+
+class SentimentPacket(BaseModel):
+    """E-10: Aggregated NLP sentiment for a single ticker.
+
+    Produced by QualitativeDataService.get_sentiment() from news headlines
+    scored by FinBERT or a keyword fallback.
+    """
+    ticker: str
+    score: float = 0.0            # [-1.0 (bearish) to +1.0 (bullish)]
+    signal: SentimentLabel = SentimentLabel.NEUTRAL
+    headlines: list[str] = Field(default_factory=list)
+    headline_scores: list[float] = Field(default_factory=list)
+    n_headlines: int = 0
+    positive_count: int = 0
+    negative_count: int = 0
+    neutral_count: int = 0
+    method: str = "keyword_fallback"   # "finbert" or "keyword_fallback"
+    data_source: str = ""              # e.g. "finnhub", "newsapi", "synthetic"
+
+
 class CoverageDepth(str, Enum):
     DEEP = "deep"       # ≥15 signals, ≤1 gap
     MODERATE = "moderate"  # ≥8 signals, ≤3 gaps

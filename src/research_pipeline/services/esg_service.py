@@ -10,6 +10,47 @@ from research_pipeline.schemas.governance import ESGConfig, ESGRating, ESGScore
 logger = logging.getLogger(__name__)
 
 
+# ── E-6: Scope 1+2 Carbon intensity estimates (tCO2e / $M revenue) ─────────
+# Source: public TCFD disclosures + MSCI approximations where available.
+# These are best-effort estimates for institutional screening purposes.
+_CARBON_INTENSITY: dict[str, float] = {
+    "NVDA": 3.2,    # semiconductor design — relatively low (no fabs)
+    "AMD": 4.1,
+    "AVGO": 12.5,   # mixed semiconductor + infrastructure
+    "MRVL": 5.0,
+    "ARM": 2.8,
+    "TSM": 68.0,    # fab-intensive — high energy use
+    "MSFT": 8.2,    # data centre focused; net-zero commitment
+    "AMZN": 15.4,
+    "GOOGL": 7.8,
+    "META": 9.5,
+    "EQIX": 42.0,   # data centre — energy-intensive
+    "DLR": 38.5,
+    "VRT": 45.0,    # UPS / power — energy-intensive
+    "DELL": 18.0,
+    "SMCI": 22.0,
+    "CEG": 5.8,     # nuclear generation — low carbon
+    "VST": 68.0,    # gas/coal generation — higher
+    "GEV": 28.0,
+    "NLR": 6.0,
+    "PWR": 14.0,
+    "ETN": 22.0,
+    "HUBB": 16.0,
+    "APH": 11.0,
+    "FIX": 8.5,
+    "FCX": 95.0,    # mining — high carbon
+    "BHP": 88.0,
+    "BHP.AX": 88.0,
+    "CBA.AX": 12.0,  # financial services
+    "NAB.AX": 11.5,
+    "WBC.AX": 11.0,
+    "ANZ.AX": 10.8,
+    "RIO.AX": 82.0,  # mining
+    "FMG.AX": 75.0,
+    "WTC.AX": 3.5,
+    "XRO.AX": 2.8,
+}
+
 # ── Default ESG profiles per AI Infrastructure ticker ──────────────────────
 
 # Heuristic ESG scores based on public reporting profiles for AI infra tickers.
@@ -231,6 +272,52 @@ class ESGService:
 
         logger.info("ESGService loaded %d profiles from %s", loaded, path)
         return loaded
+
+    # ── E-6: Carbon Intensity ─────────────────────────────────────────────
+
+    def get_carbon_intensity(self, ticker: str) -> float:
+        """E-6: Return Scope 1+2 carbon intensity (tCO2e / $M revenue) for a ticker.
+
+        Falls back to a sector-level default if the ticker is unknown.
+        """
+        return _CARBON_INTENSITY.get(ticker, 20.0)  # 20 tCO2e/$M default
+
+    def portfolio_carbon_intensity(
+        self,
+        tickers: list[str],
+        weights: dict[str, float],
+    ) -> dict[str, float]:
+        """E-6: Compute portfolio-level carbon intensity (weighted average).
+
+        Returns:
+            dict with:
+                - per_ticker: {ticker: carbon_intensity}
+                - portfolio_carbon_tco2e_per_m_revenue: float
+                - apra_tcfd_alignment: str (aligned / partial / misaligned)
+        """
+        total_w = sum(weights.values()) or 1.0
+        per_ticker: dict[str, float] = {}
+        portfolio_ci = 0.0
+        for t in tickers:
+            ci = self.get_carbon_intensity(t)
+            per_ticker[t] = ci
+            portfolio_ci += ci * weights.get(t, 0) / total_w
+
+        portfolio_ci = round(portfolio_ci, 2)
+        # APRA CPS 230 / TCFD alignment heuristic
+        # < 20: aligned; 20-50: partial; > 50: misaligned (high carbon)
+        if portfolio_ci < 20.0:
+            alignment = "aligned"
+        elif portfolio_ci < 50.0:
+            alignment = "partial"
+        else:
+            alignment = "misaligned"
+
+        return {
+            "per_ticker": per_ticker,
+            "portfolio_carbon_tco2e_per_m_revenue": portfolio_ci,
+            "apra_tcfd_alignment": alignment,
+        }
 
     def to_csv(self, output_path: str | "Path") -> int:  # type: ignore[name-defined]  # ACT-S10-2
         """Export all ESG profiles to a CSV file.

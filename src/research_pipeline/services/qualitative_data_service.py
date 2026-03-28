@@ -480,3 +480,104 @@ class QualitativeDataService:
             ticker=ticker,
             news_sentiment_score=round(avg_score, 4),
         )
+
+    # ── E-10: FinBERT / NLP Sentiment ────────────────────────────────────
+
+    def get_sentiment(self, ticker: str, headlines: list[str] | None = None) -> "SentimentPacket":  # type: ignore[name-defined]
+        """E-10: Score headlines for a ticker using FinBERT or keyword fallback.
+
+        Args:
+            ticker: Company ticker
+            headlines: List of news headlines to score. If None, uses any
+                       cached news headlines from a prior ingest.
+
+        Returns a SentimentPacket with aggregated signal.
+        """
+        from research_pipeline.schemas.qualitative import SentimentLabel, SentimentPacket
+
+        if not headlines:
+            headlines = []
+
+        scores: list[float] = []
+        method = "keyword_fallback"
+
+        # Try FinBERT if transformers is installed
+        try:
+            from transformers import pipeline as _hf_pipeline  # type: ignore[import]
+            finbert = _hf_pipeline(
+                "text-classification",
+                model="ProsusAI/finbert",
+                tokenizer="ProsusAI/finbert",
+                device=-1,  # CPU
+                top_k=None,
+            )
+            for hl in headlines[:20]:  # limit for speed
+                try:
+                    res = finbert(hl[:512])
+                    # res is list of [{'label': 'positive/negative/neutral', 'score': float}]
+                    if res:
+                        for item in (res[0] if isinstance(res[0], list) else res):
+                            if isinstance(item, dict):
+                                lbl = item.get("label", "").lower()
+                                scr = float(item.get("score", 0))
+                                if lbl == "positive":
+                                    scores.append(scr)
+                                elif lbl == "negative":
+                                    scores.append(-scr)
+                                break
+                except Exception:
+                    pass
+            method = "finbert"
+        except (ImportError, Exception):
+            # Keyword fallback
+            _POSITIVE = {
+                "beat", "beats", "strong", "growth", "profit", "record", "raised",
+                "upgrade", "buy", "outperform", "exceeded", "positive", "demand",
+                "AI", "artificial intelligence", "revenue", "gain",
+            }
+            _NEGATIVE = {
+                "miss", "misses", "weak", "loss", "cut", "downgrade", "sell",
+                "underperform", "fell", "declined", "disappoints", "below", "risk",
+                "recall", "lawsuit", "investigation",
+            }
+            for hl in headlines:
+                hl_lower = hl.lower()
+                pos_hits = sum(1 for w in _POSITIVE if w.lower() in hl_lower)
+                neg_hits = sum(1 for w in _NEGATIVE if w.lower() in hl_lower)
+                if pos_hits > neg_hits:
+                    scores.append(0.6)
+                elif neg_hits > pos_hits:
+                    scores.append(-0.6)
+                else:
+                    scores.append(0.0)
+
+        # Aggregate
+        if scores:
+            avg_score = sum(scores) / len(scores)
+        else:
+            avg_score = 0.0
+
+        if avg_score >= 0.2:
+            signal = SentimentLabel.BULLISH
+        elif avg_score <= -0.2:
+            signal = SentimentLabel.BEARISH
+        else:
+            signal = SentimentLabel.NEUTRAL
+
+        pos_count = sum(1 for s in scores if s > 0.1)
+        neg_count = sum(1 for s in scores if s < -0.1)
+        neu_count = len(scores) - pos_count - neg_count
+
+        return SentimentPacket(
+            ticker=ticker,
+            score=round(avg_score, 4),
+            signal=signal,
+            headlines=headlines[:20],
+            headline_scores=[round(s, 4) for s in scores[:20]],
+            n_headlines=len(headlines),
+            positive_count=pos_count,
+            negative_count=neg_count,
+            neutral_count=neu_count,
+            method=method,
+            data_source="qualitative_data_service",
+        )

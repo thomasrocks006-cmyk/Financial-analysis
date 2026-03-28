@@ -88,6 +88,16 @@ from research_pipeline.agents.portfolio_manager import PortfolioManagerAgent
 from research_pipeline.agents.quant_research_analyst import QuantResearchAnalystAgent
 from research_pipeline.agents.fixed_income_analyst import FixedIncomeAnalystAgent
 from research_pipeline.agents.esg_analyst import EsgAnalystAgent
+from research_pipeline.agents.economy_analyst import EconomyAnalystAgent  # Session 12
+
+# Session 12 macro services
+from research_pipeline.services.economic_indicator_service import EconomicIndicatorService
+from research_pipeline.services.macro_scenario_service import MacroScenarioService
+
+# Part E: quantitative and analytics services
+from research_pipeline.services.regime_detector import RegimeDetector
+from research_pipeline.services.currency_attribution import CurrencyAttributionEngine
+from research_pipeline.services.report_html_service import ReportHTMLService
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +163,17 @@ class PipelineEngine:
             output_dir=settings.storage_dir / "reports"
         )
 
+        # Session 12: Macro economy services
+        self.economic_indicator_service = EconomicIndicatorService(
+            fred_api_key=getattr(settings.api_keys, "fred_api_key", "")
+        )
+        self.macro_scenario_service = MacroScenarioService()
+
+        # Part E: Quant analytics services
+        self.regime_detector = RegimeDetector()
+        self.currency_attribution = CurrencyAttributionEngine()
+        self.report_html_service = ReportHTMLService()
+
         # Initialize agents
         prompts_dir = settings.prompts_dir
         agent_kwargs = {"model": settings.llm_model, "temperature": settings.llm_temperature, "prompts_dir": prompts_dir}
@@ -170,6 +191,7 @@ class PipelineEngine:
         self.quant_analyst_agent = QuantResearchAnalystAgent(**agent_kwargs)
         self.fixed_income_agent = FixedIncomeAnalystAgent(**agent_kwargs)
         self.esg_analyst_agent = EsgAnalystAgent(**agent_kwargs)
+        self.economy_analyst_agent = EconomyAnalystAgent(**agent_kwargs)  # Session 12
 
         # Run state
         self.run_record: Optional[RunRecord] = None
@@ -335,19 +357,41 @@ class PipelineEngine:
     def _get_macro_context(self) -> dict[str, Any]:
         """ARC-1: Extract macro context from stage_outputs[8] for downstream agents.
 
-        Returns the macro dict from Stage 8 results, or an empty dict if Stage 8
-        has not yet completed.  Never raises.
+        Merges MacroStrategistAgent output, EconomyAnalystAgent output (Session 12),
+        and economic_indicators / macro_scenario from EconomicIndicatorService.
+        Returns the macro dict, or an empty dict if Stage 8 has not yet completed.
+        Never raises.
         """
         stage8 = self.stage_outputs.get(8, {})
         if not isinstance(stage8, dict):
             return {}
+
+        context: dict[str, Any] = {}
+
+        # Primary macro agent output
         macro_result = stage8.get("macro", {})
         if isinstance(macro_result, dict):
             parsed = macro_result.get("parsed_output") or {}
-            if parsed:
-                return parsed
-            return macro_result
-        return {}
+            context.update(parsed if parsed else macro_result)
+
+        # Session 12: Economy analysis (12-field AU/US macro)
+        economy_result = stage8.get("economy_analysis", {})
+        if isinstance(economy_result, dict):
+            economy_parsed = economy_result.get("parsed_output") or {}
+            if economy_parsed:
+                context["economy_analysis"] = economy_parsed
+
+        # Session 12: Structured economic indicators
+        indicators = stage8.get("economic_indicators", {})
+        if indicators:
+            context["economic_indicators"] = indicators
+
+        # Session 12: Macro scenario matrix
+        scenario = stage8.get("macro_scenario", {})
+        if scenario:
+            context["macro_scenario"] = scenario
+
+        return context
 
     def _route_tickers_to_sectors(self, universe: list[str]) -> dict[str, list[str]]:
         """ARC-5: Route tickers to sector analyst buckets using config-driven routing.
@@ -873,9 +917,32 @@ class PipelineEngine:
 
         ARC-9: Macro agent now receives Stage 2 ingestion data and Stage 3
         reconciliation flags so it has real market context.
+
+        Session 12: EconomyAnalystAgent runs in parallel with MacroStrategistAgent,
+        providing 12-field AU/US macro analysis to downstream stages.
         """
         logger.info("═══ STAGE 8: Macro & Political Overlay ═══")
-        macro_result, political_result = await asyncio.gather(
+
+        # Session 12: Fetch real economic indicators and build scenario matrix
+        try:
+            economic_indicators = await self.economic_indicator_service.get_indicators()
+            macro_scenario = self.macro_scenario_service.build_scenarios(economic_indicators)
+            macro_scenario_dict = macro_scenario.model_dump()
+            economic_indicators_dict = economic_indicators.model_dump()
+            logger.info(
+                "S12 EconomicIndicators: RBA=%.2f%% Fed=%.2f%% AU_CPI=%.1f%% AUD/USD=%.3f regime=%s",
+                economic_indicators.au.rba_cash_rate_pct,
+                economic_indicators.us.fed_funds_rate_pct,
+                economic_indicators.au.au_cpi_yoy_pct,
+                economic_indicators.au.aud_usd_rate,
+                macro_scenario.composite_regime,
+            )
+        except Exception as exc:
+            logger.warning("EconomicIndicatorService failed (non-blocking): %s", exc)
+            economic_indicators_dict = {}
+            macro_scenario_dict = {}
+
+        macro_result, political_result, economy_result = await asyncio.gather(
             self.macro_agent.run(
                 self.run_record.run_id,
                 {
@@ -883,13 +950,26 @@ class PipelineEngine:
                     "ingestion_summary": self.stage_outputs.get(2, []),  # ARC-9
                     "reconciliation_flags": self.stage_outputs.get(3, {}),  # ARC-9
                     "valuation_outputs": self.stage_outputs.get(7, {}),  # ARC-4 downstream
+                    "economic_indicators": economic_indicators_dict,  # Session 12
+                    "macro_scenario": macro_scenario_dict,  # Session 12
                 },
             ),
             self.political_agent.run(self.run_record.run_id, {"tickers": universe}),
+            self.economy_analyst_agent.run(  # Session 12: EconomyAnalystAgent
+                self.run_record.run_id,
+                {
+                    "universe": universe,
+                    "economic_indicators": economic_indicators_dict,
+                    "macro_scenario": macro_scenario_dict,
+                },
+            ),
         )
         self._save_stage_output(8, {
             "macro": macro_result.model_dump(),
             "political": political_result.model_dump(),
+            "economy_analysis": economy_result.model_dump(),  # Session 12
+            "economic_indicators": economic_indicators_dict,  # Session 12
+            "macro_scenario": macro_scenario_dict,  # Session 12
         })
         gate = self.gates.gate_8_macro(
             regime_memo_present=macro_result.success,
@@ -931,10 +1011,11 @@ class PipelineEngine:
             portfolio_factor_exp = self.factor_engine.portfolio_factor_exposure(factor_exposures, weights)
 
         # ARC-3: VaR uses live_factor_returns — NOT np.random.normal synthetic path.
-        # Aggregate per-ticker return series into a portfolio-level return series
-        # (equal-weight blend) so VaR is grounded in real data where available.
+        # E-2: GARCH(1,1) VaR for time-varying risk estimate.
+        # E-3: HMM regime detection from portfolio returns.
         var_result = None
         drawdown_result = None
+        regime_result = None
         try:
             import numpy as _np_var
             if live_factor_returns:
@@ -951,11 +1032,11 @@ class PipelineEngine:
                     n_days_var, len(live_factor_returns),
                 )
             else:
-                # True fallback: deterministic synthetic (no np.random.normal with fixed seed)
                 portfolio_returns = self._generate_synthetic_returns(universe, n_days=252).get(
                     universe[0] if universe else "NVDA", []
                 )
-            var_result = self.var_engine.parametric_var(
+            # E-2: GARCH(1,1) VaR (falls back to rolling parametric on failure)
+            var_result = self.var_engine.garch_var(
                 run_id=self.run_record.run_id,
                 portfolio_returns=portfolio_returns,
                 confidence_level=0.95,
@@ -963,8 +1044,19 @@ class PipelineEngine:
             drawdown_result = self.var_engine.compute_drawdown_analysis(
                 self.run_record.run_id, portfolio_returns
             )
+            # E-3: HMM regime detection
+            regime_result = self.regime_detector.detect_from_portfolio(
+                live_factor_returns,
+                weights={t: 1.0 / len(universe) for t in universe} if universe else {},
+            )
+            logger.info(
+                "E-3 Regime: %s (p=%.2f) | E-2 GARCH VaR=%.3f%%",
+                regime_result.regime,
+                regime_result.regime_probability,
+                var_result.var_pct,
+            )
         except Exception as exc:
-            logger.warning("VaR computation failed: %s", exc)
+            logger.warning("VaR/Regime computation failed: %s", exc)
 
         risk_packet = self.risk_engine.build_risk_packet(
             run_id=self.run_record.run_id,
@@ -984,6 +1076,9 @@ class PipelineEngine:
         # Keep var_95 alias so quant agent and legacy code still find it
         if var_result:
             risk_output["var_95"] = var_result.model_dump()
+        # E-3: Regime detection result
+        if regime_result:
+            risk_output["regime_detection"] = regime_result.model_dump()
 
         # Phase 2.7 / 7.4: ETF overlap analysis
         try:
@@ -1592,6 +1687,42 @@ class PipelineEngine:
             except Exception as exc:
                 logger.warning("BHB attribution failed (non-blocking): %s", exc)
 
+        # E-5: Currency attribution for AU investors
+        currency_attribution_output: dict[str, Any] = {}
+        if baseline_weights:
+            try:
+                us_tickers = [t for t in baseline_weights if not t.endswith(".AX")]
+                if us_tickers:
+                    us_ret = self._get_returns(us_tickers, seed_offset=5)
+                    # Aggregate US portfolio return
+                    us_arr = __import__("numpy").mean(
+                        [us_ret[t] for t in us_tickers if t in us_ret], axis=0
+                    ).tolist() if us_ret else []
+                    ca_result = self.currency_attribution.compute_attribution(us_arr)
+                    currency_attribution_output = ca_result.model_dump()
+                    logger.info(
+                        "E-5 Currency attribution: unhedged=%.2f%% hedged=%.2f%% AUD/USD change=%.2f%%",
+                        ca_result.unhedged_return_pct,
+                        ca_result.hedged_return_pct,
+                        ca_result.aud_usd_change_pct,
+                    )
+            except Exception as exc:
+                logger.debug("Currency attribution failed (non-blocking): %s", exc)
+
+        # E-6: Portfolio carbon intensity
+        carbon_output: dict[str, Any] = {}
+        try:
+            carbon_output = self.esg_service.portfolio_carbon_intensity(
+                list(baseline_weights.keys()), baseline_weights
+            )
+            logger.info(
+                "E-6 Carbon intensity: %.1f tCO2e/$M revenue (%s TCFD)",
+                carbon_output.get("portfolio_carbon_tco2e_per_m_revenue", 0),
+                carbon_output.get("apra_tcfd_alignment", "?"),
+            )
+        except Exception as exc:
+            logger.debug("Carbon intensity calc failed (non-blocking): %s", exc)
+
         self._save_stage_output(14, {
             "final_status": final_status.value,
             "stages_completed": [s for s, g in self.gate_results.items() if g.passed],
@@ -1599,6 +1730,8 @@ class PipelineEngine:
             "gate_summary": {s: g.reason for s, g in self.gate_results.items()},
             "cache_stats": self.cache.stats,
             "attribution": attribution_output,  # ACT-S7-1
+            "currency_attribution": currency_attribution_output,  # E-5
+            "carbon_intensity": carbon_output,  # E-6
         })
         logger.info("Pipeline run %s finished with status: %s", self.run_record.run_id, final_status.value)
 
@@ -1729,6 +1862,7 @@ class PipelineEngine:
                     "sector_outputs": self._get_sector_outputs(),
                     "valuations": self.stage_outputs.get(7, {}),
                     "red_team": self.stage_outputs.get(10, {}),
+                    "macro_context": self._get_macro_context(),
                 }
                 report_paths = self.report_format_service.save_all(
                     self.run_record.run_id, pipeline_output_for_reports
@@ -1736,6 +1870,26 @@ class PipelineEngine:
                 logger.info("Reports saved: %s", [str(p) for p in report_paths])
             except Exception as exc:
                 logger.warning("Report format rendering failed: %s", exc)
+
+            # E-7: Interactive HTML report
+            try:
+                html_output = {
+                    **pipeline_output_for_reports,
+                    "currency_attribution": self.stage_outputs.get(14, {}).get("currency_attribution", {}),
+                    "carbon_intensity": self.stage_outputs.get(14, {}).get("carbon_intensity", {}),
+                }
+                html_content = self.report_html_service.generate_html(
+                    run_id=self.run_record.run_id,
+                    pipeline_output=html_output,
+                )
+                html_path = self.report_html_service.save_html(
+                    self.run_record.run_id,
+                    html_content,
+                    self.settings.reports_dir / "html",
+                )
+                logger.info("E-7 Interactive HTML report saved: %s", html_path)
+            except Exception as exc:
+                logger.warning("HTML report generation failed (non-blocking): %s", exc)
 
         # ── ACT-S6-1 / ACT-S7-3: Build and attach SelfAuditPacket ─────────────
         audit_packet = self._emit_audit_packet(universe)
