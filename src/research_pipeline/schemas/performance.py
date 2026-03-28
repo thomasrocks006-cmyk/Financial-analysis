@@ -117,13 +117,14 @@ class ThesisRecord(BaseModel):
 class VaRResult(BaseModel):
     """Value at Risk computation result."""
     run_id: str
-    method: str = "parametric"  # "parametric", "historical", "monte_carlo"
+    method: str = "parametric"  # "parametric", "historical", "garch", "monte_carlo"
     confidence_level: float = 0.95
     holding_period_days: int = 1
     var_pct: float = 0.0  # portfolio VaR as percentage loss
     var_dollar: float = 0.0
     cvar_pct: float = 0.0  # conditional VaR (expected shortfall)
     cvar_dollar: float = 0.0
+    garch_vol_forecast: Optional[float] = None  # E-2: GARCH(1,1) conditional vol (annualised %)
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

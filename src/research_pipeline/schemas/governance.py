@@ -222,6 +222,12 @@ class SelfAuditPacket(BaseModel):
     # Rebalancing snapshot (ACT-S9-3)
     rebalancing_summary: dict = Field(default_factory=dict)  # turnover, trade count, impact
 
+    # E-8: LLM provider used (populated from base_agent call_llm)
+    llm_provider_used: str = ""  # "anthropic" / "openai" / "gemini"
+
+    # E-9: Cross-run research trends
+    research_trends: list[dict] = Field(default_factory=list)  # ResearchTrend dicts
+
     # Summary verdict
     publication_quality_score: float = 0.0  # 0-10 derived metric
     blockers: list[str] = []

@@ -268,6 +268,96 @@ class ResearchMemory:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    # ── E-9: Cross-run trend detection ────────────────────────────────
+    def store_run_metrics(
+        self,
+        run_id: str,
+        metrics: dict[str, Any],
+    ) -> None:
+        """Store numeric metrics for cross-run comparison.
+
+        Args:
+            run_id: Pipeline run ID
+            metrics: dict of {metric_key: value} e.g. {"NVDA_dcf_fair_value": 950.0, "var_95_pct": 1.23}
+        """
+        content = json.dumps(metrics, default=str)
+        self.store_document(
+            doc_id=f"{run_id}-metrics",
+            run_id=run_id,
+            doc_type="run_metrics",
+            content=content,
+            title=f"Metrics {run_id}",
+            metadata={"metric_count": len(metrics)},
+        )
+
+    def detect_trends(
+        self,
+        current_run_id: str,
+        current_metrics: dict[str, float],
+        alert_threshold_pct: float = 10.0,
+        n_prior_runs: int = 3,
+    ) -> list[dict[str, Any]]:
+        """E-9: Compare current run metrics against prior run averages.
+
+        Flags when DCF fair value, VaR, or ESG scores change >threshold%.
+
+        Returns list of ResearchTrend dicts.
+        """
+        # Fetch prior run metrics
+        conn = self._get_conn()
+        rows = conn.execute(
+            """SELECT run_id, content FROM documents
+               WHERE doc_type = 'run_metrics' AND run_id != ?
+               ORDER BY created_at DESC LIMIT ?""",
+            (current_run_id, n_prior_runs),
+        ).fetchall()
+
+        if not rows:
+            return []
+
+        # Average prior metrics
+        prior_metrics: dict[str, list[float]] = {}
+        for row in rows:
+            try:
+                m = json.loads(row["content"])
+                for k, v in m.items():
+                    if isinstance(v, (int, float)):
+                        prior_metrics.setdefault(k, []).append(float(v))
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+        if not prior_metrics:
+            return []
+
+        trends: list[dict[str, Any]] = []
+        for metric, current_val in current_metrics.items():
+            if metric not in prior_metrics:
+                continue
+            prior_vals = prior_metrics[metric]
+            prior_avg = sum(prior_vals) / len(prior_vals)
+            if prior_avg == 0:
+                continue
+            delta_pct = (current_val - prior_avg) / abs(prior_avg) * 100
+
+            if abs(delta_pct) >= alert_threshold_pct:
+                # Parse ticker from metric key e.g. "NVDA_dcf_fair_value"
+                parts = metric.split("_", 1)
+                ticker = parts[0] if len(parts) > 1 else ""
+                metric_name = parts[1] if len(parts) > 1 else metric
+
+                alert_level = "high" if abs(delta_pct) >= alert_threshold_pct * 2 else "medium"
+                trends.append({
+                    "ticker": ticker,
+                    "metric": metric_name,
+                    "current_value": round(current_val, 4),
+                    "prior_value": round(prior_avg, 4),
+                    "delta_pct": round(delta_pct, 2),
+                    "alert_level": alert_level,
+                    "n_prior_runs": len(prior_vals),
+                })
+
+        return sorted(trends, key=lambda x: abs(x["delta_pct"]), reverse=True)
+
     # ── Statistics ────────────────────────────────────────────────────
     @property
     def stats(self) -> dict[str, int]:

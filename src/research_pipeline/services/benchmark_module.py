@@ -13,6 +13,7 @@ from research_pipeline.schemas.performance import BenchmarkComparison
 logger = logging.getLogger(__name__)
 
 # Default benchmark constituent weights (top holdings approximation)
+# E-4: Extended with ASX 200 proxy constituents
 BENCHMARK_CONSTITUENTS = {
     "SPY": {  # S&P 500 proxy — AI infra relevant names
         "NVDA": 6.5, "AVGO": 1.8, "TSM": 0.0,  # TSM not in S&P 500
@@ -29,6 +30,13 @@ BENCHMARK_CONSTITUENTS = {
     },
     "SOXX": {  # Semiconductor ETF proxy
         "NVDA": 10.0, "AVGO": 8.0, "TSM": 7.0, "AMD": 6.0,
+    },
+    # E-4: ASX 200 proxy — top constituents by weight
+    "^AXJO": {
+        "CBA.AX": 9.2, "BHP.AX": 6.8, "CSL.AX": 5.8, "NAB.AX": 4.3,
+        "WBC.AX": 4.0, "ANZ.AX": 3.8, "WES.AX": 3.0, "MQG.AX": 2.8,
+        "RIO.AX": 2.5, "FMG.AX": 2.0, "TCL.AX": 1.8, "WOW.AX": 1.6,
+        "REA.AX": 1.4, "XRO.AX": 1.2, "STO.AX": 1.0,
     },
 }
 
@@ -126,6 +134,61 @@ class BenchmarkModule:
         running_max = np.maximum.accumulate(cumulative)
         drawdowns = (cumulative - running_max) / running_max
         return round(float(np.min(drawdowns)) * 100, 2)
+
+    def fetch_benchmark_returns(
+        self,
+        benchmark_symbol: str = "^AXJO",
+        n_days: int = 252,
+    ) -> list[float]:
+        """E-4: Fetch real benchmark returns from yfinance.
+
+        Supports both US (SPY, QQQ) and AU (^AXJO) benchmarks.
+        Falls back to synthetic if yfinance is unavailable.
+        """
+        try:
+            import yfinance as yf  # type: ignore[import]
+
+            ticker = yf.Ticker(benchmark_symbol)
+            hist = ticker.history(period=f"{max(n_days // 21 + 2, 13)}mo")
+            if hist.empty:
+                raise ValueError("empty history")
+
+            closes = hist["Close"].dropna().values
+            if len(closes) < 2:
+                raise ValueError("insufficient data")
+
+            returns = [(closes[i] / closes[i - 1]) - 1 for i in range(1, len(closes))]
+            if len(returns) > n_days:
+                returns = returns[-n_days:]
+
+            logger.info(
+                "Fetched %d days of live benchmark returns for %s",
+                len(returns), benchmark_symbol,
+            )
+            return [round(float(r), 6) for r in returns]
+
+        except Exception as exc:
+            logger.debug(
+                "Live benchmark fetch failed for %s (%s) — using synthetic", benchmark_symbol, exc
+            )
+            return self._synthetic_benchmark_returns(benchmark_symbol, n_days)
+
+    def _synthetic_benchmark_returns(self, symbol: str, n_days: int) -> list[float]:
+        """Generate deterministic synthetic benchmark returns as fallback."""
+        import hashlib
+
+        # Annualised assumptions by benchmark type
+        _PARAMS = {
+            "^AXJO": (0.09, 0.14),   # 9% return, 14% vol
+            "SPY": (0.12, 0.16),
+            "QQQ": (0.16, 0.22),
+            "default": (0.10, 0.16),
+        }
+        mu_ann, sig_ann = _PARAMS.get(symbol, _PARAMS["default"])
+        seed = int(hashlib.md5(symbol.encode()).hexdigest()[:8], 16) % (2 ** 31)
+        rng = np.random.default_rng(seed)
+        daily_ret = rng.normal(mu_ann / 252, sig_ann / (252 ** 0.5), n_days)
+        return [round(float(r), 6) for r in daily_ret]
 
     def full_comparison(
         self,
