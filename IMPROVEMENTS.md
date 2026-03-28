@@ -2,7 +2,7 @@
 
 > **Document type:** Living engineering + product roadmap  
 > **Last updated:** March 28, 2026  
-> **Current state:** Sessions 1–10 complete · 607 / 607 tests passing · commit `0642dfe`  
+> **Current state:** Sessions 1–11 complete · 667 / 667 tests passing · commit `2b6a360`  
 > **Owner:** Engineering (all divisions)
 
 ---
@@ -36,7 +36,7 @@ Achieve a **weighted platform score of 9.0 / 10** across all eight JPAM-aligned 
 
 ---
 
-## Part A — Architecture Repair (Session 11)
+## Part A — Architecture Repair (Session 11) ✅ COMPLETE — `2b6a360` ✅ Complete — `2b6a360`
 
 Critical bugs that prevent correct data flow through the 15-stage pipeline.  
 All fixes are in `src/research_pipeline/pipeline/engine.py`.
@@ -523,15 +523,15 @@ Below is every polish item that separates "working prototype" from "institutiona
 ### Operations
 - [ ] Multi-provider LLM fallback chain (E-8)
 - [ ] Weekly CI job runs against live FRED + yfinance + FMP
-- [ ] `SECTOR_ROUTING` config externalised (ARC-5 fix)
+- [x] `SECTOR_ROUTING` config externalised (ARC-5 fix) ✅ Session 11
 - [ ] `docker-compose.yml` for local production deployment
 - [ ] Grafana / Prometheus metrics stub for observability export
 - [ ] Blue/green pipeline deployment with canary comparison
 
 ### Frontend & Product UI (Migration)
-- [ ] Phase 1: adapter fixes — report_path → markdown loaded, token_log populated, audit_packet surfaced, temperature wired (Session 11)
-- [ ] Phase 1: all three provider key paths (Anthropic / OpenAI / Google) cleanly handled in adapter
-- [ ] Phase 1: `st.session_state["run_result"]` key fixed (ISS-20)
+- [x] Phase 1: adapter fixes — report_path → markdown loaded, token_log populated, audit_packet surfaced, temperature wired (Session 11)
+- [x] Phase 1: all three provider key paths (Anthropic / OpenAI / Google) cleanly handled in adapter
+- [x] Phase 1: `st.session_state["run_result"]` key fixed (ISS-20)
 - [ ] Phase 2: engine event callback contract implemented (`stage_started`, `agent_started`, `llm_call_*`, `artifact_written`)
 - [ ] Phase 3: `RunRequest` Pydantic schema defined; `run_full_pipeline(request)` signature adopted
 - [ ] Phase 3: `ClientProfile` + mandate threaded into Stages 9, 12, 13
@@ -578,16 +578,16 @@ Current weighted scores post-sessions 1–10. Projected scores after each sessio
 
 | Priority | ID | Item | Session | Effort |
 |---|---|---|---|---|
-| 1 | ARC-4 | Fix Stage 7/8 execution order | S11 | Trivial |
-| 2 | ARC-1 | Wire Stage 8 macro to S9/S10/S11/S12 | S11 | Low |
-| 3 | ARC-10 | Fix FI Agent hardcoded stub | S11 | Trivial |
-| 4 | ARC-6 | Red Team macro + risk inputs | S11 | Low |
-| 5 | ARC-7 | Reviewer macro + risk inputs | S11 | Low |
-| 6 | ARC-8 | PM Agent macro context | S11 | Low |
-| 7 | ARC-9 | Macro Agent receives market data | S11 | Low |
-| 8 | ARC-3 | VaR uses live returns (not random) | S11 | Low |
-| 9 | ARC-5 | SECTOR_ROUTING config | S11 | Medium |
-| 10 | ARC-2 | Real report assembly (stock cards + PM doc) | S11 | Medium |
+| 1 | ARC-4 | Fix Stage 7/8 execution order | ✅ S11 | Trivial |
+| 2 | ARC-1 | Wire Stage 8 macro to S9/S10/S11/S12 | ✅ S11 | Low |
+| 3 | ARC-10 | Fix FI Agent hardcoded stub | ✅ S11 | Trivial |
+| 4 | ARC-6 | Red Team macro + risk inputs | ✅ S11 | Low |
+| 5 | ARC-7 | Reviewer macro + risk inputs | ✅ S11 | Low |
+| 6 | ARC-8 | PM Agent macro context | ✅ S11 | Low |
+| 7 | ARC-9 | Macro Agent receives market data | ✅ S11 | Low |
+| 8 | ARC-3 | VaR uses live returns (not random) | ✅ S11 | Low |
+| 9 | ARC-5 | SECTOR_ROUTING config | ✅ S11 | Medium |
+| 10 | ARC-2 | Real report assembly (stock cards + PM doc) | ✅ S11 | Medium |
 | 11 | — | `EconomicIndicatorService` (FRED + RBA) | S12 | Medium |
 | 12 | — | `MacroScenarioService` | S12 | Medium |
 | 13 | — | `EconomyAnalystAgent` (12-field AU/US) | S12 | Medium |
@@ -624,8 +624,8 @@ Current weighted scores post-sessions 1–10. Projected scores after each sessio
 | Full polish checklist items | 47 |
 | **Total tracked improvements / watch-outs** | **130** |
 
-Current test count: **607**  
-Projected after S11–S14 + E items: **607 + 32 + 35 + 30 + 30 + 50 ≈ 784 tests**
+Current test count: **667**  
+Projected after S12–S14 + E items: **667 + 35 + 30 + 30 + 50 ≈ 812 tests**
 
 ---
 
@@ -677,24 +677,24 @@ These are issues not previously covered by Parts A–H.
 
 ### New immediate-priority additions
 
-| ID | New issue | Why it changes the plan |
-|---|---|---|
-| ISS-1 | `MacroContextPacket` schema missing | ARC-1 needs typed validation, not raw dict threading |
-| ISS-3 | No `GenericSectorAnalystAgent` fallback | ARC-5 remains incomplete otherwise |
-| ISS-4 | `ValuationCard` → `StockCard` mapper unspecified | ARC-2 can still produce malformed report cards |
-| ISS-9 | Agent quality checks are non-fatal | Missing required keys still pass through the system |
-| ISS-10 | Gemini package/import mismatch | E-8 fallback chain can break on first use |
-| ISS-12 | Macro agents lack required key contracts | Session 12 needs unified Stage 8 packet design |
-| ISS-13 | No ASX prompt coverage | AU market support remains shallow even with AU data |
-| ISS-16 | BHB benchmark still synthetic | E-4 needs deeper scope than currently written |
-| ISS-20 | Streamlit `result` / `run_result` mismatch | Frontend observability can fail despite backend success |
-| ISS-27 | No live API E2E pipeline test | Production-readiness score remains overstated |
+| ID | New issue | Why it changes the plan | Status |
+|---|---|---|---|
+| ISS-1 | `MacroContextPacket` schema missing | ARC-1 needs typed validation, not raw dict threading | ✅ `2b6a360` |
+| ISS-3 | No `GenericSectorAnalystAgent` fallback | ARC-5 remains incomplete otherwise | ✅ `2b6a360` |
+| ISS-4 | `ValuationCard` → `StockCard` mapper unspecified | ARC-2 can still produce malformed report cards | ✅ `2b6a360` |
+| ISS-9 | Agent quality checks are non-fatal | Missing required keys still pass through the system | ✅ `2b6a360` |
+| ISS-10 | Gemini package/import mismatch | E-8 fallback chain can break on first use | ✅ `2b6a360` |
+| ISS-12 | Macro agents lack required key contracts | Session 12 needs unified Stage 8 packet design | 🔲 S12 |
+| ISS-13 | No ASX prompt coverage | AU market support remains shallow even with AU data | 🔲 S12 |
+| ISS-16 | BHB benchmark still synthetic | E-4 needs deeper scope than currently written | 🔲 S13 |
+| ISS-20 | Streamlit `result` / `run_result` mismatch | Frontend observability can fail despite backend success | ✅ `2b6a360` |
+| ISS-27 | No live API E2E pipeline test | Production-readiness score remains overstated | 🔲 S13 |
 
 ### Session remapping after the assessment
 
 | Session | Existing scope | Newly added residual issues |
 |---|---|---|
-| Session 11 | ARC-1 through ARC-10 | ISS-1, ISS-3, ISS-4, ISS-9, ISS-10, ISS-20 |
+| Session 11 | ARC-1 through ARC-10 | ISS-1, ISS-3, ISS-4, ISS-9, ISS-10, ISS-20 — ✅ **`2b6a360` complete** |
 | Session 12 | Macro economy + AU/US markets | ISS-12, ISS-13, ISS-14, ISS-22 |
 | Session 13 | Depth & quality | ISS-16, ISS-23, ISS-27, ISS-28 |
 | Session 14 | AU client context | ISS-29, ISS-30 |

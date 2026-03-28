@@ -1,8 +1,8 @@
 # Project Tracker — AI Research & Portfolio Platform
 
 > **Last updated:** March 28, 2026  
-> **Test suite:** 607 / 607 passing  
-> **Commit:** `8060115` — session 10 complete
+> **Test suite:** 667 / 667 passing  
+> **Commit:** `2b6a360` — session 11 complete
 
 ---
 
@@ -20,16 +20,16 @@
 | Session 8 (ACT-S8-1 through ACT-S8-5) | All **COMPLETE** |
 | Session 9 (ACT-S9-1 through ACT-S9-5) | All **COMPLETE** |
 | Session 10 (ACT-S10-1 through ACT-S10-5) | All **COMPLETE** |
-| **Architecture Repair (ARC-1 through ARC-10)** | 🔲 **TODO — Session 11** |
-| **Session 11 (revised)** | 🔲 **TODO — Architecture repair + tests** |
+| **Architecture Repair (ARC-1 through ARC-10)** | ✅ **COMPLETE — `2b6a360`** |
+| **Session 11 (revised)** | ✅ **COMPLETE — `2b6a360`** |
 | **Session 12 — Macro Economy & Australia/US Markets** | 🔲 **TODO** |
 | **Session 13 — Depth & Quality** | 🔲 **TODO** |
 | **Session 14 — Superannuation & AU Client Context** | 🔲 **PLANNED** |
 | **PROJECT_ISSUES_ASSESSMENT.md (PR #2)** | ✅ **MERGED — March 28, 2026** |
-| **Residual issues (ISS-1 through ISS-41)** | 🔲 **TODO — fold into Sessions 11+** |
+| **Residual issues (ISS-1, ISS-3, ISS-4, ISS-9, ISS-10, ISS-20)** | ✅ **COMPLETE — `2b6a360`** |
 | **PR #1 Core system improvements** | ⛔ **Do not merge as-is** |
 | **Frontend migration decision (Streamlit → Next.js + FastAPI)** | ✅ **DECIDED — March 28, 2026** |
-| **Phase 1 — adapter truthfulness** | 🔲 **TODO — Session 11** |
+| **Phase 1 — adapter truthfulness** | ✅ **COMPLETE — `2b6a360`** |
 | **Phase 2 — engine event stream** | 🔲 **TODO — Session 12** |
 | **Phase 3 — unified storage + RunRequest** | 🔲 **TODO — Sessions 12–13** |
 | **Phase 4 — FastAPI layer (Session 15)** | 🔲 **PLANNED** |
@@ -168,7 +168,8 @@
 | `test_prompt_regression.py` | 24 | ACT-S9-2 prompt CI gate — hash stability, drift detection, regression marking, CI simulation |
 | `test_session9.py` | 26 | ACT-S9-1 ESG fixture, ACT-S9-4 live return hardening, ACT-S9-3 rebalancing_summary, ACT-S9-2 integration |
 | `test_session10.py` | 28 | ACT-S10-1 BHB data_source, ACT-S10-2 ESG CSV export, ACT-S10-3 agent quality gate, ACT-S10-4 factor live data |
-| **Total** | **607** | All passing |
+| `test_session11.py` | 60 | ARC-1–10 pipeline wiring, ISS-1 MacroContextPacket, ISS-3 GenericSectorAnalystAgent, ISS-4 StockCard adapter, ISS-9 _VALIDATION_FATAL, ISS-10 Gemini fallback, ISS-20 adapter key fix |
+| **Total** | **667** | All passing |
 
 ---
 
@@ -178,6 +179,8 @@
 |---|---|
 | Main pipeline orchestrator | `src/research_pipeline/pipeline/engine.py` |
 | All 14 LLM agents | `src/research_pipeline/agents/` |
+| Generic sector analyst agent (new S11) | `src/research_pipeline/agents/generic_sector_analyst.py` |
+| MacroContextPacket schema (new S11) | `src/research_pipeline/schemas/macro.py` |
 | ESG analyst agent (new S6) | `src/research_pipeline/agents/esg_analyst.py` |
 | ESG baseline service (new S7) | `src/research_pipeline/services/esg_service.py` |
 | Portfolio optimisation engine (new S7) | `src/research_pipeline/services/portfolio_optimisation.py` |
@@ -323,40 +326,40 @@ All bugs located in `src/research_pipeline/pipeline/engine.py`. Scheduled for **
 
 | ID | Bug | Impact | File / Location | Status |
 |---|---|---|---|---|
-| ARC-1 | Stage 8 macro outputs (`stage_outputs[8]`) never read by Stages 9, 10, 11, or 12 — macro context silently discarded | **Very High** | `engine.py` stages 9–12 `format_input` calls | 🔲 |
-| ARC-2 | Stage 13 final report is a stub — `stock_cards=[]`, section text hardcoded strings; PM agent `investor_document` and valuation cards never flow into the report | **High** | `engine.py` ~L1231–1248 | 🔲 |
-| ARC-3 | VaR uses `np.random.normal(0.001, 0.02, 252)` despite `live_factor_returns` (dict[str, list[float]]) already computed in same stage | **Medium** | `engine.py` ~L856 | 🔲 |
-| ARC-4 | Execution order wrong — Stage 7 (Valuation) runs **before** Stage 8 (Macro); valuation models lack macro regime context | **Medium** | `engine.py` `run_full_pipeline()` ~L1462–1468 | 🔲 |
-| ARC-5 | Sector routing hardcoded to 17 specific tickers — any ticker outside `{NVDA, AVGO, TSM, AMD, ANET, CEG, VST, GEV, NLR, PWR, ETN, HUBB, APH, FIX, FCX, BHP, NXT}` gets zero sector analysis | **Medium** | `engine.py` ~L724–726 | 🔲 |
-| ARC-6 | Red Team Agent (Stage 10) receives no macro or risk-scenario inputs — cannot challenge macro assumptions | **High** | `engine.py` ~L980–990 | 🔲 |
-| ARC-7 | Reviewer Agent (Stage 11) receives no macro or risk inputs — review quality degraded | **High** | `engine.py` ~L1000–1010 | 🔲 |
-| ARC-8 | PM Agent (Stage 12) receives no macro regime context — portfolio construction ignores rate/inflation environment | **High** | `engine.py` ~L1144–1165 | 🔲 |
-| ARC-9 | Macro Agent (Stage 8) receives only `{"universe": [...]}` — no market data from Stage 2 ingestion or Stage 3 reconciliation | **Medium** | `engine.py` ~L805 | 🔲 |
-| ARC-10 | Fixed Income Agent (Stage 9) receives hardcoded stub `"note": "Live yield/spread data not available..."` instead of Stage 8 macro output | **High** | `engine.py` ~L930–937 | 🔲 |
+| ARC-1 | Stage 8 macro outputs (`stage_outputs[8]`) never read by Stages 9, 10, 11, or 12 — macro context silently discarded | **Very High** | `engine.py` stages 9–12 `format_input` calls | ✅ `2b6a360` |
+| ARC-2 | Stage 13 final report is a stub — `stock_cards=[]`, section text hardcoded strings; PM agent `investor_document` and valuation cards never flow into the report | **High** | `engine.py` ~L1231–1248 | ✅ `2b6a360` |
+| ARC-3 | VaR uses `np.random.normal(0.001, 0.02, 252)` despite `live_factor_returns` (dict[str, list[float]]) already computed in same stage | **Medium** | `engine.py` ~L856 | ✅ `2b6a360` |
+| ARC-4 | Execution order wrong — Stage 7 (Valuation) runs **before** Stage 8 (Macro); valuation models lack macro regime context | **Medium** | `engine.py` `run_full_pipeline()` ~L1462–1468 | ✅ `2b6a360` |
+| ARC-5 | Sector routing hardcoded to 17 specific tickers — any ticker outside `{NVDA, AVGO, TSM, AMD, ANET, CEG, VST, GEV, NLR, PWR, ETN, HUBB, APH, FIX, FCX, BHP, NXT}` gets zero sector analysis | **Medium** | `engine.py` ~L724–726 | ✅ `2b6a360` |
+| ARC-6 | Red Team Agent (Stage 10) receives no macro or risk-scenario inputs — cannot challenge macro assumptions | **High** | `engine.py` ~L980–990 | ✅ `2b6a360` |
+| ARC-7 | Reviewer Agent (Stage 11) receives no macro or risk inputs — review quality degraded | **High** | `engine.py` ~L1000–1010 | ✅ `2b6a360` |
+| ARC-8 | PM Agent (Stage 12) receives no macro regime context — portfolio construction ignores rate/inflation environment | **High** | `engine.py` ~L1144–1165 | ✅ `2b6a360` |
+| ARC-9 | Macro Agent (Stage 8) receives only `{"universe": [...]}` — no market data from Stage 2 ingestion or Stage 3 reconciliation | **Medium** | `engine.py` ~L805 | ✅ `2b6a360` |
+| ARC-10 | Fixed Income Agent (Stage 9) receives hardcoded stub `"note": "Live yield/spread data not available..."` instead of Stage 8 macro output | **High** | `engine.py` ~L930–937 | ✅ `2b6a360` |
 
 ---
 
-## 8. Session 11 — Architecture Repair (Next to Execute)
+## 8. Session 11 — Architecture Repair (✅ Complete — `2b6a360`)
 
-**Goal:** Fix all 10 ARC bugs; bring pipline data-flow integrity to production standard.  
-**Target test count:** 607 → ~639 (+32 new tests in `test_session11.py`)  
-**Commit tag:** `session-11`
+**Goal:** Fix all 10 ARC bugs; bring pipeline data-flow integrity to production standard.  
+**Result:** 667 / 667 tests passing (+60 new tests in `test_session11.py`).  
+**Commit:** `2b6a360`
 
 | Step | ID | Task | Effort |
 |---|---|---|---|
-| 1 | ARC-4 | Swap Stage 7 and Stage 8 execution order in `run_full_pipeline()` — 2-line change | Trivial |
-| 2 | ARC-1 | Add `_get_macro_context()` helper; thread `stage_outputs[8]` into Stages 9, 10, 11, 12 | Low |
-| 3 | ARC-10 | Replace hardcoded FI stub with `stage_outputs[8]["macro"]` | Trivial |
-| 4 | ARC-6 | Add macro + risk context to Red Team Agent inputs | Low |
-| 5 | ARC-7 | Add macro + risk context to Reviewer Agent inputs | Low |
-| 6 | ARC-8 | Add macro context to PM Agent inputs | Low |
-| 7 | ARC-9 | Pass Stage 2/3 market data into Macro Agent inputs | Low |
-| 8 | ARC-3 | Replace `np.random.normal()` VaR with aggregate of `live_factor_returns` | Low |
-| 9 | ARC-5 | Add `SECTOR_ROUTING` config dict to `config/loader.py`; replace hardcoded ticker sets | Medium |
-| 10 | ARC-2 | Build `stock_cards` from `stage_outputs[7]`; use PM `investor_document` for report sections | Medium |
-| 11 | — | Write `tests/test_session11.py` — 32 tests covering all 10 ARC fixes | Medium |
-| 12 | — | Run full test suite; target 639+/639 passing | Low |
-| 13 | — | Update TRACKER.md + ARCHITECTURE.md; git commit | Trivial |
+| 1 | ARC-4 | Swap Stage 7 and Stage 8 execution order in `run_full_pipeline()` — 2-line change | Trivial | ✅ |
+| 2 | ARC-1 | Add `_get_macro_context()` helper; thread `stage_outputs[8]` into Stages 9, 10, 11, 12 | Low | ✅ |
+| 3 | ARC-10 | Replace hardcoded FI stub with `stage_outputs[8]["macro"]` | Trivial | ✅ |
+| 4 | ARC-6 | Add macro + risk context to Red Team Agent inputs | Low | ✅ |
+| 5 | ARC-7 | Add macro + risk context to Reviewer Agent inputs | Low | ✅ |
+| 6 | ARC-8 | Add macro context to PM Agent inputs | Low | ✅ |
+| 7 | ARC-9 | Pass Stage 2/3 market data into Macro Agent inputs | Low | ✅ |
+| 8 | ARC-3 | Replace `np.random.normal()` VaR with aggregate of `live_factor_returns` | Low | ✅ |
+| 9 | ARC-5 | Add `SECTOR_ROUTING` config dict to `config/loader.py`; replace hardcoded ticker sets | Medium | ✅ |
+| 10 | ARC-2 | Build `stock_cards` from `stage_outputs[7]`; use PM `investor_document` for report sections | Medium | ✅ |
+| 11 | — | Write `tests/test_session11.py` — 32 tests covering all 10 ARC fixes | Medium | ✅ |
+| 12 | — | Run full test suite; target 639+/639 passing | Low | ✅ |
+| 13 | — | Update TRACKER.md + ARCHITECTURE.md; git commit | Trivial | ✅ |
 
 ---
 
@@ -531,15 +534,15 @@ Items identified during Session 11 planning audit. Not yet scheduled.
 
 | ID | Issue | Why it matters | Fold into |
 |---|---|---|---|
-| ISS-1 | `MacroContextPacket` schema contract missing | ARC-1 is unsafe without typed macro packet validation | Session 11 |
-| ISS-3 | No `GenericSectorAnalystAgent` fallback | ARC-5 incomplete without coverage for unmapped tickers | Session 11 |
-| ISS-4 | `ValuationCard` → `StockCard` mapping unspecified | ARC-2 report fix can still produce malformed report cards | Session 11 |
-| ISS-9 | Agent output quality validation is non-fatal | Missing required keys still propagate through the pipeline | Session 11 |
-| ISS-10 | Gemini SDK import mismatch | Planned fallback chain can be broken on day one | Session 11 |
+| ISS-1 | `MacroContextPacket` schema contract missing | ARC-1 is unsafe without typed macro packet validation | ✅ `2b6a360` |
+| ISS-3 | No `GenericSectorAnalystAgent` fallback | ARC-5 incomplete without coverage for unmapped tickers | ✅ `2b6a360` |
+| ISS-4 | `ValuationCard` → `StockCard` mapping unspecified | ARC-2 report fix can still produce malformed report cards | ✅ `2b6a360` |
+| ISS-9 | Agent output quality validation is non-fatal | Missing required keys still propagate through the pipeline | ✅ `2b6a360` |
+| ISS-10 | Gemini SDK import mismatch | Planned fallback chain can be broken on day one | ✅ `2b6a360` |
 | ISS-12 | Macro agents lack required key contracts | Stage 8 remains structurally weak even after Session 12 | Session 12 |
 | ISS-13 | No ASX-specific prompts | Australian market support will remain shallow | Session 12–13 |
 | ISS-16 | BHB benchmark still synthetic | Performance Attribution target can still be overstated | E-4 / Session 13 |
-| ISS-20 | Streamlit session key bug (`result` vs `run_result`) | Observability UI can break despite backend success | Session 11 |
+| ISS-20 | Streamlit session key bug (`result` vs `run_result`) | Observability UI can break despite backend success | ✅ `2b6a360` |
 | ISS-27 | No live API full-pipeline integration test | Production-readiness remains unverified | Session 13 |
 | ISS-34 | No database persistence | Run history and observability remain flat-file only | Future Session 15+ |
 | ISS-36 | `llm_cost_usd` never populated | Ops / governance cost tracking remains incomplete | Future Session 15+ |
@@ -650,7 +653,7 @@ An independent review of the current Streamlit frontend scored:
 
 | Phase | Status |
 |---|---|
-| Phase 1 — adapter fixes | 🔲 |
+| Phase 1 — adapter fixes | ✅ |
 | Phase 2 — engine event stream | 🔲 |
 | Phase 3 — storage + RunRequest | 🔲 |
 | Phase 4 — FastAPI layer | 🔲 |
