@@ -72,6 +72,11 @@ class RunRegistryService:
         self._save_run(record)
         return record
 
+    def update_run(self, record: RunRecord) -> None:
+        """Persist an already-mutated RunRecord back to storage."""
+        self._save_run(record)
+        logger.debug("Updated run record %s", record.run_id)
+
     def mark_stage_complete(self, run_id: str, stage: int) -> None:
         record = self.get_run(run_id)
         if record and stage not in record.stages_completed:

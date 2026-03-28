@@ -56,6 +56,9 @@ from research_pipeline.services.audit_exporter import AuditExporter
 from research_pipeline.services.cache_layer import CacheLayer, QuotaManager
 from research_pipeline.services.rebalancing_engine import RebalancingEngine
 
+# Governance schemas
+from research_pipeline.schemas.governance import SelfAuditPacket
+
 # New Phase 7 Services
 from research_pipeline.services.etf_overlap_engine import ETFOverlapEngine
 from research_pipeline.services.observability import ObservabilityService
@@ -76,6 +79,7 @@ from research_pipeline.agents.associate_reviewer import AssociateReviewerAgent
 from research_pipeline.agents.portfolio_manager import PortfolioManagerAgent
 from research_pipeline.agents.quant_research_analyst import QuantResearchAnalystAgent
 from research_pipeline.agents.fixed_income_analyst import FixedIncomeAnalystAgent
+from research_pipeline.agents.esg_analyst import EsgAnalystAgent
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +157,7 @@ class PipelineEngine:
         self.pm_agent = PortfolioManagerAgent(**agent_kwargs)
         self.quant_analyst_agent = QuantResearchAnalystAgent(**agent_kwargs)
         self.fixed_income_agent = FixedIncomeAnalystAgent(**agent_kwargs)
+        self.esg_analyst_agent = EsgAnalystAgent(**agent_kwargs)
 
         # Run state
         self.run_record: Optional[RunRecord] = None
@@ -161,6 +166,148 @@ class PipelineEngine:
         self._review_result: Optional[AssociateReviewResult] = None  # set by stage_11, read by stage_13
 
     # ── helpers ─────────────────────────────────────────────────────────
+    def _build_self_audit_packet(self, universe: list[str]) -> SelfAuditPacket:
+        """Build a SelfAuditPacket from accumulated run state after Stage 14.
+
+        Uses gate_results, stage_outputs, and _review_result — all fully
+        populated by the time run_full_pipeline reaches the final return.
+        """
+        run_id = self.run_record.run_id if self.run_record else "unknown"
+        packet = SelfAuditPacket(run_id=run_id)
+
+        # ── Gate outcomes ───────────────────────────────────────────────
+        packet.gates_passed = sorted(
+            s for s, gr in self.gate_results.items() if gr.passed
+        )
+        packet.gates_failed = sorted(
+            s for s, gr in self.gate_results.items() if not gr.passed
+        )
+        packet.blockers = [
+            gr.reason
+            for s, gr in sorted(self.gate_results.items())
+            if not gr.passed and gr.reason
+        ]
+
+        # ── Agent outcomes — scan single-agent stage outputs ────────────
+        # Stages that store a single AgentResult.model_dump()
+        single_agent_stages = [5, 7, 9, 10, 11]
+        for stage_num in single_agent_stages:
+            result = self.stage_outputs.get(stage_num)
+            if isinstance(result, dict):
+                name = result.get("agent_name", f"stage_{stage_num}")
+                if result.get("success"):
+                    packet.agents_succeeded.append(name)
+                else:
+                    packet.agents_failed.append(name)
+
+        # Stage 6 stores {sector_outputs: [...], esg_output: {...|None}}
+        sector_results = self._get_sector_outputs()
+        if isinstance(sector_results, list):
+            for res in sector_results:
+                if isinstance(res, dict):
+                    name = res.get("agent_name", "sector_analyst")
+                    (packet.agents_succeeded if res.get("success") else packet.agents_failed).append(name)
+
+        # Stage 8 may store [macro_result, political_result] or a single dict
+        stage8 = self.stage_outputs.get(8)
+        if isinstance(stage8, list):
+            for res in stage8:
+                if isinstance(res, dict):
+                    name = res.get("agent_name", "macro_agent")
+                    (packet.agents_succeeded if res.get("success") else packet.agents_failed).append(name)
+        elif isinstance(stage8, dict):
+            name = stage8.get("agent_name", "macro_agent")
+            (packet.agents_succeeded if stage8.get("success") else packet.agents_failed).append(name)
+
+        # ── Evidence / claim metrics from Stage 5 parsed output ─────────
+        stage5 = self.stage_outputs.get(5, {})
+        if isinstance(stage5, dict):
+            parsed5 = stage5.get("parsed_output") or {}
+            claims = parsed5.get("claims", [])
+            sources = parsed5.get("sources", [])
+
+            packet.total_claims = len(claims)
+            for claim in claims:
+                status = str(claim.get("status", "")).lower()
+                if status == "pass":
+                    packet.pass_claims += 1
+                elif status == "caveat":
+                    packet.caveat_claims += 1
+                elif status == "fail":
+                    packet.fail_claims += 1
+
+            for src in sources:
+                tier = int(src.get("tier", 4))
+                if tier == 1:
+                    packet.tier1_claims += 1
+                elif tier == 2:
+                    packet.tier2_claims += 1
+                elif tier == 3:
+                    packet.tier3_claims += 1
+                else:
+                    packet.tier4_claims += 1
+
+        # ── Methodology compliance from Stage 11 review result ───────────
+        if self._review_result is not None:
+            packet.methodology_tags_present = bool(
+                getattr(self._review_result, "methodology_tags_complete", False)
+            )
+            packet.dates_complete = bool(
+                getattr(self._review_result, "dates_complete", False)
+            )
+
+        # ── Red team coverage from Stage 10 ─────────────────────────────
+        stage10 = self.stage_outputs.get(10, {})
+        if isinstance(stage10, dict):
+            parsed10 = stage10.get("parsed_output") or {}
+            # Accept either a list under "falsification_tests" or a numeric count
+            ft = parsed10.get("falsification_tests", [])
+            if isinstance(ft, list):
+                packet.min_falsification_tests = len(ft)
+            elif isinstance(ft, (int, float)):
+                packet.min_falsification_tests = int(ft)
+
+        # All tickers are covered by a single red-team agent call
+        if self.gate_results.get(10) and self.gate_results[10].passed:
+            packet.tickers_with_red_team = list(universe)
+
+        # ── IC outcome from Stage 12 ─────────────────────────────────────
+        stage12 = self.stage_outputs.get(12, {})
+        if isinstance(stage12, dict):
+            packet.ic_approved = stage12.get("ic_approved")
+            ic_rec = stage12.get("ic_record") or {}
+            raw_votes = ic_rec.get("votes", {})
+            if isinstance(raw_votes, dict):
+                packet.ic_vote_breakdown = {k: str(v) for k, v in raw_votes.items()}
+
+        # ── Mandate & ESG from Stage 12 ──────────────────────────────────
+            mandate = stage12.get("mandate_compliance") or {}
+            packet.mandate_compliant = mandate.get("is_compliant")
+            esg_excl = stage12.get("esg_exclusions") or []
+            if isinstance(esg_excl, list):
+                packet.esg_exclusions = [
+                    e.get("ticker", str(e)) if isinstance(e, dict) else str(e)
+                    for e in esg_excl
+                ]
+
+        # ── Compute quality score ────────────────────────────────────────
+        packet.compute_quality_score()
+
+        return packet
+
+    def _get_sector_outputs(self) -> list:
+        """Return sector agent results from stage_outputs[6].
+
+        Handles both the legacy format (plain list) and the current dict format
+        introduced in session 6: {sector_outputs: [...], esg_output: {...}}.
+        """
+        raw = self.stage_outputs.get(6)
+        if isinstance(raw, dict):
+            return raw.get("sector_outputs", [])
+        if isinstance(raw, list):
+            return raw
+        return []
+
     def _save_stage_output(self, stage: int, data: Any) -> None:
         """Persist stage output to disk."""
         self.stage_outputs[stage] = data
@@ -404,7 +551,31 @@ class PipelineEngine:
         results = await asyncio.gather(*agent_calls)
 
         four_box_count = sum(1 for r in results if r.success)
-        self._save_stage_output(6, [r.model_dump() for r in results])
+
+        # ── ESG analysis — non-critical-path, runs after sector agents ──
+        esg_result_dump: dict | None = None
+        try:
+            esg_result = await self.esg_analyst_agent.run(
+                self.run_record.run_id,
+                {
+                    "tickers": universe,
+                    "sector_outputs": [r.model_dump() for r in results],
+                    "market_data": mkt_data,
+                },
+            )
+            esg_result_dump = esg_result.model_dump()
+            logger.info(
+                "ESG analysis complete — success=%s tickers=%d",
+                esg_result.success,
+                len((esg_result.parsed_output or {}).get("esg_scores", [])),
+            )
+        except Exception as exc:
+            logger.warning("ESG analyst failed (non-blocking): %s", exc)
+
+        self._save_stage_output(6, {
+            "sector_outputs": [r.model_dump() for r in results],
+            "esg_output": esg_result_dump,
+        })
         gate = self.gates.gate_6_sector_analysis(four_box_count, expected_count=expected_count)
         return self._check_gate(gate)
 
@@ -415,7 +586,7 @@ class PipelineEngine:
             self.run_record.run_id,
             {
                 "tickers": universe,
-                "sector_outputs": self.stage_outputs.get(6, []),
+                "sector_outputs": self._get_sector_outputs(),
                 "market_data": self.stage_outputs.get(2, []),
             },
         )
@@ -594,7 +765,7 @@ class PipelineEngine:
             self.run_record.run_id,
             {
                 "tickers": universe,
-                "sector_outputs": self.stage_outputs.get(6, []),
+                "sector_outputs": self._get_sector_outputs(),
                 "valuation_outputs": self.stage_outputs.get(7, {}),
             },
         )
@@ -611,7 +782,7 @@ class PipelineEngine:
         result = await self.reviewer_agent.run(
             self.run_record.run_id,
             {
-                "sector_outputs": self.stage_outputs.get(6, []),
+                "sector_outputs": self._get_sector_outputs(),
                 "evidence_ledger": self.stage_outputs.get(5, {}),
                 "valuation_outputs": self.stage_outputs.get(7, {}),
                 "red_team_outputs": self.stage_outputs.get(10, {}),
@@ -696,7 +867,7 @@ class PipelineEngine:
             self.run_record.run_id,
             {
                 "universe": esg_clean_universe,
-                "sector_outputs": self.stage_outputs.get(6, []),
+                "sector_outputs": self._get_sector_outputs(),
                 "valuation_outputs": self.stage_outputs.get(7, {}),
                 "red_team_outputs": self.stage_outputs.get(10, {}),
                 "risk_outputs": self.stage_outputs.get(9, {}),
@@ -973,7 +1144,7 @@ class PipelineEngine:
                     "risk_package": self.stage_outputs.get(9, {}),
                     "ic_outcome": self.stage_outputs.get(12, {}).get("ic_record", {}),
                     "mandate_result": self.stage_outputs.get(12, {}).get("mandate", {}),
-                    "sector_outputs": self.stage_outputs.get(6, []),
+                    "sector_outputs": self._get_sector_outputs(),
                     "valuations": self.stage_outputs.get(7, {}),
                     "red_team": self.stage_outputs.get(10, {}),
                 }
@@ -984,9 +1155,33 @@ class PipelineEngine:
             except Exception as exc:
                 logger.warning("Report format rendering failed: %s", exc)
 
+        # ── ACT-S6-1: Build and attach SelfAuditPacket ────────────────────
+        audit_packet: Optional[SelfAuditPacket] = None
+        try:
+            audit_packet = self._build_self_audit_packet(universe)
+            if self.run_record:
+                self.run_record.self_audit_packet = audit_packet.model_dump(mode="json")
+                self.registry.update_run(self.run_record)
+            # Persist as a named artifact alongside other stage outputs
+            if self.run_record:
+                audit_dir = self.settings.storage_dir / "artifacts" / self.run_record.run_id
+                audit_dir.mkdir(parents=True, exist_ok=True)
+                (audit_dir / "self_audit_packet.json").write_text(
+                    audit_packet.model_dump_json(indent=2)
+                )
+            logger.info(
+                "SelfAuditPacket built — quality_score=%.1f gates_passed=%d agents_succeeded=%d",
+                audit_packet.publication_quality_score,
+                len(audit_packet.gates_passed),
+                len(audit_packet.agents_succeeded),
+            )
+        except Exception as exc:
+            logger.warning("SelfAuditPacket build failed (non-blocking): %s", exc)
+
         return {
             "status": "completed",
             "run_id": self.run_record.run_id,
             "stages_completed": sorted(self.gate_results.keys()),
             "report_path": self.stage_outputs.get(13, {}).get("report_path"),
+            "audit_packet": audit_packet.model_dump(mode="json") if audit_packet else None,
         }

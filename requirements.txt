@@ -8,6 +8,7 @@ openai>=1.10
 anthropic>=0.25
 google-genai>=1.0
 streamlit>=1.32
+fpdf2>=2.7                  # PDF export in Report tab (ACT-S6-3)
 rich>=13.0
 typer>=0.9
 jinja2>=3.1

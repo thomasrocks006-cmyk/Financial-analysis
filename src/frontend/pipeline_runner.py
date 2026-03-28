@@ -33,6 +33,16 @@ analysis stages, producing deep narrative intelligence per ticker.
 from __future__ import annotations
 
 import asyncio
+import warnings as _warnings
+
+# ACT-S6-4: Runtime deprecation — this file is superseded by pipeline_adapter.py
+_warnings.warn(
+    "frontend.pipeline_runner is deprecated and will be archived in a future release. "
+    "Import from frontend.pipeline_adapter instead: "
+    "'from frontend.pipeline_adapter import STAGES, PipelineRunner, RunResult'",
+    DeprecationWarning,
+    stacklevel=2,
+)
 import json
 import logging
 import os

@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:
+    from research_pipeline.schemas.governance import SelfAuditPacket
 
 
 class RunStatus(str, Enum):
@@ -34,6 +37,7 @@ class RunRecord(BaseModel):
     overrides: list["HumanOverride"] = []
     metadata: dict[str, Any] = {}
     completed_at: Optional[datetime] = None
+    self_audit_packet: Optional[Any] = None  # SelfAuditPacket — set after Stage 14
 
 
 class HumanOverride(BaseModel):

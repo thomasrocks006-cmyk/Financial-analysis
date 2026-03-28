@@ -10,8 +10,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import streamlit as st
@@ -25,9 +26,118 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from frontend.client_profile import ClientProfile, INVESTMENT_THEMES, RISK_PROFILES
-from frontend.pipeline_runner import STAGES, PipelineRunner, RunResult
+from frontend.pipeline_adapter import STAGES, PipelineRunner, RunResult  # ACT-S6-4: use adapter (pipeline_runner deprecated)
 from frontend.cost_estimator import estimate_run_cost, calculate_actual_cost, format_cost
 from frontend.storage import save_run, list_saved_runs, load_run, delete_run, REPORTS_DIR
+
+
+# ── PDF export helper (ACT-S6-3) ──────────────────────────────────────────
+def _generate_report_pdf(run_id: str, tickers: list[str], report_md: str) -> bytes:
+    """Render a simple PDF from the markdown report using fpdf2.
+
+    Strips markdown formatting to plain text, emits sections with bold headings,
+    and includes a cover page. Returns raw PDF bytes suitable for st.download_button.
+    """
+    try:
+        from fpdf import FPDF
+    except ImportError:
+        return b""  # fpdf2 not installed — graceful degradation
+
+    A4_W, A4_H = 210, 297
+    MARGIN = 18
+    CONTENT_W = A4_W - 2 * MARGIN
+
+    pdf = FPDF(orientation="P", unit="mm", format="A4")
+    pdf.compress = False  # disable per-stream compression so content is scannable
+    pdf.set_auto_page_break(auto=True, margin=20)
+    pdf.set_margins(MARGIN, MARGIN, MARGIN)
+
+    # ── Cover page ────────────────────────────────────────────────────────
+    pdf.add_page()
+    pdf.set_xy(MARGIN, 60)
+    pdf.set_font("Helvetica", "B", 22)
+    pdf.multi_cell(CONTENT_W, 10, "AI Infrastructure Research", align="C")
+    pdf.ln(4)
+    pdf.set_font("Helvetica", "", 13)
+    pdf.multi_cell(CONTENT_W, 8, "Institutional-Style Equity Research Report", align="C")
+    pdf.ln(12)
+    pdf.set_font("Courier", "", 9)
+    pdf.multi_cell(CONTENT_W, 6, f"Run ID: {run_id}", align="C")
+    pdf.ln(2)
+    pdf.set_font("Helvetica", "", 10)
+    pdf.multi_cell(CONTENT_W, 6, f"Universe: {', '.join(tickers)}", align="C")
+    pdf.ln(2)
+    pdf.set_font("Helvetica", "", 9)
+    pdf.multi_cell(
+        CONTENT_W, 6,
+        f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
+        align="C",
+    )
+    pdf.ln(16)
+    pdf.set_font("Helvetica", "I", 8)
+    disclaimer = (
+        "This report is produced by an automated AI research pipeline using public-source data only. "
+        "It does not constitute investment advice. Past performance is not indicative of future results."
+    )
+    pdf.multi_cell(CONTENT_W, 5, disclaimer, align="C")
+
+    # ── Report body ───────────────────────────────────────────────────────
+    pdf.add_page()
+
+    _RE_HEADING1 = re.compile(r"^#\s+(.+)$")
+    _RE_HEADING2 = re.compile(r"^##\s+(.+)$")
+    _RE_HEADING3 = re.compile(r"^###\s+(.+)$")
+    _RE_BOLD     = re.compile(r"\*\*(.+?)\*\*")
+    _RE_ITALIC   = re.compile(r"\*(.+?)\*")
+    _RE_CODE     = re.compile(r"`(.+?)`")
+    _RE_HR       = re.compile(r"^---+$")
+
+    def _strip_md(line: str) -> str:
+        line = _RE_BOLD.sub(r"\1", line)
+        line = _RE_ITALIC.sub(r"\1", line)
+        line = _RE_CODE.sub(r"\1", line)
+        return line.strip()
+
+    for raw_line in report_md.splitlines():
+        line = raw_line.rstrip()
+
+        if _RE_HEADING1.match(line):
+            text = _strip_md(_RE_HEADING1.match(line).group(1))
+            pdf.ln(4)
+            pdf.set_font("Helvetica", "B", 14)
+            pdf.multi_cell(CONTENT_W, 8, text)
+            pdf.ln(1)
+        elif _RE_HEADING2.match(line):
+            text = _strip_md(_RE_HEADING2.match(line).group(1))
+            pdf.ln(3)
+            pdf.set_font("Helvetica", "B", 12)
+            pdf.multi_cell(CONTENT_W, 7, text)
+            pdf.ln(1)
+        elif _RE_HEADING3.match(line):
+            text = _strip_md(_RE_HEADING3.match(line).group(1))
+            pdf.ln(2)
+            pdf.set_font("Helvetica", "B", 10)
+            pdf.multi_cell(CONTENT_W, 6, text)
+        elif _RE_HR.match(line):
+            pdf.ln(2)
+            pdf.set_draw_color(200, 200, 200)
+            x = pdf.get_x()
+            y = pdf.get_y()
+            pdf.line(MARGIN, y, A4_W - MARGIN, y)
+            pdf.ln(2)
+        elif line.startswith("- ") or line.startswith("* "):
+            text = _strip_md(line[2:])
+            pdf.set_font("Helvetica", "", 9)
+            pdf.multi_cell(CONTENT_W - 4, 5, f"- {text}", new_x="LMARGIN")
+        elif line == "":
+            pdf.ln(2)
+        else:
+            pdf.set_font("Helvetica", "", 9)
+            text = _strip_md(line)
+            if text:
+                pdf.multi_cell(CONTENT_W, 5, text, new_x="LMARGIN")
+
+    return bytes(pdf.output())
 
 
 # ── .env loader ───────────────────────────────────────────────────────────
@@ -1005,7 +1115,7 @@ with tab_report:
         st.markdown("---")
 
         # Download buttons
-        dc1, dc2, _dc3 = st.columns([2, 2, 5])
+        dc1, dc2, dc3, _dc4 = st.columns([2, 2, 2, 3])
         with dc1:
             st.download_button(
                 "⬇️  Download .md",
@@ -1031,6 +1141,19 @@ with tab_report:
                 mime="application/json",
                 use_container_width=True,
             )
+        with dc3:
+            # ACT-S6-3: PDF export — generate on demand via fpdf2
+            pdf_bytes = _generate_report_pdf(run_id, tickers, report_md)
+            if pdf_bytes:
+                st.download_button(
+                    "📥  Download PDF",
+                    data=pdf_bytes,
+                    file_name=f"Research_{run_id}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                )
+            else:
+                st.caption("PDF unavailable (fpdf2 not installed)")
 
         st.markdown("---")
 
@@ -1243,6 +1366,69 @@ with tab_report:
                                 if isinstance(v, dict) else str(v)
                             )
                             st.caption(f"• {desc}")
+
+                # ── ESG Analytics (ACT-S6-2) ──────────────────────────────
+                stage6_out = _stage_out(6)
+                esg_out = (
+                    stage6_out.get("esg_output") or {}
+                    if isinstance(stage6_out, dict) else {}
+                )
+                esg_parsed = {}
+                if isinstance(esg_out, dict):
+                    esg_parsed = esg_out.get("parsed_output") or {}
+                esg_scores = esg_parsed.get("esg_scores", []) if isinstance(esg_parsed, dict) else []
+                if esg_scores:
+                    st.markdown("---")
+                    st.markdown("#### 🌱 ESG Analytics")
+                    # Summary metrics
+                    composite_scores = [
+                        s.get("esg_score", 0) for s in esg_scores
+                        if isinstance(s, dict) and s.get("esg_score") is not None
+                    ]
+                    exclusions = [
+                        s.get("ticker", "?") for s in esg_scores
+                        if isinstance(s, dict) and s.get("exclusion_trigger")
+                    ]
+                    if composite_scores:
+                        em1, em2, em3 = st.columns(3)
+                        em1.metric("Portfolio ESG Avg", f"{sum(composite_scores)/len(composite_scores):.0f} / 100")
+                        em2.metric("Tickers Scored", str(len(esg_scores)))
+                        em3.metric(
+                            "Exclusion Triggers",
+                            str(len(exclusions)),
+                            delta=f"{', '.join(exclusions)}" if exclusions else None,
+                            delta_color="inverse",
+                        )
+                    if exclusions:
+                        st.warning(f"⚡ Exclusion triggered for: {', '.join(exclusions)}")
+
+                    # Per-ticker table
+                    esg_rows = []
+                    for s in esg_scores:
+                        if not isinstance(s, dict):
+                            continue
+                        ticker = s.get("ticker", "?")
+                        flags = s.get("controversy_flags", [])
+                        flag_str = "; ".join(flags[:2]) if flags else "—"
+                        esg_rows.append({
+                            "Ticker": ticker,
+                            "ESG": s.get("esg_score", "—"),
+                            "E": s.get("e_score", "—"),
+                            "S": s.get("s_score", "—"),
+                            "G": s.get("g_score", "—"),
+                            "Exclusion": "❌ YES" if s.get("exclusion_trigger") else "✅ No",
+                            "Top Controversy": flag_str,
+                        })
+                    if esg_rows:
+                        st.table(esg_rows)
+
+                    # Methodology note from first entry
+                    first_note = next(
+                        (s.get("methodology_note") for s in esg_scores if isinstance(s, dict) and s.get("methodology_note")),
+                        None,
+                    )
+                    if first_note:
+                        st.caption(f"📝 {first_note}")
 
                 # ── Fixed-Income Context (P-7) ───────────────────────────
                 fi_ctx = risk_out.get("fixed_income_context", {})
