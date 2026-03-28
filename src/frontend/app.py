@@ -1185,7 +1185,8 @@ with tab_report:
                     cols_t[i % 2].markdown(line)
 
                 # ACT-S7-3: per-stage ms from SelfAuditPacket
-                _ap = (st.session_state.get("result") or {}).get("audit_packet") or {}
+                _rr = st.session_state.get("run_result")
+                _ap = (getattr(_rr, "audit_packet", None) or {}) if _rr else {}
                 _lat = _ap.get("stage_latencies_ms", {})
                 _dur = _ap.get("total_pipeline_duration_s", 0)
                 if _lat:

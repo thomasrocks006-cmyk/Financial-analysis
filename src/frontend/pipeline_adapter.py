@@ -96,6 +96,7 @@ class RunResult:
     success: bool = False
     publication_status: str = "PASS"
     token_log: list[dict] = field(default_factory=list)
+    audit_packet: dict = field(default_factory=dict)
 
 
 ProgressCallback = Callable[[int, str, str, dict], None]
@@ -267,6 +268,7 @@ class PipelineEngineAdapter:
             success=succeeded,
             publication_status=pub_status,
             token_log=token_log,
+            audit_packet=audit_packet_dict,
         )
 
 

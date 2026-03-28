@@ -51,6 +51,12 @@ class BaseAgent(ABC):
     # ACT-S10-3: subclasses may declare keys that must be present in parsed output
     _REQUIRED_OUTPUT_KEYS: list[str] = []
 
+    # ISS-9: subclasses that are critical to pipeline integrity should set this to True.
+    # When True, missing _REQUIRED_OUTPUT_KEYS raise StructuredOutputError instead of
+    # just logging a warning — forcing the retry loop and eventual stage failure
+    # rather than propagating empty/incomplete output silently.
+    _VALIDATION_FATAL: bool = False
+
     def __init__(
         self,
         name: str,
@@ -259,36 +265,61 @@ class BaseAgent(ABC):
     ) -> str:
         """Call Google Gemini API (Phase 7.4 fallback provider).
 
-        Uses google-generativeai if installed; falls back to a REST call otherwise.
+        ISS-10: handles both the old SDK (google-generativeai → google.generativeai)
+        and the new SDK (google-genai → google.genai). If neither is installed,
+        falls back to a minimal REST call.
         """
         model = model_override or self.model
-        try:
-            import google.generativeai as genai  # type: ignore[import]
-        except ImportError:
-            # Fallback: raw REST with httpx / requests
-            logger.warning("google-generativeai not installed — using REST fallback")
-            return await self._call_gemini_rest(messages, api_key, model)
-
-        genai.configure(api_key=api_key)
-        g_model = genai.GenerativeModel(model)
-
-        # Flatten messages to text prompt (Gemini basic API)
         text_parts = "\n".join(
             f"[{m['role'].upper()}]\n{m['content']}" for m in messages
         )
 
-        for attempt in range(1, self.max_retries + 1):
-            try:
-                response = await g_model.generate_content_async(text_parts)
-                return response.text
-            except Exception as exc:
-                logger.warning(
-                    "%s: Gemini attempt %d failed: %s", self.name, attempt, exc
-                )
-                if attempt == self.max_retries:
-                    raise
+        # Strategy 1: old SDK (google-generativeai package)
+        try:
+            import google.generativeai as genai  # type: ignore[import]
+            genai.configure(api_key=api_key)
+            g_model = genai.GenerativeModel(model)
+            for attempt in range(1, self.max_retries + 1):
+                try:
+                    response = await g_model.generate_content_async(text_parts)
+                    return response.text
+                except Exception as exc:
+                    logger.warning("%s: Gemini (old SDK) attempt %d failed: %s", self.name, attempt, exc)
+                    if attempt == self.max_retries:
+                        raise
+            return ""
+        except ImportError:
+            pass  # old SDK not installed, try new SDK
+        except Exception as exc:
+            logger.warning("%s: Gemini old SDK failed: %s — trying new SDK", self.name, exc)
 
-        return ""
+        # Strategy 2: new SDK (google-genai package → google.genai)
+        try:
+            import google.genai as genai_new  # type: ignore[import]
+            import asyncio
+            client = genai_new.Client(api_key=api_key)
+
+            def _sync_call() -> str:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=text_parts,
+                )
+                return response.text
+
+            for attempt in range(1, self.max_retries + 1):
+                try:
+                    return await asyncio.get_event_loop().run_in_executor(None, _sync_call)
+                except Exception as exc:
+                    logger.warning("%s: Gemini (new SDK) attempt %d failed: %s", self.name, attempt, exc)
+                    if attempt == self.max_retries:
+                        raise
+            return ""
+        except ImportError:
+            pass  # new SDK not installed either
+
+        # Strategy 3: REST fallback (no SDK required)
+        logger.warning("%s: no Gemini SDK installed — using REST fallback", self.name)
+        return await self._call_gemini_rest(messages, api_key, model)
 
     async def _call_gemini_rest(
         self,
@@ -384,21 +415,32 @@ class BaseAgent(ABC):
         """Format structured inputs into the user message. Override as needed."""
         return json.dumps(inputs, indent=2, default=str)
 
-    def _validate_output_quality(self, result: dict) -> list[str]:  # ACT-S10-3
-        """Warn (non-fatal) if any *_REQUIRED_OUTPUT_KEYS* are missing or empty.
+    def _validate_output_quality(self, result: dict) -> list[str]:  # ACT-S10-3 / ISS-9
+        """Check _REQUIRED_OUTPUT_KEYS against parsed output.
+
+        If _VALIDATION_FATAL is True (critical agents), missing keys raise
+        StructuredOutputError — forcing retry/stage-failure rather than
+        propagating empty output downstream.
+
+        If _VALIDATION_FATAL is False (default), only logs a warning.
 
         Returns a list of warning strings; an empty list means all keys are
-        present and non-empty.  Never raises.
+        present and non-empty.
         """
         warnings_list: list[str] = []
         for key in self._REQUIRED_OUTPUT_KEYS:
             val = result.get(key)
             if val is None or val == "" or val == [] or val == {}:
-                msg = (
-                    f"Agent '{self.name}' output missing/empty required key: '{key}'"
-                )
+                msg = f"Agent '{self.name}' output missing/empty required key: '{key}'"
                 warnings_list.append(msg)
-                logger.warning(msg)
+                if self._VALIDATION_FATAL:
+                    logger.error(
+                        "%s missing critical key '%s' — raising (VALIDATION_FATAL=True)",
+                        self.name, key,
+                    )
+                    raise StructuredOutputError(msg)
+                else:
+                    logger.warning(msg)
         return warnings_list
 
     def parse_output(self, raw_response: str) -> dict[str, Any]:

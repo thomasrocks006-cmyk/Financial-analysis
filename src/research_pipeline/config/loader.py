@@ -8,6 +8,14 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, Field
 
+# ── Sector routing: maps analyst role → list of covered tickers ──────────────
+# ARC-5: externalised from engine.py hardcoded sets — edit here, engine picks up.
+# Tickers not in any list are handled by GenericSectorAnalystAgent as a fallback.
+SECTOR_ROUTING: dict[str, list[str]] = {
+    "compute":         ["NVDA", "AVGO", "TSM", "AMD", "ANET"],
+    "power_energy":    ["CEG", "VST", "GEV", "NLR"],
+    "infrastructure":  ["PWR", "ETN", "HUBB", "APH", "FIX", "FCX", "BHP", "NXT"],
+}
 
 # ── Threshold sub-models ────────────────────────────────────────────────────
 class ReconciliationThresholds(BaseModel):
@@ -52,6 +60,8 @@ class PipelineConfig(BaseModel):
     project_name: str = "ai_infrastructure_research_platform"
     thresholds: Thresholds = Thresholds()
     stages: dict[int, StageConfig] = {}
+    # ARC-5: sector routing — override defaults by providing a config file entry
+    sector_routing: dict[str, list[str]] = Field(default_factory=lambda: dict(SECTOR_ROUTING))
     portfolio_variants: list[str] = Field(
         default=["balanced", "higher_return", "lower_volatility"]
     )

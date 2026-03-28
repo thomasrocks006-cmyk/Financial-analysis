@@ -242,8 +242,9 @@ class TestAgentQualityGate:
 
     def test_valuation_analyst_has_required_keys(self):
         from research_pipeline.agents.valuation_analyst import ValuationAnalystAgent
-        assert "dcf_valuation" in ValuationAnalystAgent._REQUIRED_OUTPUT_KEYS
-        assert "methodology" in ValuationAnalystAgent._REQUIRED_OUTPUT_KEYS
+        # ISS-9 (Session 11): Keys updated to match actual top-level output structure
+        assert "valuations" in ValuationAnalystAgent._REQUIRED_OUTPUT_KEYS
+        assert len(ValuationAnalystAgent._REQUIRED_OUTPUT_KEYS) >= 1
 
     def test_esg_analyst_has_required_keys(self):
         from research_pipeline.agents.esg_analyst import EsgAnalystAgent
