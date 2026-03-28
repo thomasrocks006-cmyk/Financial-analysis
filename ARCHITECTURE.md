@@ -852,10 +852,10 @@ These are concrete defects in the current code — not design gaps but bugs or u
 
 ### 12.6 Session 5 Candidate Actions
 
-1. Fix `engine.py` placeholder gate logic (`stage_gate_met()` always returns True) — blocks real conditional routing
-2. Fix `base_agent.py` silent JSON fallback — strip markdown fences and re-parse before logging as failure
+1. ~~Fix `engine.py` placeholder gate logic (`stage_gate_met()` always returns True)~~ — **DONE** (gates 9/12/13 now use real computed values; IC rejection blocks gate 12; `all_sections_approved` uses review verdict; concentration_breaches surfaced in gate 9)
+2. ~~Fix `base_agent.py` silent JSON fallback~~ — **DONE** (three-strategy parse_output: regex fence extraction, direct `json.loads`, `JSONDecoder.raw_decode` to skip preamble; `re` imported; logs warning on preamble strip)
 3. Implement `SelfAuditPacket` schema — capture agent latency, token counts, confidence flags per stage
-4. Add `asyncio.gather` to market data ingestion — parallel ticker fetch, cut Stage 2 latency ≥50%
+4. ~~Add `asyncio.gather` to market data ingestion~~ — **ALREADY DONE** (`ingest_universe` uses semaphore + `asyncio.gather`; qualitative ingestor same)
 5. ESG/Governance analyst agent — dedicated LLM ESG scorer (currently 0/10 coverage)
 6. Performance Attribution (BHB) with real historical data — requires time-series price store
 7. Add Redis-backed run cache — avoid re-fetching market data for same ticker set within 1 h
@@ -863,7 +863,7 @@ These are concrete defects in the current code — not design gaps but bugs or u
 
 ---
 
-*Document updated: session 4 — P-4 (Quant Analytics Streamlit panel), P-7 (FixedIncomeAnalystAgent wired into Stage 9), P-8 (GitHub Actions weekly live-data CI workflow). Items 6–9 of Next 10 Actions confirmed done. Test count: 427 passing.*  
+*Document updated: session 5 — ACT-S5-1 (gate 9/12/13 hardening), ACT-S5-2 (base_agent parse_output 3-strategy). Items 1, 2, 4 of §12.6 confirmed done. Test count: 453 passing.*  
 *Document updated: March 28, 2026 — Extended gap analysis and JPAM roadmap goal logged.*  
 *Scores refreshed post-Phase-7 debt-clearing session: governance hardened (A-3/A-4), qualitative pipeline built (D-1), QuantResearchAnalystAgent wired (D-4), E2E smoke tests added (P-2), pipeline_adapter created (A-1), storage unified (A-2). Test count: 378 passing.*  
 *See ROADMAP.md for the complete 7-phase build plan.*

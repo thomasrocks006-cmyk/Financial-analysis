@@ -2,7 +2,7 @@
 
 > **Last updated:** March 28, 2026  
 > **Test suite:** 453 / 453 passing  
-> **Commit:** `c8a7d11` → session 5 in progress
+> **Commit:** `2c08376` — session 5 complete
 
 ---
 
