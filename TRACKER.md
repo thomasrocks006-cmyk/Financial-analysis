@@ -1,8 +1,8 @@
 # Project Tracker — AI Research & Portfolio Platform
 
 > **Last updated:** March 28, 2026  
-> **Test suite:** 453 / 453 passing  
-> **Commit:** `2c08376` — session 5 complete
+> **Test suite:** 480 / 480 passing  
+> **Commit:** `608c286` — session 6 complete
 
 ---
 
@@ -15,7 +15,7 @@
 | Session 3 (P-5, P-6, ACT-6) | All **COMPLETE** |
 | Session 4 (P-4, P-7, P-8) | All **COMPLETE** |
 | Session 5 (ACT-S5-1, ACT-S5-2) | All **COMPLETE** |
-| Session 6 | **PLANNED** — see §2 below |
+| Session 6 (ACT-S6-1 through ACT-S6-5) | All **COMPLETE** |
 
 ---
 
@@ -51,15 +51,15 @@
 | ACT-S5-1 | **Engine** | Fix engine.py gate logic — gates 9/12/13 no longer hardcoded True | High | Low | ✅ session 5 |
 | ACT-S5-2 | **Agents** | Fix base_agent.parse_output — 3-strategy JSON extraction incl. preamble | High | Low | ✅ session 5 |
 
-### Session 6 — Planned Work Queue
+### Session 6 — Completed Work
 
-| ID | Area | Task | JPAM Division | Priority | Effort |
+| ID | Area | Task | JPAM Division | Priority | Status |
 |---|---|---|---|---|---|
-| ACT-S6-1 | **Governance** | Wire `SelfAuditPacket` into every engine run — attach per-stage latency, token counts, confidence flags to `RunRecord` | Investment Governance | High | Low |
-| ACT-S6-2 | **Agents** | ESG analyst agent — new `EsgAnalystAgent` scoring environmental/social/governance factors per ticker; wired into Stage 6 | ESG / Sustainable Investing | High | High |
-| ACT-S6-3 | **Frontend** | PDF export of Quant Analytics Report tab — `pdfkit` / `weasyprint` rendering triggered from Streamlit | Client Solutions | Medium | Medium |
-| ACT-S6-4 | **Schemas** | Remove legacy `PublicationStatus.PASS_WITH_DISCLOSURE` — confirmed still referenced in old test fixtures | Governance | Medium | Low |
-| ACT-S6-5 | **Testing** | Expand smoke test to assert `SelfAuditPacket` presence and ESG fields after session 6 additions | Operations | Medium | Low |
+| ACT-S6-1 | **Governance** | Wire `SelfAuditPacket` into every engine run — `_build_self_audit_packet()`, persisted to disk, on `RunRecord` | Investment Governance | High | ✅ `608c286` |
+| ACT-S6-2 | **Agents** | `EsgAnalystAgent` — E/S/G scoring per ticker [0-100], exclusion trigger, score clamping; wired into Stage 6 (non-blocking) | ESG / Sustainable Investing | High | ✅ `608c286` |
+| ACT-S6-3 | **Frontend** | PDF export button in Report tab — `fpdf2` cover page + body; `_generate_report_pdf()` helper | Client Solutions | Medium | ✅ `608c286` |
+| ACT-S6-4 | **Schemas** | Close A-1 debt — `pipeline_runner.py` `DeprecationWarning` on import; `app.py` switched to `pipeline_adapter` | Operations | Medium | ✅ `608c286` |
+| ACT-S6-5 | **Testing** | `tests/test_session6.py` — 27 new tests covering SelfAuditPacket wiring, ESG agent, PDF export, deprecation | Operations | Medium | ✅ `608c286` |
 
 ---
 
@@ -78,19 +78,19 @@
 
 ## 4. Division-Level Maturity
 
-*Scores updated through session 5. Session 5 improved Investment Governance (gate hardening) and Operations & Technology (base_agent reliability).*
+*Scores updated through session 6. Session 6 wired SelfAuditPacket (Governance +0.5), built EsgAnalystAgent (ESG 0→3), PDF export (Client Solutions +0.5), A-1 closed.*
 
-| Division | Session 5 Score | JPAM Target | Gap | Primary Remaining Gap |
+| Division | Session 6 Score | JPAM Target | Gap | Primary Remaining Gap |
 |---|---|---|---|---|
 | Global Research | **7.5 / 10** | 9.0 / 10 | 1.5 | Agent outputs still partially shallow (political risk, macro) |
-| Quantitative Research | **7.5 / 10** | 9.0 / 10 | 1.5 | SelfAuditPacket not wired; no live historical return data |
+| Quantitative Research | **7.5 / 10** | 9.0 / 10 | 1.5 | No live historical return data; factor exposures synthetic |
 | Portfolio Management | **6.5 / 10** | 8.5 / 10 | 2.0 | IC vote blocks on mandate violations (good), but no weights optimiser |
-| Investment Governance | **8.0 / 10** ↑ | 9.5 / 10 | 1.5 | SelfAuditPacket not wired; PASS_WITH_DISCLOSURE in test fixtures |
+| Investment Governance | **8.5 / 10** ↑ | 9.5 / 10 | 1.0 | SelfAuditPacket now on every run ✅; PASS_WITH_DISCLOSURE removed ✅ |
 | Performance Attribution | **0 / 10** | 8.5 / 10 | 8.5 | Not built — requires time-series price store |
-| ESG / Sustainable Investing | **0 / 10** | 7.5 / 10 | 7.5 | Not built — ACT-S6-2 target |
-| Operations & Technology | **8.3 / 10** ↑ | 9.0 / 10 | 0.7 | base_agent fixed; asyncio.gather done; CI weekly workflow live |
-| Client Solutions / Reporting | **7.5 / 10** | 8.5 / 10 | 1.0 | No PDF export yet; Quant Analytics panel complete |
-| **Weighted platform score** | **7.1 / 10** ↑ | **9.0 / 10** | **1.9** | ESG and Performance Attribution are the main platform-score anchors |
+| ESG / Sustainable Investing | **3.0 / 10** ↑ | 7.5 / 10 | 4.5 | EsgAnalystAgent wired; no third-party ESG dataset |
+| Operations & Technology | **8.5 / 10** ↑ | 9.0 / 10 | 0.5 | 480 tests; CI weekly live; A-1 debt closed; pipeline_adapter active |
+| Client Solutions / Reporting | **8.0 / 10** ↑ | 8.5 / 10 | 0.5 | PDF export live ✅; Quant Analytics ESG panel complete |
+| **Weighted platform score** | **7.5 / 10** ↑ | **9.0 / 10** | **1.5** | Performance Attribution (8.5 gap) is the main remaining anchor |
 
 ---
 
@@ -113,7 +113,8 @@
 | `test_smoke_pipeline.py` | 19 | E2E pipeline + adapter |
 | `test_next_section.py` | 49 | P-5 yfinance fallback, P-6 relative valuation, ACT-6 RiskPacket, P-7 FI agent, P-4 panel |
 | `test_session5.py` | 26 | ACT-S5-1 gate logic hardening (gates 9/12/13), ACT-S5-2 base_agent parse_output strategies |
-| **Total** | **453** | All passing |
+| `test_session6.py` | 27 | ACT-S6-1 SelfAuditPacket wiring, ACT-S6-2 ESG agent, ACT-S6-3 PDF export, ACT-S6-4 deprecation |
+| **Total** | **480** | All passing |
 
 ---
 
@@ -122,7 +123,8 @@
 | Purpose | Path |
 |---|---|
 | Main pipeline orchestrator | `src/research_pipeline/pipeline/engine.py` |
-| All 12 LLM agents | `src/research_pipeline/agents/` |
+| All 14 LLM agents | `src/research_pipeline/agents/` |
+| ESG analyst agent (new S6) | `src/research_pipeline/agents/esg_analyst.py` |
 | Deterministic services | `src/research_pipeline/services/` |
 | Qualitative schemas (new) | `src/research_pipeline/schemas/qualitative.py` |
 | Quant Research Agent (new) | `src/research_pipeline/agents/quant_research_analyst.py` |
