@@ -16,6 +16,12 @@ from research_pipeline.agents.base_agent import BaseAgent, StructuredOutputError
 class EsgAnalystAgent(BaseAgent):
     """Score every ticker on Environmental, Social and Governance dimensions.
 
+    # ACT-S10-3: quality gate — check esg_scores list is present"""
+
+    _REQUIRED_OUTPUT_KEYS: list[str] = ["esg_scores"]  # ACT-S10-3
+
+    """Score every ticker on Environmental, Social and Governance dimensions.  # noqa: E401
+
     Mandatory JSON output per ticker:
 
     {

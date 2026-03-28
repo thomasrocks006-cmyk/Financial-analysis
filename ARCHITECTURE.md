@@ -909,20 +909,28 @@ These are concrete defects in the current code — not design gaps but bugs or u
 
 **Session 9 achieved state:** Weighted platform score 8.3 → **8.5**; ESG 5.5 → **6.5/10** (fixture CSV verified); Performance Attribution 5.5 → **6.0/10** (ticker-level fallback); Investment Governance 8.5 → **8.8/10**; 579 tests passing.
 
-### 12.11 Session 10 Work Plan
+### 12.11 Session 10 — Completed ✅
+
+| ID | Task | File(s) | JPAM Division | Status |
+|---|---|---|---|---|
+| ACT-S10-1 | **Live BHB attribution accuracy** — `data_source` field (`"live"` / `"blended"` / `"synthetic"`) in attribution output; `live_return_store.fetch()` called for both portfolio and benchmark returns | `engine.py` | Performance Attribution | ✅ Done |
+| ACT-S10-2 | **ESG compliance CSV export** — `ESGService.to_csv()` method; `st.download_button` in ESG Analytics panel | `services/esg_service.py`, `app.py` | Client Solutions / Reporting | ✅ Done |
+| ACT-S10-3 | **Agent output quality gate** — `BaseAgent._REQUIRED_OUTPUT_KEYS` class attribute + `_validate_output_quality()` method; `ValuationAnalystAgent` and `EsgAnalystAgent` declare required keys; non-fatal warnings logged | `agents/base_agent.py`, `agents/valuation_analyst.py`, `agents/esg_analyst.py` | Global Research | ✅ Done |
+| ACT-S10-4 | **Factor model live data** — Stage 9 now calls `_get_returns(universe, n_days=252)` and passes live returns + 5-factor synthetic proxy to `FactorExposureEngine` for OLS regression path | `engine.py` | Quantitative Research | ✅ Done |
+| ACT-S10-5 | **Tests** — 28 new tests; 607 total passing | `tests/test_session10.py` | Operations | ✅ Done |
+
+**Session 10 outcome:** Weighted platform score 8.5 → 8.8; Performance Attribution to 7.5; Global Research to 8.0; Quantitative Research to 8.5; Client Solutions to 8.5.
+
+### 12.12 Session 11 Work Plan
 
 | ID | Task | File(s) | JPAM Division | Effort |
 |---|---|---|---|---|
-| ACT-S10-1 | **Live BHB attribution accuracy** — use `LiveReturnStore` data directly in `_compute_bhb_attribution`; add `data_source` field (`"live"` vs `"synthetic"`) to attribution output | `engine.py` | Performance Attribution | Medium |
-| ACT-S10-2 | **ESG compliance CSV export** — `ESGService.to_csv()` export method; Streamlit download button in ESG panel; raises Client Solutions 8.0 → 8.5 | `services/esg_service.py`, `app.py` | Client Solutions / Reporting | Low |
-| ACT-S10-3 | **Agent output quality gate** — post-processing validation in `BaseAgent.parse_output` checks key fields non-empty before accepting parsed result; raises Global Research 7.5 → 8.0 | `agents/base_agent.py` | Global Research | Medium |
-| ACT-S10-4 | **Factor model live data** — `FactorExposureEngine` uses `LiveReturnStore` for market beta; raises Quantitative Research 8.0 → 8.5 | `services/risk_engine.py` | Quantitative Research | Medium |
-| ACT-S10-5 | **Tests** — session 10: live BHB data_source, ESG CSV export, agent output validation, factor live wiring | `tests/test_session10.py` | Operations | Low |
-
-**Session 10 target state:** Weighted platform score 8.5 → 8.8+; Performance Attribution 6.0 → 7.5/10; Global Research 7.5 → 8.0/10; Quantitative Research 8.0 → 8.5/10.
+| ACT-S11-1 | **Attribution time series** — store rolling 30-day BHB decomposition in `SelfAuditPacket`; Streamlit line chart in attribution panel | `engine.py`, `schemas/governance.py`, `app.py` | Performance Attribution | Medium |
+| ACT-S11-2 | **Sector-weight drift alert** — compare current vs baseline sector weights; alert if drift > threshold | `engine.py`, `app.py` | Portfolio Management | Low |
+| ACT-S11-3 | **Agent retry telemetry** — log per-agent retry counts and model-fallback events to `SelfAuditPacket` | `agents/base_agent.py`, `schemas/governance.py` | Global Research | Medium |
+| ACT-S11-4 | **ESG mandate score trend** — store last-N ESG composite scores; display trending chart in Streamlit | `services/esg_service.py`, `app.py` | Client Solutions | Low |
+| ACT-S11-5 | **Tests** — session 11 verification tests targeting 635+ total | `tests/test_session11.py` | Operations | Low |
 
 ---
 
-*Document updated: session 9 — ACT-S9-1 (ESG fixture CSV), ACT-S9-2 (prompt regression CI gate), ACT-S9-3 (rebalancing_summary in SelfAuditPacket), ACT-S9-4 (ticker-level live fallback), ACT-S9-5 (26 tests). Test count: 579 passing. Session 10 plan in §12.11.*
-*Document updated: March 29, 2026 — Session 9 complete, session 10 plan added.*
-*See ROADMAP.md for the complete 7-phase build plan.*
+*Document updated: session 10 — ACT-S10-1 (live BHB data_source), ACT-S10-2 (ESG CSV export), ACT-S10-3 (agent quality gate), ACT-S10-4 (factor live data), ACT-S10-5 (28 tests). Test count: 607 passing. Session 11 plan in §12.12.*

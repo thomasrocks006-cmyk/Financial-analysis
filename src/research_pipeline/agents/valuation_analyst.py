@@ -15,6 +15,9 @@ class ValuationAnalystAgent(BaseAgent):
     Cannot present single-point fair value without ranges.
     """
 
+    # ACT-S10-3: keys that must be present (non-empty) in every parsed output
+    _REQUIRED_OUTPUT_KEYS: list[str] = ["dcf_valuation", "methodology"]
+
     def __init__(self, **kwargs):
         super().__init__(name="valuation_analyst", **kwargs)
 

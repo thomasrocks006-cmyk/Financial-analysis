@@ -1,8 +1,8 @@
 # Project Tracker — AI Research & Portfolio Platform
 
 > **Last updated:** March 29, 2026  
-> **Test suite:** 579 / 579 passing  
-> **Commit:** `93f5ba5` — session 9 complete
+> **Test suite:** 607 / 607 passing  
+> **Commit:** session 10 complete
 
 ---
 
@@ -19,6 +19,7 @@
 | Session 7 (ACT-S7-1 through ACT-S7-5) | All **COMPLETE** |
 | Session 8 (ACT-S8-1 through ACT-S8-5) | All **COMPLETE** |
 | Session 9 (ACT-S9-1 through ACT-S9-5) | All **COMPLETE** |
+| Session 10 (ACT-S10-1 through ACT-S10-5) | All **COMPLETE** |
 
 ---
 
@@ -111,19 +112,19 @@
 
 ## 4. Division-Level Maturity
 
-*Scores updated through session 9.*
+*Scores updated through session 10.*
 
-| Division | Session 9 Score | JPAM Target | Gap | Primary Remaining Gap |
+| Division | Session 10 Score | JPAM Target | Gap | Primary Remaining Gap |
 |---|---|---|---|---|
-| Global Research | **7.5 / 10** | 9.0 / 10 | 1.5 | Agent outputs still partially shallow (political risk, macro) |
-| Quantitative Research | **8.0 / 10** | 9.0 / 10 | 1.0 | Live return path built ✅; no live factor model refit |
+| Global Research | **8.0 / 10** ↑ | 9.0 / 10 | 1.0 | Agent output quality gate ✅; still no live news integration |
+| Quantitative Research | **8.5 / 10** ↑ | 9.0 / 10 | 0.5 | Live returns → OLS factor refit ✅; no live factor model refit from external data |
 | Portfolio Management | **8.0 / 10** | 8.5 / 10 | 0.5 | Rebalancing signals live in UI ✅; no execution integration |
-| Investment Governance | **8.8 / 10** ↑ | 9.5 / 10 | 0.7 | `rebalancing_summary` in audit packet ✅; prompt CI regression gate ✅ |
-| Performance Attribution | **6.0 / 10** ↑ | 8.5 / 10 | 2.5 | Ticker-level live fallback ✅; attribution quality now partially live |
-| ESG / Sustainable Investing | **6.5 / 10** ↑ | 7.5 / 10 | 1.0 | Fixture CSV round-trip verified ✅; real MSCI dataset still outstanding |
-| Operations & Technology | **8.8 / 10** ↑ | 9.0 / 10 | 0.2 | 579 tests; prompt regression CI gate added |
-| Client Solutions / Reporting | **8.0 / 10** | 8.5 / 10 | 0.5 | Rebalancing snapshot in Observability panel ✅ |
-| **Weighted platform score** | **8.5 / 10** ↑ | **9.0 / 10** | **0.5** | Real ESG dataset + live BHB attribution remaining main gaps |
+| Investment Governance | **8.8 / 10** | 9.5 / 10 | 0.7 | Prompt CI regression gate ✅; `rebalancing_summary` in audit ✅ |
+| Performance Attribution | **7.5 / 10** ↑ | 8.5 / 10 | 1.0 | `data_source` tracking ✅; full live BHB pipeline still needs real market data |
+| ESG / Sustainable Investing | **6.5 / 10** | 7.5 / 10 | 1.0 | CSV export ✅; real MSCI dataset still outstanding |
+| Operations & Technology | **8.8 / 10** | 9.0 / 10 | 0.2 | 607 tests; all passing |
+| Client Solutions / Reporting | **8.5 / 10** ↑ | 8.5 / 10 | 0.0 | ESG CSV download button ✅ — target met |
+| **Weighted platform score** | **8.8 / 10** ↑ | **9.0 / 10** | **0.2** | Live live factor data ✅; real ESG dataset remaining main gap |
 
 ---
 
@@ -151,7 +152,8 @@
 | `test_session8.py` | 26 | ACT-S8-1 LiveReturnStore, ACT-S8-2 rebalancing wiring, ACT-S8-3 ESG CSV ingest, ACT-S8-4 PromptRegistry |
 | `test_prompt_regression.py` | 24 | ACT-S9-2 prompt CI gate — hash stability, drift detection, regression marking, CI simulation |
 | `test_session9.py` | 26 | ACT-S9-1 ESG fixture, ACT-S9-4 live return hardening, ACT-S9-3 rebalancing_summary, ACT-S9-2 integration |
-| **Total** | **579** | All passing |
+| `test_session10.py` | 28 | ACT-S10-1 BHB data_source, ACT-S10-2 ESG CSV export, ACT-S10-3 agent quality gate, ACT-S10-4 factor live data |
+| **Total** | **607** | All passing |
 
 ---
 

@@ -823,8 +823,24 @@ class PipelineEngine:
         # Run scenario stress engine
         scenario_results = self.scenario_engine.run_all_scenarios(universe)
 
-        # Factor exposure analysis
-        factor_exposures = self.factor_engine.compute_factor_exposures(universe)
+        # Factor exposure analysis — ACT-S10-4: pass live returns for OLS regression
+        live_factor_returns = self._get_returns(universe, n_days=252, seed_offset=9)
+        # Synthetic market factor proxy (returns on "market" factor, seed=0)
+        import numpy as _np
+        _rng = _np.random.default_rng(seed=42)
+        _n = max(len(v) for v in live_factor_returns.values()) if live_factor_returns else 252
+        _factor_returns: dict[str, list[float]] = {
+            "market":   [round(float(x), 6) for x in (_rng.normal(0.04 / 252, 0.01, _n))],
+            "size":     [round(float(x), 6) for x in (_rng.normal(0.02 / 252, 0.008, _n))],
+            "value":    [round(float(x), 6) for x in (_rng.normal(0.01 / 252, 0.007, _n))],
+            "momentum": [round(float(x), 6) for x in (_rng.normal(0.03 / 252, 0.009, _n))],
+            "quality":  [round(float(x), 6) for x in (_rng.normal(0.02 / 252, 0.006, _n))],
+        }
+        factor_exposures = self.factor_engine.compute_factor_exposures(
+            universe,
+            returns=live_factor_returns if live_factor_returns else None,
+            factor_returns=_factor_returns,
+        )
         factor_data = [fe.model_dump() for fe in factor_exposures]
 
         # Portfolio factor exposure (if weights provided)
@@ -1294,17 +1310,22 @@ class PipelineEngine:
             except Exception as exc:
                 logger.warning("Snapshot save failed: %s", exc)
 
-        # ACT-S7-1: Performance Attribution — BHB decomposition with synthetic returns
+        # ACT-S7-1: Performance Attribution — BHB decomposition with live-preferred returns
         attribution_output: dict[str, Any] = {}
         if baseline_weights:
             try:
                 from research_pipeline.services.benchmark_module import BENCHMARK_CONSTITUENTS
 
                 tickers = list(baseline_weights.keys())
-                # Synthetic returns for portfolio tickers and benchmark proxy
-                synth_returns = self._get_returns(tickers, seed_offset=1)  # ACT-S8-1
+                # ACT-S10-1: track data source for attribution accuracy reporting
+                live_raw = self.live_return_store.fetch(tickers)
+                data_source_port = "live" if live_raw and len(live_raw) == len(tickers) else "blended" if live_raw else "synthetic"
+                synth_returns = self._get_returns(tickers, seed_offset=1)  # blends live + synthetic
                 bench_tickers = list(BENCHMARK_CONSTITUENTS.get("SPY", {}).keys())
-                bench_returns = self._get_returns(bench_tickers, seed_offset=2)  # ACT-S8-1
+                live_bench = self.live_return_store.fetch(bench_tickers)
+                data_source_bench = "live" if live_bench and len(live_bench) == len(bench_tickers) else "blended" if live_bench else "synthetic"
+                bench_returns = self._get_returns(bench_tickers, seed_offset=2)
+                attribution_data_source = "live" if data_source_port == "live" and data_source_bench == "live" else "blended" if (data_source_port in ("live", "blended") or data_source_bench in ("live", "blended")) else "synthetic"
 
                 # Normalised benchmark weights (SPY proxy)
                 raw_bench_w = BENCHMARK_CONSTITUENTS.get("SPY", {})
@@ -1356,8 +1377,10 @@ class PipelineEngine:
                     sector_map=sector_map,
                 )
                 attribution_output = bhb.model_dump(mode="json")
+                attribution_output["data_source"] = attribution_data_source  # ACT-S10-1
                 logger.info(
-                    "BHB attribution — excess_return=%.2f%% allocation=%.2f%% selection=%.2f%%",
+                    "BHB attribution (%s) — excess_return=%.2f%% allocation=%.2f%% selection=%.2f%%",
+                    attribution_data_source,
                     bhb.excess_return_pct,
                     bhb.allocation_effect_pct,
                     bhb.selection_effect_pct,

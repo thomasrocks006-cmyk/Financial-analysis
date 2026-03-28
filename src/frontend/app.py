@@ -1449,6 +1449,36 @@ with tab_report:
                         })
                     if esg_rows:
                         st.table(esg_rows)
+                        # ACT-S10-2: ESG CSV download button
+                        try:
+                            import csv, io
+                            from research_pipeline.services.esg_service import ESGService as _ESGService
+                            _esg_svc = _ESGService()
+                            _csv_buf = io.StringIO()
+                            _fieldnames = ["ticker", "overall_rating", "e_score", "s_score", "g_score", "controversy_flag"]
+                            _writer = csv.DictWriter(_csv_buf, fieldnames=_fieldnames)
+                            _writer.writeheader()
+                            for _row_data in esg_rows:
+                                _ticker_val = _row_data.get("Ticker", "")
+                                if _ticker_val:
+                                    _sc = _esg_svc.get_score(_ticker_val)
+                                    _writer.writerow({
+                                        "ticker": _ticker_val,
+                                        "overall_rating": _sc.overall_rating.value,
+                                        "e_score": _sc.environmental_score,
+                                        "s_score": _sc.social_score,
+                                        "g_score": _sc.governance_score,
+                                        "controversy_flag": _sc.controversy_flag,
+                                    })
+                            st.download_button(
+                                label="⬇️ Download ESG CSV",
+                                data=_csv_buf.getvalue(),
+                                file_name="esg_scores.csv",
+                                mime="text/csv",
+                                key="esg_csv_download",
+                            )
+                        except Exception:
+                            pass  # ESG download is best-effort; do not crash UI
 
                     # Methodology note from first entry
                     first_note = next(

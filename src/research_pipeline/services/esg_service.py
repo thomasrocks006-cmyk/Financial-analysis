@@ -231,3 +231,54 @@ class ESGService:
 
         logger.info("ESGService loaded %d profiles from %s", loaded, path)
         return loaded
+
+    def to_csv(self, output_path: str | "Path") -> int:  # type: ignore[name-defined]  # ACT-S10-2
+        """Export all ESG profiles to a CSV file.
+
+        Merges the module-level ``_DEFAULT_ESG_SCORES`` dictionary with any
+        overrides held in ``_scores_cache`` (freshest data wins) and writes
+        them to *output_path* using the canonical column layout::
+
+            ticker, overall_rating, e_score, s_score, g_score, controversy_flag
+
+        Parent directories are created automatically.
+
+        Returns:
+            Number of rows written (excluding the header).
+        """
+        import csv
+        from pathlib import Path as _Path
+
+        # Merge: defaults first, then cache overrides
+        profiles: dict[str, dict] = {}
+        for ticker, p in _DEFAULT_ESG_SCORES.items():
+            profiles[ticker] = {
+                "overall_rating": p["overall"],
+                "e_score": p["e"],
+                "s_score": p["s"],
+                "g_score": p["g"],
+                "controversy_flag": p["controversy"],
+            }
+        for ticker, score in self._scores_cache.items():
+            profiles[ticker] = {
+                "overall_rating": score.overall_rating.value,
+                "e_score": score.environmental_score,
+                "s_score": score.social_score,
+                "g_score": score.governance_score,
+                "controversy_flag": score.controversy_flag,
+            }
+
+        path = _Path(output_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        fieldnames = ["ticker", "overall_rating", "e_score", "s_score", "g_score", "controversy_flag"]
+        with open(path, "w", newline="") as fh:
+            writer = csv.DictWriter(fh, fieldnames=fieldnames)
+            writer.writeheader()
+            for ticker in sorted(profiles):
+                row = {"ticker": ticker, **profiles[ticker]}
+                writer.writerow(row)
+
+        count = len(profiles)
+        logger.info("ESGService exported %d profiles to %s", count, path)
+        return count

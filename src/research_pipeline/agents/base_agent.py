@@ -48,6 +48,9 @@ class BaseAgent(ABC):
     - retry / validation wrapper
     """
 
+    # ACT-S10-3: subclasses may declare keys that must be present in parsed output
+    _REQUIRED_OUTPUT_KEYS: list[str] = []
+
     def __init__(
         self,
         name: str,
@@ -381,6 +384,23 @@ class BaseAgent(ABC):
         """Format structured inputs into the user message. Override as needed."""
         return json.dumps(inputs, indent=2, default=str)
 
+    def _validate_output_quality(self, result: dict) -> list[str]:  # ACT-S10-3
+        """Warn (non-fatal) if any *_REQUIRED_OUTPUT_KEYS* are missing or empty.
+
+        Returns a list of warning strings; an empty list means all keys are
+        present and non-empty.  Never raises.
+        """
+        warnings_list: list[str] = []
+        for key in self._REQUIRED_OUTPUT_KEYS:
+            val = result.get(key)
+            if val is None or val == "" or val == [] or val == {}:
+                msg = (
+                    f"Agent '{self.name}' output missing/empty required key: '{key}'"
+                )
+                warnings_list.append(msg)
+                logger.warning(msg)
+        return warnings_list
+
     def parse_output(self, raw_response: str) -> dict[str, Any]:
         """Parse raw LLM response into structured output.
 
@@ -400,13 +420,19 @@ class BaseAgent(ABC):
         if fence_match:
             candidate = fence_match.group(1).strip()
             try:
-                return json.loads(candidate)
+                _parsed = json.loads(candidate)
+                if isinstance(_parsed, dict):
+                    self._validate_output_quality(_parsed)  # ACT-S10-3
+                return _parsed
             except json.JSONDecodeError:
                 pass  # fence present but content malformed — fall through
 
         # Strategy 2: bare JSON (full response is already valid JSON)
         try:
-            return json.loads(cleaned)
+            _parsed = json.loads(cleaned)
+            if isinstance(_parsed, dict):
+                self._validate_output_quality(_parsed)  # ACT-S10-3
+            return _parsed
         except json.JSONDecodeError:
             pass
 
@@ -422,6 +448,8 @@ class BaseAgent(ABC):
                             "%s: stripped %d-char LLM preamble before JSON",
                             self.name, idx,
                         )
+                        if isinstance(obj, dict):
+                            self._validate_output_quality(obj)  # ACT-S10-3
                         return obj
                 except json.JSONDecodeError:
                     pass
