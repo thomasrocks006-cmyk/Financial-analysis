@@ -101,3 +101,103 @@ class RiskPacket(BaseModel):
     @property
     def max_drawdown_pct(self) -> Optional[float]:
         return (self.drawdown_analysis or {}).get("max_drawdown_pct")
+
+
+# ── StockCard Adapter (ISS-4) ──────────────────────────────────────────────
+
+def build_stock_card_from_pipeline_outputs(
+    ticker: str,
+    valuation_card: Any,  # ValuationCard from Stage 7
+    four_box: Any | None = None,  # FourBoxOutput from Stage 6
+    red_team: Any | None = None,  # RedTeamAssessment from Stage 10
+    weight_in_balanced: float | None = None,
+) -> StockCard:
+    """Adapter to build StockCard for final report from pipeline stage outputs.
+    
+    Required by: ARC-2 (real stock cards in Stage 13), ISS-4 (typed adapter).
+    
+    Args:
+        ticker: Stock ticker symbol
+        valuation_card: ValuationCard from Stage 7 (valuation agent)
+        four_box: FourBoxOutput from Stage 6 (sector analyst)
+        red_team: RedTeamAssessment from Stage 10 (red team agent)
+        weight_in_balanced: Recommended weight from Stage 12 (PM agent)
+    
+    Returns:
+        Fully populated StockCard for inclusion in FinalReport.
+    """
+    # Extract company name from four_box if available, otherwise use ticker
+    company_name = ticker
+    if four_box and hasattr(four_box, "company_name"):
+        company_name = four_box.company_name
+    
+    # Extract subtheme from four_box analyst role
+    subtheme = "AI Infrastructure"
+    if four_box and hasattr(four_box, "analyst_role"):
+        role_map = {
+            "compute": "AI Compute & Chips",
+            "power_energy": "Power & Energy",
+            "infrastructure": "Cloud & Data Center"
+        }
+        subtheme = role_map.get(four_box.analyst_role, "AI Infrastructure")
+    
+    # Build four-box summary
+    four_box_summary = ""
+    if four_box:
+        four_box_summary = f"Judgment: {getattr(four_box, 'box4_analyst_judgment', '')[:200]}"
+    
+    # Build valuation summary
+    valuation_summary = ""
+    if valuation_card:
+        snapshot = getattr(valuation_card, "snapshot", None)
+        if snapshot:
+            implied_price = getattr(snapshot, "implied_price_per_share", None)
+            current = getattr(snapshot, "current_price", None)
+            upside = getattr(snapshot, "upside_pct", None)
+            if implied_price and current:
+                valuation_summary = f"Current: ${current:.2f}, Implied: ${implied_price:.2f}"
+                if upside is not None:
+                    valuation_summary += f" (upside: {upside:+.1f}%)"
+        
+        # Add entry quality
+        entry_qual = getattr(valuation_card, "entry_quality", "acceptable")
+        if entry_qual:
+            valuation_summary += f" | Entry: {entry_qual}"
+    
+    # Entry quality string
+    entry_quality = str(getattr(valuation_card, "entry_quality", "acceptable")) if valuation_card else "unknown"
+    
+    # Thesis integrity (placeholder until we have a real source)
+    thesis_integrity = "Under review"
+    
+    # Collect key risks from both four-box and valuation
+    key_risks = []
+    if four_box and hasattr(four_box, "key_risks"):
+        key_risks.extend(four_box.key_risks[:3])
+    if valuation_card and hasattr(valuation_card, "scenarios"):
+        for scenario in getattr(valuation_card, "scenarios", [])[:2]:
+            if hasattr(scenario, "name"):
+                key_risks.append(scenario.name)
+    
+    # Red team summary
+    red_team_summary = ""
+    if red_team:
+        if hasattr(red_team, "summary_verdict"):
+            red_team_summary = red_team.summary_verdict[:200]
+        elif hasattr(red_team, "stress_test_results"):
+            results = red_team.stress_test_results
+            if results:
+                red_team_summary = f"{len(results)} stress tests performed"
+    
+    return StockCard(
+        ticker=ticker,
+        company_name=company_name,
+        subtheme=subtheme,
+        four_box_summary=four_box_summary,
+        valuation_summary=valuation_summary,
+        entry_quality=entry_quality,
+        thesis_integrity=thesis_integrity,
+        key_risks=key_risks[:5],  # Max 5 risks per card
+        red_team_summary=red_team_summary,
+        weight_in_balanced=weight_in_balanced,
+    )
