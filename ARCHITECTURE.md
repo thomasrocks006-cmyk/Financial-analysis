@@ -934,3 +934,224 @@ These are concrete defects in the current code — not design gaps but bugs or u
 ---
 
 *Document updated: session 10 — ACT-S10-1 (live BHB data_source), ACT-S10-2 (ESG CSV export), ACT-S10-3 (agent quality gate), ACT-S10-4 (factor live data), ACT-S10-5 (28 tests). Test count: 607 passing. Session 11 plan in §12.12.*
+
+---
+
+## 13. Platform Scope, Market Coverage & Macro Economics Architecture
+
+### 13.1 Realistic Market Scope — JP Morgan Australia Clone
+
+This platform models a **JP Morgan-style institutional asset management office based in Australia**, managing client portfolios across equity markets realistic for a boutique-to-mid-tier Australian asset manager with global reach. The markets covered and their investment rationale are:
+
+| Market | Exchange | Currency | Benchmark | Client relevance | Priority |
+|---|---|---|---|---|---|
+| **US Large Cap / AI Infrastructure** | NYSE / NASDAQ | USD | S&P 500, NASDAQ-100 | Primary — highest-growth, highest-conviction theme | P0 — current |
+| **Australian Equities** | ASX | AUD | ASX 200 | Domestic client portfolios, superannuation mandates, franking credits | P0 — build session 12 |
+| **US Broad Market** | NYSE / NASDAQ | USD | S&P 500 | Core equity allocation for most client mandates | P1 — partial |
+| **Global Thematic (AI/tech)** | Multi-exchange | Multi | MSCI World | Thematic overlays for high-growth clients | P1 — partial |
+| **Fixed Income (US Treasuries)** | OTC | USD | Bloomberg US Agg | Defensive allocation; rate sensitivity for equity models | P1 — build session 13 |
+| **ASX Fixed Income / Bonds** | ASX | AUD | Bloomberg AusBond | Super / conservative mandates | P2 |
+| **Asian Tech / Semiconductors** | TSE, HKEX, TWSE | JPY/HKD/TWD | Nikkei, Hang Seng, TWSE | Taiwan/Japan AI supply chain exposure | P2 |
+| **European Equities** | LSE, NYSE Euronext | EUR/GBP | STOXX 600 | Diversification overlay; minimal current exposure | P3 |
+| **Commodities (AUD-correlated)** | ASX / CME | USD/AUD | Bloomberg Commodity | BHP, RIO, FCX — already in universe | P1 — partial |
+
+**Markets NOT covered (realistic exclusions for this office profile):**
+- Emerging markets standalone allocations (EM is captured via global thematic)
+- Frontier markets
+- Private equity / venture capital
+- Real estate direct investment (REITs are captured as equity)
+- Crypto assets (outside mandate)
+
+---
+
+### 13.2 macroeconomic Analysis Gap Assessment
+
+**Current state:** The platform has one `MacroStrategistAgent` that classifies a single generic "macro regime" with 5-6 fields. It has no awareness of:
+- Which countries' economies are relevant to the portfolio
+- Australia vs US macro divergence (RBA vs Fed)
+- Inflation measures (CPI, PCE, trimmed mean, PPI, core)
+- Interest rate paths and forward pricing
+- Housing markets (Australia's outsized impact on consumer spending)
+- Labour market tightness (wage inflation → cost of capital)
+- Currency movements (AUD/USD matters enormously for ASX portfolios)
+- Government fiscal stance (deficit spending supporting or crowding out)
+- Corporate earnings impact from macro variables (COGS, margin compression)
+
+**Gap score:** The current macro analysis is 2/10. It produces AI infrastructure sensitivities only and is never consumed by downstream stages.
+
+---
+
+### 13.3 Target Macro Economy Architecture
+
+The platform needs a dedicated **Economic Intelligence Layer** consisting of three new services and one redesigned agent:
+
+#### Service 1: `EconomicIndicatorService` (new)
+Fetches and normalises economic indicator data:
+- **US indicators**: Fed Funds Rate, 10Y/2Y yields, CPI YoY, PCE YoY, Core CPI, PPI, NFP, unemployment, ISM PMI, housing starts, Case-Shiller HPI, retail sales, consumer confidence
+- **Australian indicators**: RBA cash rate, CPI (trimmed mean), wage price index, employment change, NAB business confidence, Westpac consumer sentiment, CoreLogic housing prices, rental vacancy rates, AUD/USD, trade balance, terms of trade
+- **Global**: China PMI (impacts Australian exports), global PMI composite, oil price (WTI/Brent), copper price (AUD proxy), VIX
+
+Data sources: FRED API (free), RBA Statistical Tables (public), ABS (Australian Bureau of Statistics), Yahoo Finance for market-derived indicators.
+
+#### Service 2: `MacroScenarioService` (new)
+Forward-looking scenario construction:
+- **Rate path scenarios**: base case / hiking cycle / cutting cycle — with probability weights
+- **Inflation scenarios**: sticky inflation vs normalisation vs deflation
+- **Growth scenarios**: soft landing / hard landing / stagflation
+- **Currency scenarios**: AUD strength/weakness vs USD, impact on offshore holdings
+- For Australia: RBA specific scenarios (pause, hike, cut) + their transmission to mortgages, consumer spending, bank earnings
+
+#### Service 3: `MarketRegimeClassifier` (upgraded from current MacroStrategist)
+- Classifies regime per market: US, Australia, Global
+- Outputs regime → portfolio construction implications
+- Feeds into Stage 7 (Valuation), Stage 9 (Risk), Stage 12 (Portfolio)
+
+#### Agent 1: `EconomyAnalystAgent` (new — replaces/upgrades MacroStrategistAgent)
+Full sovereign-level economic analysis per jurisdiction:
+- **For US investing**: Fed policy, yield curve shape, inflation dynamics (CPI/PCE), labour market (NFP, wages, JOLTS), housing (mortgage rates, affordability, starts), consumer health (savings rate, credit card delinquencies), corporate margins (COGS, SG&A vs revenue), earnings revisions cycle
+- **For Australia (ASX/super mandates)**: RBA policy, trimmed mean CPI, housing market (CoreLogic prices, rental yields, vacancy rates, mortgage stress), wage inflation, terms of trade (iron ore, coal, gas — the real AUD driver), household debt-to-income ratio, bank net interest margins, superannuation flows as a structural buyer
+- **Cross-market**: AUD/USD impact on US-listed holdings, hedging costs, FX contribution to returns
+
+#### Agent 2: `MacroPoliticalRiskAgent` (existing — upgraded)
+- Currently: narrow AI infrastructure policy focus
+- Needs: central bank independence risks, sovereign debt sustainability, geopolitical shock scenarios, election impacts on fiscal policy, RBA vs APRA regulatory divergence, US-China trade war transmission to Australian exports
+
+---
+
+### 13.4 Architecture Repair: Critical Bugs Found in Sessions 1–10
+
+The following are live bugs in the current codebase where stages run but their outputs never reach the agents that need them:
+
+| # | Bug | Location | Impact | Fix session |
+|---|---|---|---|---|
+| ARC-1 | **Stage 8 macro outputs never consumed downstream** — saved to `stage_outputs[8]` but no stage 9/10/11/12 reads it | `engine.py` lines 801–818 | All downstream agents missing macro context | Session 11 |
+| ARC-2 | **Stage 13 report is a stub** — `stock_cards=[]`, sections are hardcoded strings, PM investor document never inserted | `engine.py` line 1231–1248 | Final deliverable is empty | Session 11 |
+| ARC-3 | **VaR uses synthetic data despite live returns available** — `live_factor_returns` computed then ignored; `np.random.normal()` used instead | `engine.py` lines 856–866 | VaR is inaccurate | Session 11 |
+| ARC-4 | **Stage 8 (Macro) runs AFTER Stage 7 (Valuation)** — valuation discount rates and terminal growth assumptions set without macro regime context | `engine.py` lines 1462–1472 | DCF quality undermined | Session 11 |
+| ARC-5 | **Sector routing is hardcoded to 17 specific tickers** — any other ticker gets no sector analysis agent at all | `engine.py` lines 724–726 | Custom universes fail silently | Session 11 |
+| ARC-6 | **Stage 10 Red Team missing macro + risk inputs** — only sees sector + valuation | `engine.py` line 980–990 | Red Team can't challenge macro thesis | Session 11 |
+| ARC-7 | **Stage 11 Reviewer missing macro + risk inputs** — only sees evidence, valuation, red team | `engine.py` lines 1000–1010 | Review is incomplete | Session 11 |
+| ARC-8 | **Stage 12 PM Agent missing macro context** — portfolio built without macro regime | `engine.py` lines 1144–1165 | Portfolio construction not macro-aware | Session 11 |
+| ARC-9 | **Macro agent receives no market data (Stage 2 outputs never passed)** | `engine.py` line 805 | Macro analysis is context-free | Session 11 |
+| ARC-10 | **Stage 9 FI Agent receives hardcoded stub** — `"Live yield/spread data not available"` despite Stage 8 running just before | `engine.py` lines 930–937 | Fixed income analysis is fictional | Session 11 |
+
+---
+
+### 13.5 Session 11 — Revised Plan (Architecture Repair First)
+
+| ID | Task | File(s) | Impact | Effort |
+|---|---|---|---|---|
+| ARC-1 | **Wire Stage 8 macro to downstream stages** — extract `_get_macro_context()` helper; pass to S9 FI agent, S10 Red Team, S11 Reviewer, S12 PM | `engine.py` | Very High | Low |
+| ARC-2 | **Fix Stage 13 report** — build `stock_cards` from S7 valuation; use PM `investor_document` for sections; pull exec summary from orchestrator | `engine.py`, `services/report_assembly.py` | High | Medium |
+| ARC-3 | **Fix VaR to use live returns** — replace `np.random.normal()` with already-computed `live_factor_returns` aggregate | `engine.py` stage_9 | Medium | Low |
+| ARC-4 | **Reorder S7/S8** — run macro before valuation; or add macro re-contextualization pass | `engine.py` run_full_pipeline | Medium | Low |
+| ARC-5 | **Config-driven sector routing** — replace hardcoded ticker sets with `SECTOR_ROUTING` dict + general fallback analyst | `engine.py`, `config/loader.py` | Medium | Low |
+| ARC-6–8 | **Wire macro to Red Team, Reviewer, PM** — `stage_outputs[8]` macro summary added to all three agents' inputs | `engine.py` | High | Low |
+| ARC-9 | **Feed market data to Macro agent** — pass `stage_outputs[2]` ingestion data + Stage 3 reconciliation report to MacroStrategistAgent | `engine.py` | Medium | Low |
+| ARC-10 | **Replace FI Agent hardcoded stub** — extract real macro context from Stage 8 output and pass to Fixed Income agent | `engine.py` | High | Low |
+| S11-6 | **Tests** — `tests/test_session11.py` ~32 tests covering all ARC fixes | `tests/test_session11.py` | Required | Low |
+
+**Session 11 target:** 639+ tests passing; Global Research 8.0 → 8.8; Performance Attribution 7.5 → 8.0; Portfolio Management 8.0 → 8.5; weighted 8.8 → 9.0
+
+---
+
+### 13.6 Session 12 — Macro Economy & Australia/US Markets
+
+| ID | Task | File(s) | Impact | Effort |
+|---|---|---|---|---|
+| MAC-1 | **`EconomicIndicatorService`** — FRED API + RBA public tables + ABS; normalised data model for US and Australian indicators | `services/economic_indicators.py` | Very High | Medium |
+| MAC-2 | **`EconomyAnalystAgent`** — full LLM agent for US macro analysis (Fed, CPI/PCE, housing, labour, earnings margins) and Australian macro (RBA, trimmed mean CPI, housing, wages, terms of trade, AUD) | `agents/economy_analyst.py` | Very High | Medium |
+| MAC-3 | **Market scope config** — `MarketConfig` in `PipelineConfig`: US/ASX/Global toggle; jurisdiction-aware data routing | `config/loader.py`, `config/settings.py` | High | Low |
+| MAC-4 | **Macro scenario service** — rate path (hike/hold/cut), inflation (sticky/normalising), growth (soft/hard landing); AUD/USD scenarios | `services/macro_scenario.py` | High | Medium |
+| MAC-5 | **Wire `EconomyAnalystAgent` into Stage 8** — run in parallel with existing macro/political agents; output to `stage_outputs[8]["economy_analysis"]` | `engine.py` | High | Low |
+| MAC-6 | **Valuation macro integration** — Stage 7 receives economy context; discount rate and terminal growth informed by rate path scenario | `agents/valuation_analyst.py`, `engine.py` | High | Medium |
+| MAC-7 | **Streamlit macro dashboard** — new "Market Overview" tab: US macro panel (Fed watch, yield curve, CPI), Australian macro panel (RBA, housing, AUD), macro scenarios with probability weights | `frontend/app.py` | High | Medium |
+| MAC-8 | **Tests** — `tests/test_session12.py` ~30 tests | `tests/test_session12.py` | Required | Low |
+
+**Session 12 target:** 669+ tests; new Macro Economy tab live; EconomyAnalystAgent produces AU + US analysis; macro context flows to all pipeline stages; weighted score 9.0 → 9.2
+
+---
+
+### 13.7 Session 13 — Depth & Quality Improvements
+
+| ID | Task | File(s) | Impact | Effort |
+|---|---|---|---|---|
+| DEP-1 | **ASX universe support** — ticker routing for ASX stocks (BHP, CBA, CSL, etc.); AUD denomination adjustments; ASX-specific data ingestor | `config/universe_config.py`, `services/market_data_ingestor.py` | High | High |
+| DEP-2 | **Research memory → Stage 5** — embed past research reports in vector store; inject top-k relevant prior claims into Evidence Librarian context | `services/research_memory.py`, `engine.py` | High | High |
+| DEP-3 | **Currency-aware portfolio** — AUD/USD FX conversion; hedged vs unhedged return contribution; FX risk in `RiskPacket`  | `schemas/portfolio.py`, `engine.py`, `app.py` | Medium | Medium |
+| DEP-4 | **Sector 4-box per ticker** — sector analysts currently produce portfolio-level analysis; restructure to per-ticker four-box with individual claim counts | `agents/sector_analysts.py`, `engine.py` | Medium | Medium |
+| DEP-5 | **Evidence Librarian enrichment pass** — after Stage 6, inject sector four-box data back into the claim ledger to corroborate/contradict existing claims | `engine.py` | High | Medium |
+| DEP-6 | **Real-time rate data** — FRED API integration for live Fed Funds, SOFR, 10Y, TIPS breakeven; RBA historical series for AUD rates | `services/economic_indicators.py` | High | Medium |
+| DEP-7 | **Attribution time series** — rolling 30-day BHB decomposition stored in `SelfAuditPacket`; Streamlit line chart | `engine.py`, `schemas/governance.py`, `app.py` | Medium | Medium |
+| DEP-8 | **Agent retry telemetry** — per-agent retry count and model-fallback events logged in `SelfAuditPacket` | `agents/base_agent.py`, `schemas/governance.py` | Low | Low |
+| DEP-9 | **Tests** — `tests/test_session13.py` ~30 tests | `tests/test_session13.py` | Required | Low |
+
+---
+
+### 13.8 Session 14 — Superannuation & Australian Client Context
+
+*(Planned — not yet designed in detail)*
+
+| ID | Task |
+|---|---|
+| SUP-1 | Superannuation mandate profiles — conservative / balanced / growth / high-growth with constraint sets |
+| SUP-2 | Franking credit model — grossed-up yield computation for ASX dividend payers |
+| SUP-3 | APRA compliance checks — super fund investment restrictions |
+| SUP-4 | Tax-aware portfolio construction — CGT harvesting, super-specific tax efficiency |
+| SUP-5 | ATO reporting schema — SMSF-ready output format |
+
+---
+
+### 13.9 Brainstorm — What Else Is Missing
+
+The following items were identified in a systematic gap analysis vs a real JPAM institutional office. Grouped by division:
+
+#### Global Research Division
+- **Thesis tracking** — link positions to original claims; surface when thesis is partially invalidated mid-cycle
+- **Earnings revision momentum** — track analyst estimate revisions as a signal input
+- **Transcript analysis** — earnings call keyword tracking feeding into agent prompts
+- **Supply chain graph** — map NVDA/AMD/TSM supply chains; propagate risk scores upstream/downstream
+- **News freshness scoring** — weight claim confidence by how recent the supporting news is
+
+#### Quantitative Research Division
+- **Black-Litterman model** — blend market equilibrium (implied returns) with analyst views from Stage 7
+- **Risk parity with macro overlays** — weight constraints adjust as macro regime shifts
+- **Correlation regime detection** — identify when cross-asset correlations break down (crisis)
+- **Liquidity profiling** — ADV (average daily volume) and days-to-liquidate per position
+- **Factor attribution** — attribute weekly/monthly return to factor exposures (market, size, value, momentum, quality)
+
+#### Portfolio Management Division
+- **Benchmark-relative mandate profiles** — active share, tracking error budget, TE-constrained optimisation
+- **Tax-lot tracking** — position-level cost basis for CGT-aware rebalancing
+- **Overlay hedging** — FX hedge ratios; interest rate duration overlay
+- **Portfolio stress testing** — fully specified macro shock scenarios applied to the current portfolio
+
+#### Performance Attribution Division
+- **Daily NAV** — price the portfolio daily using live prices; produce daily P&L attribution
+- **Attribution vs benchmark** — active return decomposition: selection + allocation + interaction per sector
+- **Multi-period linking** — chain-link attribution across reporting periods (monthly, quarterly, annual)
+- **Risk-adjusted performance** — Sharpe, Sortino, Calmar per portfolio variant
+
+#### ESG / Sustainable Investing
+- **Real data feed** — MSCI ESG Ratings, Sustainalytics, or equivalent (currently all heuristic)
+- **SFDR alignment** — Article 6/8/9 classification for European mandates
+- **Net-zero pathway** — carbon intensity tracking; Paris-alignment scoring
+- **Governance red flags** — director tenure, related-party transactions, audit quality
+
+#### Client Solutions / Reporting
+- **Client portal PDF** — branded, client-ready PDF with portfolio summary, macro view, risk commentary
+- **Scenario P&L letters** — "if rates rise 100bps, your portfolio does X" formatted for retail clients
+- **SMSF reporting pack** — ATO-compliant transaction and holdings report
+- **Benchmark comparison chart** — portfolio vs ASX200 vs S&P500 vs 60/40 running chart
+
+#### Operations & Technology
+- **Database persistence** — replace JSON files with PostgreSQL or SQLite for run history
+- **Scheduler / watchlist monitoring** — nightly refresh; trigger re-analysis on price/news threshold breach
+- **LLM cost tracking** — per-run token usage and USD cost in `SelfAuditPacket`
+- **Redis caching** — avoid re-running expensive stages within TTL window
+- **API rate limiting** — proper backoff and quota management for FMP/Finnhub/FRED
+- **Test coverage to 90%** — currently strong but some services are under-tested
+
+---
+
+*Document updated: March 28, 2026 — session 10 complete (607 tests), full gap analysis and brainstorm added §13. Sessions 11–14 planned. Market scope defined. Architecture repair items ARC-1 through ARC-10 documented.*

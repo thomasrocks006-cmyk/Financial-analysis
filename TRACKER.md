@@ -1,8 +1,8 @@
 # Project Tracker — AI Research & Portfolio Platform
 
-> **Last updated:** March 29, 2026  
+> **Last updated:** March 28, 2026  
 > **Test suite:** 607 / 607 passing  
-> **Commit:** session 10 complete
+> **Commit:** `8060115` — session 10 complete
 
 ---
 
@@ -20,6 +20,11 @@
 | Session 8 (ACT-S8-1 through ACT-S8-5) | All **COMPLETE** |
 | Session 9 (ACT-S9-1 through ACT-S9-5) | All **COMPLETE** |
 | Session 10 (ACT-S10-1 through ACT-S10-5) | All **COMPLETE** |
+| **Architecture Repair (ARC-1 through ARC-10)** | 🔲 **TODO — Session 11** |
+| **Session 11 (revised)** | 🔲 **TODO — Architecture repair + tests** |
+| **Session 12 — Macro Economy & Australia/US Markets** | 🔲 **TODO** |
+| **Session 13 — Depth & Quality** | 🔲 **TODO** |
+| **Session 14 — Superannuation & AU Client Context** | 🔲 **PLANNED** |
 
 ---
 
