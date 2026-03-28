@@ -14,11 +14,11 @@ logger = logging.getLogger(__name__)
 
 # Approximate per-token costs (USD) for current model versions
 _MODEL_COST_PER_1K_TOKENS: dict[str, dict[str, float]] = {
-    "claude-opus-4-6":   {"input": 0.015,  "output": 0.075},
-    "claude-sonnet-4-5": {"input": 0.003,  "output": 0.015},
-    "gpt-4o":            {"input": 0.005,  "output": 0.015},
-    "gpt-4o-mini":       {"input": 0.00015,"output": 0.0006},
-    "gemini-1.5-pro":    {"input": 0.00125,"output": 0.005},
+    "claude-opus-4-6": {"input": 0.015, "output": 0.075},
+    "claude-sonnet-4-5": {"input": 0.003, "output": 0.015},
+    "gpt-4o": {"input": 0.005, "output": 0.015},
+    "gpt-4o-mini": {"input": 0.00015, "output": 0.0006},
+    "gemini-1.5-pro": {"input": 0.00125, "output": 0.005},
 }
 _DEFAULT_COST = {"input": 0.01, "output": 0.03}
 
@@ -26,6 +26,7 @@ _DEFAULT_COST = {"input": 0.01, "output": 0.03}
 @dataclass
 class StageMetrics:
     """Metrics for a single pipeline stage."""
+
     stage: int
     stage_name: str
     start_time: float = 0.0
@@ -37,7 +38,7 @@ class StageMetrics:
     llm_output_tokens: int = 0
     llm_model: str = ""
     llm_retries: int = 0
-    api_calls: int = 0       # FMP/Finnhub
+    api_calls: int = 0  # FMP/Finnhub
     cache_hits: int = 0
 
     @property
@@ -79,6 +80,7 @@ class StageMetrics:
 @dataclass
 class RunObservability:
     """Full observability record for a pipeline run."""
+
     run_id: str
     started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: Optional[datetime] = None
@@ -134,11 +136,21 @@ class RunObservability:
 
 
 _STAGE_NAMES = {
-    0: "bootstrap",        1: "universe",       2: "data_ingestion",
-    3: "reconciliation",   4: "data_qa",         5: "evidence",
-    6: "sector_analysis",  7: "valuation",       8: "macro",
-    9: "risk_scenarios",   10: "red_team",        11: "review",
-    12: "portfolio",       13: "report_assembly", 14: "monitoring",
+    0: "bootstrap",
+    1: "universe",
+    2: "data_ingestion",
+    3: "reconciliation",
+    4: "data_qa",
+    5: "evidence",
+    6: "sector_analysis",
+    7: "valuation",
+    8: "macro",
+    9: "risk_scenarios",
+    10: "red_team",
+    11: "review",
+    12: "portfolio",
+    13: "report_assembly",
+    14: "monitoring",
 }
 
 
@@ -214,8 +226,12 @@ class ObservabilityService:
 
         logger.debug(
             "[%s] Stage %d %s in %.2fs — LLM $%.4f, retries=%d",
-            run_id, stage, "OK" if success else "FAIL",
-            metrics.duration_seconds, metrics.llm_cost_usd, llm_retries,
+            run_id,
+            stage,
+            "OK" if success else "FAIL",
+            metrics.duration_seconds,
+            metrics.llm_cost_usd,
+            llm_retries,
         )
         return metrics
 

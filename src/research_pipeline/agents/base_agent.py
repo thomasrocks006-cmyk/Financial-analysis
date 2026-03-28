@@ -9,7 +9,7 @@ import re
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional, TypeVar, Generic
+from typing import Any, Optional, TypeVar
 
 from pydantic import BaseModel, Field
 
@@ -20,11 +20,13 @@ T = TypeVar("T", bound=BaseModel)
 
 class StructuredOutputError(Exception):
     """Raised when an agent returns output that cannot be parsed into structured JSON."""
+
     pass
 
 
 class AgentResult(BaseModel):
     """Standard result wrapper for any agent call."""
+
     agent_name: str
     run_id: str
     success: bool
@@ -145,7 +147,9 @@ class BaseAgent(ABC):
                 if model_name != primary:
                     logger.warning(
                         "%s: used fallback model '%s' (primary '%s' unavailable)",
-                        self.name, model_name, primary,
+                        self.name,
+                        model_name,
+                        primary,
                     )
 
                 return result
@@ -153,15 +157,28 @@ class BaseAgent(ABC):
             except Exception as exc:
                 exc_str = str(exc).lower()
                 # Only fall back for rate-limit / quota / service-unavailable errors
-                is_retryable = any(kw in exc_str for kw in (
-                    "rate limit", "rate_limit", "ratelimit",
-                    "quota", "overloaded", "service unavailable",
-                    "503", "529", "too many requests", "429",
-                ))
+                is_retryable = any(
+                    kw in exc_str
+                    for kw in (
+                        "rate limit",
+                        "rate_limit",
+                        "ratelimit",
+                        "quota",
+                        "overloaded",
+                        "service unavailable",
+                        "503",
+                        "529",
+                        "too many requests",
+                        "429",
+                    )
+                )
                 if is_retryable:
                     logger.warning(
                         "%s: provider '%s' / model '%s' rate-limited — trying next fallback: %s",
-                        self.name, provider, model_name, exc,
+                        self.name,
+                        provider,
+                        model_name,
+                        exc,
                     )
                     last_exc = exc
                     continue
@@ -211,9 +228,7 @@ class BaseAgent(ABC):
                 response = await client.messages.create(**kwargs)
                 return response.content[0].text
             except Exception as exc:
-                logger.warning(
-                    "%s: Anthropic attempt %d failed: %s", self.name, attempt, exc
-                )
+                logger.warning("%s: Anthropic attempt %d failed: %s", self.name, attempt, exc)
                 if attempt == self.max_retries:
                     raise
 
@@ -249,9 +264,7 @@ class BaseAgent(ABC):
                 response = await client.chat.completions.create(**kwargs)
                 return response.choices[0].message.content or ""
             except Exception as exc:
-                logger.warning(
-                    "%s: OpenAI attempt %d failed: %s", self.name, attempt, exc
-                )
+                logger.warning("%s: OpenAI attempt %d failed: %s", self.name, attempt, exc)
                 if attempt == self.max_retries:
                     raise
 
@@ -270,13 +283,12 @@ class BaseAgent(ABC):
         falls back to a minimal REST call.
         """
         model = model_override or self.model
-        text_parts = "\n".join(
-            f"[{m['role'].upper()}]\n{m['content']}" for m in messages
-        )
+        text_parts = "\n".join(f"[{m['role'].upper()}]\n{m['content']}" for m in messages)
 
         # Strategy 1: old SDK (google-generativeai package)
         try:
             import google.generativeai as genai  # type: ignore[import]
+
             genai.configure(api_key=api_key)
             g_model = genai.GenerativeModel(model)
             for attempt in range(1, self.max_retries + 1):
@@ -284,7 +296,9 @@ class BaseAgent(ABC):
                     response = await g_model.generate_content_async(text_parts)
                     return response.text
                 except Exception as exc:
-                    logger.warning("%s: Gemini (old SDK) attempt %d failed: %s", self.name, attempt, exc)
+                    logger.warning(
+                        "%s: Gemini (old SDK) attempt %d failed: %s", self.name, attempt, exc
+                    )
                     if attempt == self.max_retries:
                         raise
             return ""
@@ -297,6 +311,7 @@ class BaseAgent(ABC):
         try:
             import google.genai as genai_new  # type: ignore[import]
             import asyncio
+
             client = genai_new.Client(api_key=api_key)
 
             def _sync_call() -> str:
@@ -310,7 +325,9 @@ class BaseAgent(ABC):
                 try:
                     return await asyncio.get_event_loop().run_in_executor(None, _sync_call)
                 except Exception as exc:
-                    logger.warning("%s: Gemini (new SDK) attempt %d failed: %s", self.name, attempt, exc)
+                    logger.warning(
+                        "%s: Gemini (new SDK) attempt %d failed: %s", self.name, attempt, exc
+                    )
                     if attempt == self.max_retries:
                         raise
             return ""
@@ -332,9 +349,7 @@ class BaseAgent(ABC):
         import urllib.request
         import urllib.error
 
-        text_parts = "\n".join(
-            f"[{m['role'].upper()}]\n{m['content']}" for m in messages
-        )
+        text_parts = "\n".join(f"[{m['role'].upper()}]\n{m['content']}" for m in messages)
         payload = json.dumps({"contents": [{"parts": [{"text": text_parts}]}]}).encode()
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/"
@@ -342,7 +357,9 @@ class BaseAgent(ABC):
         )
 
         def _blocking_request() -> str:
-            req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+            req = urllib.request.Request(
+                url, data=payload, headers={"Content-Type": "application/json"}
+            )
             with urllib.request.urlopen(req, timeout=60) as resp:
                 body = json.loads(resp.read())
                 return body["candidates"][0]["content"]["parts"][0]["text"]
@@ -380,7 +397,10 @@ class BaseAgent(ABC):
             except StructuredOutputError as exc:
                 logger.warning(
                     "%s: structured output parse failed (attempt %d/%d): %s",
-                    self.name, attempt, self.max_retries, exc,
+                    self.name,
+                    attempt,
+                    self.max_retries,
+                    exc,
                 )
                 last_error = str(exc)
                 if attempt == self.max_retries:
@@ -436,7 +456,8 @@ class BaseAgent(ABC):
                 if self._VALIDATION_FATAL:
                     logger.error(
                         "%s missing critical key '%s' — raising (VALIDATION_FATAL=True)",
-                        self.name, key,
+                        self.name,
+                        key,
                     )
                     raise StructuredOutputError(msg)
                 else:
@@ -488,7 +509,8 @@ class BaseAgent(ABC):
                     if isinstance(obj, (dict, list)):
                         logger.warning(
                             "%s: stripped %d-char LLM preamble before JSON",
-                            self.name, idx,
+                            self.name,
+                            idx,
                         )
                         if isinstance(obj, dict):
                             self._validate_output_quality(obj)  # ACT-S10-3

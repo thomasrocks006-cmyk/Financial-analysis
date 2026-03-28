@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -16,6 +16,7 @@ from research_pipeline.agents.base_agent import StructuredOutputError
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _make_agent(agent_cls, **extra_kwargs):
     """Instantiate an agent with minimal required config."""
@@ -29,11 +30,13 @@ def _make_agent(agent_cls, **extra_kwargs):
 
 # ── Evidence Librarian ────────────────────────────────────────────────────────
 
+
 class TestEvidenceLibrarianParseOutput:
     """Evidence librarian must reject Tier 3/4 PRIMARY_FACT claims."""
 
     def setup_method(self):
         from research_pipeline.agents.evidence_librarian import EvidenceLibrarianAgent
+
         self.agent = _make_agent(EvidenceLibrarianAgent)
 
     def _make_claim(self, claim_type="PRIMARY_FACT", source_tier=1):
@@ -89,11 +92,13 @@ class TestEvidenceLibrarianParseOutput:
 
 # ── Sector Analysts ────────────────────────────────────────────────────────────
 
+
 class TestSectorAnalystParseOutput:
     """Sector analysts must enforce the four-box fields on every ticker."""
 
     def setup_method(self):
         from research_pipeline.agents.sector_analysts import SectorAnalystCompute
+
         self.agent = _make_agent(SectorAnalystCompute)
 
     def _make_output(self, ticker="NVDA", **overrides):
@@ -145,11 +150,13 @@ class TestSectorAnalystParseOutput:
 
 # ── Valuation Analyst ─────────────────────────────────────────────────────────
 
+
 class TestValuationAnalystParseOutput:
     """Valuation analyst must enforce methodology_tag and entry_quality."""
 
     def setup_method(self):
         from research_pipeline.agents.valuation_analyst import ValuationAnalystAgent
+
         self.agent = _make_agent(ValuationAnalystAgent)
 
     def _make_valuation(self, ticker="NVDA", **overrides):
@@ -202,11 +209,13 @@ class TestValuationAnalystParseOutput:
 
 # ── Red Team Analyst ──────────────────────────────────────────────────────────
 
+
 class TestRedTeamAnalystParseOutput:
     """Red team analyst must enforce minimum 3 falsification tests per ticker."""
 
     def setup_method(self):
         from research_pipeline.agents.red_team_analyst import RedTeamAnalystAgent
+
         self.agent = _make_agent(RedTeamAnalystAgent)
 
     def _make_test(self, assumption="Assumption A", test="Test A"):
@@ -257,11 +266,13 @@ class TestRedTeamAnalystParseOutput:
 
 # ── Associate Reviewer ────────────────────────────────────────────────────────
 
+
 class TestAssociateReviewerParseOutput:
     """Associate reviewer must enforce binary PASS/FAIL and reject PASS_WITH_DISCLOSURE."""
 
     def setup_method(self):
         from research_pipeline.agents.associate_reviewer import AssociateReviewerAgent
+
         self.agent = _make_agent(AssociateReviewerAgent)
 
     def _make_review(self, status="PASS", corrections=None):
@@ -308,17 +319,20 @@ class TestAssociateReviewerParseOutput:
 
 # ── LLM Provider Fallback ─────────────────────────────────────────────────────
 
+
 class TestLLMProviderFallback:
     """Phase 7.4: call_llm should try fallback providers on rate-limit errors."""
 
     def setup_method(self):
         from research_pipeline.agents.evidence_librarian import EvidenceLibrarianAgent
+
         self.agent = _make_agent(EvidenceLibrarianAgent)
 
     @pytest.mark.asyncio
     async def test_fallback_chain_triggered_on_rate_limit(self):
         """When primary provider raises rate_limit, fallback to OpenAI."""
         call_count = {"n": 0}
+        del call_count  # unused but shows test intent
 
         async def mock_anthropic(messages, api_key, model_override=None):
             raise Exception("rate limit exceeded — 429")
@@ -334,6 +348,7 @@ class TestLLMProviderFallback:
     @pytest.mark.asyncio
     async def test_non_rate_limit_error_not_retried(self):
         """Permission errors etc. should propagate without fallback."""
+
         async def mock_anthropic(messages, api_key, model_override=None):
             raise PermissionError("invalid_api_key — authentication error")
 
@@ -348,4 +363,6 @@ class TestLLMProviderFallback:
                 with pytest.raises(PermissionError):
                     await self.agent.call_llm([{"role": "user", "content": "test"}])
 
-        assert not openai_called, "OpenAI fallback should NOT be triggered for non-rate-limit errors"
+        assert not openai_called, (
+            "OpenAI fallback should NOT be triggered for non-rate-limit errors"
+        )

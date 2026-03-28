@@ -58,6 +58,7 @@ def s8_config() -> PipelineConfig:
 
 def _ingest_row(ticker: str) -> dict:
     from datetime import datetime, timezone
+
     return {
         "ticker": ticker,
         "source": "fmp",
@@ -106,110 +107,179 @@ def _esg_entry(ticker: str) -> dict:
 
 
 def _patch_all_agents(engine: PipelineEngine) -> None:
-    engine.orchestrator_agent.run = AsyncMock(return_value=_ar(
-        "orchestrator", {"status": "proceed", "universe": S8_UNIVERSE}
-    ))
-    engine.evidence_agent.run = AsyncMock(return_value=_ar(
-        "evidence_librarian",
-        {"claims": [{"claim_id": "C1", "ticker": "NVDA",
-                     "claim_text": "NVDA Q4 revenue $18B",
-                     "evidence_class": "primary_fact",
-                     "source_id": "SRC-1", "confidence": "high",
-                     "status": "pass"}],
-         "sources": [{"source_id": "SRC-1", "source_type": "filing",
-                      "tier": 1, "url": None, "notes": "10-K"}]},
-    ))
-    engine.compute_analyst.run = AsyncMock(return_value=_ar(
-        "sector_analyst_compute",
-        {"sector_outputs": [_sector_out(t) for t in S8_UNIVERSE]},
-    ))
-    engine.power_analyst.run = AsyncMock(return_value=_ar(
-        "sector_analyst_power", {"sector_outputs": []}
-    ))
-    engine.infra_analyst.run = AsyncMock(return_value=_ar(
-        "sector_analyst_infrastructure", {"sector_outputs": []}
-    ))
-    engine.esg_analyst_agent.run = AsyncMock(return_value=_ar(
-        "esg_analyst",
-        {"esg_scores": [_esg_entry(t) for t in S8_UNIVERSE], "parse_violations": []},
-    ))
-    engine.valuation_agent.run = AsyncMock(return_value=_ar(
-        "valuation_analyst",
-        {"valuations": [{"ticker": "NVDA", "date": "2026-01-01",
-                         "section_5_scenarios": [{
-                             "case": "base", "probability_pct": 50,
-                             "revenue_cagr": "20%", "exit_multiple": "30x",
-                             "exit_multiple_rationale": "sector median",
-                             "implied_return_1y": "15%",
-                             "implied_return_3y": "50% [HOUSE VIEW]",
-                             "key_assumption": "data center demand",
-                             "what_breaks_it": "capex cut",
-                         }],
-                         "entry_quality": "ACCEPTABLE",
-                         "methodology_tag": "HOUSE VIEW"}]},
-    ))
-    engine.macro_agent.run = AsyncMock(return_value=_ar(
-        "macro_strategist",
-        {"regime": "expansion", "rate_outlook": "neutral",
-         "usd_outlook": "stable", "equity_risk_premium": 5.0},
-    ))
-    engine.political_agent.run = AsyncMock(return_value=_ar(
-        "political_risk", {"risk_level": "low", "key_risks": []}
-    ))
-    engine.red_team_agent.run = AsyncMock(return_value=_ar(
-        "red_team_analyst",
-        {"assessments": [{"ticker": "NVDA",
-                          "falsification_tests": ["FT-1", "FT-2", "FT-3"],
-                          "required_tests": {}}]},
-    ))
-    engine.reviewer_agent.run = AsyncMock(return_value=_ar(
-        "associate_reviewer",
-        {"status": "pass", "issues": [], "methodology_tags_complete": True,
-         "dates_complete": True, "claim_mapping_complete": True},
-    ))
-    engine.pm_agent.run = AsyncMock(return_value=_ar(
-        "portfolio_manager",
-        {"variants": [
-            {"name": "balanced",
-             "positions": [
-                 {"ticker": t, "weight_pct": 100 / len(S8_UNIVERSE)}
-                 for t in S8_UNIVERSE
-             ]},
-        ]},
-    ))
-    engine.quant_analyst_agent.run = AsyncMock(return_value=_ar(
-        "quant_research_analyst",
-        {"risk_signal": "neutral",
-         "primary_concern": "concentration",
-         "recommended_action": "monitor",
-         "section_1_factor_interpretation": {"dominant_factors": ["momentum"]},
-         "section_2_risk_assessment": {"var_95_commentary": "moderate"},
-         "section_3_benchmark_divergence": {
-             "etf_differentiation_score": 60,
-             "etf_replication_risk": False,
-             "tracking_error_commentary": "high active share",
-             "active_bets_narrative": "NVDA+12%",
-             "information_ratio_signal": "IR=0.7",
-             "etf_overlap_summary": "60% differentiated",
-         },
-         "section_4_construction_signal": {
-             "factor_tilt_recommendation": "maintain",
-             "concentration_recommendation": "trim NVDA",
-             "benchmark_recommendation": "differentiated",
-             "constructive_changes": [],
-         },
-         "analyst_confidence": "medium",
-         "data_quality_note": "test"},
-    ))
-    engine.fixed_income_agent.run = AsyncMock(return_value=_ar(
-        "fixed_income_analyst",
-        {"yield_curve_regime": "normal",
-         "10y_yield_context": "4.3% neutral",
-         "cost_of_capital_trend": "stable",
-         "rate_sensitivity_score": 5.0,
-         "key_risks": [], "offsetting_factors": [],
-         "methodology_note": "10y yield tracking"},
-    ))
+    engine.orchestrator_agent.run = AsyncMock(
+        return_value=_ar("orchestrator", {"status": "proceed", "universe": S8_UNIVERSE})
+    )
+    engine.evidence_agent.run = AsyncMock(
+        return_value=_ar(
+            "evidence_librarian",
+            {
+                "claims": [
+                    {
+                        "claim_id": "C1",
+                        "ticker": "NVDA",
+                        "claim_text": "NVDA Q4 revenue $18B",
+                        "evidence_class": "primary_fact",
+                        "source_id": "SRC-1",
+                        "confidence": "high",
+                        "status": "pass",
+                    }
+                ],
+                "sources": [
+                    {
+                        "source_id": "SRC-1",
+                        "source_type": "filing",
+                        "tier": 1,
+                        "url": None,
+                        "notes": "10-K",
+                    }
+                ],
+            },
+        )
+    )
+    engine.compute_analyst.run = AsyncMock(
+        return_value=_ar(
+            "sector_analyst_compute",
+            {"sector_outputs": [_sector_out(t) for t in S8_UNIVERSE]},
+        )
+    )
+    engine.power_analyst.run = AsyncMock(
+        return_value=_ar("sector_analyst_power", {"sector_outputs": []})
+    )
+    engine.infra_analyst.run = AsyncMock(
+        return_value=_ar("sector_analyst_infrastructure", {"sector_outputs": []})
+    )
+    engine.esg_analyst_agent.run = AsyncMock(
+        return_value=_ar(
+            "esg_analyst",
+            {"esg_scores": [_esg_entry(t) for t in S8_UNIVERSE], "parse_violations": []},
+        )
+    )
+    engine.valuation_agent.run = AsyncMock(
+        return_value=_ar(
+            "valuation_analyst",
+            {
+                "valuations": [
+                    {
+                        "ticker": "NVDA",
+                        "date": "2026-01-01",
+                        "section_5_scenarios": [
+                            {
+                                "case": "base",
+                                "probability_pct": 50,
+                                "revenue_cagr": "20%",
+                                "exit_multiple": "30x",
+                                "exit_multiple_rationale": "sector median",
+                                "implied_return_1y": "15%",
+                                "implied_return_3y": "50% [HOUSE VIEW]",
+                                "key_assumption": "data center demand",
+                                "what_breaks_it": "capex cut",
+                            }
+                        ],
+                        "entry_quality": "ACCEPTABLE",
+                        "methodology_tag": "HOUSE VIEW",
+                    }
+                ]
+            },
+        )
+    )
+    engine.macro_agent.run = AsyncMock(
+        return_value=_ar(
+            "macro_strategist",
+            {
+                "regime": "expansion",
+                "rate_outlook": "neutral",
+                "usd_outlook": "stable",
+                "equity_risk_premium": 5.0,
+            },
+        )
+    )
+    engine.political_agent.run = AsyncMock(
+        return_value=_ar("political_risk", {"risk_level": "low", "key_risks": []})
+    )
+    engine.red_team_agent.run = AsyncMock(
+        return_value=_ar(
+            "red_team_analyst",
+            {
+                "assessments": [
+                    {
+                        "ticker": "NVDA",
+                        "falsification_tests": ["FT-1", "FT-2", "FT-3"],
+                        "required_tests": {},
+                    }
+                ]
+            },
+        )
+    )
+    engine.reviewer_agent.run = AsyncMock(
+        return_value=_ar(
+            "associate_reviewer",
+            {
+                "status": "pass",
+                "issues": [],
+                "methodology_tags_complete": True,
+                "dates_complete": True,
+                "claim_mapping_complete": True,
+            },
+        )
+    )
+    engine.pm_agent.run = AsyncMock(
+        return_value=_ar(
+            "portfolio_manager",
+            {
+                "variants": [
+                    {
+                        "name": "balanced",
+                        "positions": [
+                            {"ticker": t, "weight_pct": 100 / len(S8_UNIVERSE)} for t in S8_UNIVERSE
+                        ],
+                    },
+                ]
+            },
+        )
+    )
+    engine.quant_analyst_agent.run = AsyncMock(
+        return_value=_ar(
+            "quant_research_analyst",
+            {
+                "risk_signal": "neutral",
+                "primary_concern": "concentration",
+                "recommended_action": "monitor",
+                "section_1_factor_interpretation": {"dominant_factors": ["momentum"]},
+                "section_2_risk_assessment": {"var_95_commentary": "moderate"},
+                "section_3_benchmark_divergence": {
+                    "etf_differentiation_score": 60,
+                    "etf_replication_risk": False,
+                    "tracking_error_commentary": "high active share",
+                    "active_bets_narrative": "NVDA+12%",
+                    "information_ratio_signal": "IR=0.7",
+                    "etf_overlap_summary": "60% differentiated",
+                },
+                "section_4_construction_signal": {
+                    "factor_tilt_recommendation": "maintain",
+                    "concentration_recommendation": "trim NVDA",
+                    "benchmark_recommendation": "differentiated",
+                    "constructive_changes": [],
+                },
+                "analyst_confidence": "medium",
+                "data_quality_note": "test",
+            },
+        )
+    )
+    engine.fixed_income_agent.run = AsyncMock(
+        return_value=_ar(
+            "fixed_income_analyst",
+            {
+                "yield_curve_regime": "normal",
+                "10y_yield_context": "4.3% neutral",
+                "cost_of_capital_trend": "stable",
+                "rate_sensitivity_score": 5.0,
+                "key_risks": [],
+                "offsetting_factors": [],
+                "methodology_note": "10y yield tracking",
+            },
+        )
+    )
 
 
 @pytest.fixture
@@ -218,22 +288,23 @@ def s8_engine(s8_settings, s8_config):
     _patch_all_agents(engine)
     # Disable live return fetching so tests are deterministic (no network)
     engine.live_return_store.fetch = MagicMock(return_value={})
+
     async def _mock_ingest(tickers):
         return [_ingest_row(t) for t in tickers]
+
     engine.ingestor.ingest_universe = _mock_ingest
     return engine
 
 
 @pytest.fixture
 def s8_result(s8_engine):
-    return asyncio.get_event_loop().run_until_complete(
-        s8_engine.run_full_pipeline(S8_UNIVERSE)
-    )
+    return asyncio.get_event_loop().run_until_complete(s8_engine.run_full_pipeline(S8_UNIVERSE))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ACT-S8-1: LiveReturnStore
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestLiveReturnStore:
     """Tests for yfinance-backed LiveReturnStore."""
@@ -302,6 +373,7 @@ class TestLiveReturnStore:
 # ACT-S8-2: Rebalancing signals
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestRebalancingWiring:
     """Tests for rebalancing proposal wired into Stage 12."""
 
@@ -359,11 +431,19 @@ class TestRebalancingWiring:
 # ACT-S8-3: ESG CSV ingest
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestESGCsvIngest:
     """Tests for ESGService.load_from_csv."""
 
     def _write_csv(self, path: Path, rows: list[dict]) -> None:
-        fieldnames = ["ticker", "overall_rating", "e_score", "s_score", "g_score", "controversy_flag"]
+        fieldnames = [
+            "ticker",
+            "overall_rating",
+            "e_score",
+            "s_score",
+            "g_score",
+            "controversy_flag",
+        ]
         with open(path, "w", newline="") as fh:
             writer = csv.DictWriter(fh, fieldnames=fieldnames)
             writer.writeheader()
@@ -372,11 +452,19 @@ class TestESGCsvIngest:
     def test_load_from_csv_creates_profile(self, tmp_path):
         """load_from_csv returns number of rows loaded."""
         csv_path = tmp_path / "esg.csv"
-        self._write_csv(csv_path, [
-            {"ticker": "TESTCO", "overall_rating": "A",
-             "e_score": "7.0", "s_score": "6.5", "g_score": "8.0",
-             "controversy_flag": "false"},
-        ])
+        self._write_csv(
+            csv_path,
+            [
+                {
+                    "ticker": "TESTCO",
+                    "overall_rating": "A",
+                    "e_score": "7.0",
+                    "s_score": "6.5",
+                    "g_score": "8.0",
+                    "controversy_flag": "false",
+                },
+            ],
+        )
         svc = ESGService()
         loaded = svc.load_from_csv(csv_path)
         assert loaded == 1
@@ -385,11 +473,19 @@ class TestESGCsvIngest:
         """Loaded CSV data replaces the default heuristic profile."""
         csv_path = tmp_path / "esg.csv"
         # Override NVDA with a synthetic low-score profile
-        self._write_csv(csv_path, [
-            {"ticker": "NVDA", "overall_rating": "BB",
-             "e_score": "2.0", "s_score": "2.0", "g_score": "2.0",
-             "controversy_flag": "true"},
-        ])
+        self._write_csv(
+            csv_path,
+            [
+                {
+                    "ticker": "NVDA",
+                    "overall_rating": "BB",
+                    "e_score": "2.0",
+                    "s_score": "2.0",
+                    "g_score": "2.0",
+                    "controversy_flag": "true",
+                },
+            ],
+        )
         svc = ESGService()
         loaded = svc.load_from_csv(csv_path)
         assert loaded == 1
@@ -400,24 +496,54 @@ class TestESGCsvIngest:
     def test_load_from_csv_multiple_rows(self, tmp_path):
         """All valid rows are loaded; count matches."""
         csv_path = tmp_path / "esg_multi.csv"
-        self._write_csv(csv_path, [
-            {"ticker": "CO1", "overall_rating": "AAA", "e_score": "9.0",
-             "s_score": "9.0", "g_score": "9.0", "controversy_flag": "false"},
-            {"ticker": "CO2", "overall_rating": "CCC", "e_score": "1.0",
-             "s_score": "1.0", "g_score": "1.0", "controversy_flag": "true"},
-        ])
+        self._write_csv(
+            csv_path,
+            [
+                {
+                    "ticker": "CO1",
+                    "overall_rating": "AAA",
+                    "e_score": "9.0",
+                    "s_score": "9.0",
+                    "g_score": "9.0",
+                    "controversy_flag": "false",
+                },
+                {
+                    "ticker": "CO2",
+                    "overall_rating": "CCC",
+                    "e_score": "1.0",
+                    "s_score": "1.0",
+                    "g_score": "1.0",
+                    "controversy_flag": "true",
+                },
+            ],
+        )
         svc = ESGService()
         assert svc.load_from_csv(csv_path) == 2
 
     def test_load_from_csv_invalid_rating_skipped(self, tmp_path):
         """Rows with an invalid overall_rating value are skipped."""
         csv_path = tmp_path / "esg_bad.csv"
-        self._write_csv(csv_path, [
-            {"ticker": "GOOD", "overall_rating": "AA", "e_score": "7.0",
-             "s_score": "7.0", "g_score": "7.0", "controversy_flag": "false"},
-            {"ticker": "BAD", "overall_rating": "NOTVALID", "e_score": "5.0",
-             "s_score": "5.0", "g_score": "5.0", "controversy_flag": "false"},
-        ])
+        self._write_csv(
+            csv_path,
+            [
+                {
+                    "ticker": "GOOD",
+                    "overall_rating": "AA",
+                    "e_score": "7.0",
+                    "s_score": "7.0",
+                    "g_score": "7.0",
+                    "controversy_flag": "false",
+                },
+                {
+                    "ticker": "BAD",
+                    "overall_rating": "NOTVALID",
+                    "e_score": "5.0",
+                    "s_score": "5.0",
+                    "g_score": "5.0",
+                    "controversy_flag": "false",
+                },
+            ],
+        )
         svc = ESGService()
         loaded = svc.load_from_csv(csv_path)
         assert loaded == 1  # only GOOD row succeeds
@@ -436,10 +562,19 @@ class TestESGCsvIngest:
         original_score = original.environmental_score
 
         csv_path = tmp_path / "amd.csv"
-        self._write_csv(csv_path, [
-            {"ticker": "AMD", "overall_rating": "CCC", "e_score": "1.5",
-             "s_score": "1.5", "g_score": "1.5", "controversy_flag": "true"},
-        ])
+        self._write_csv(
+            csv_path,
+            [
+                {
+                    "ticker": "AMD",
+                    "overall_rating": "CCC",
+                    "e_score": "1.5",
+                    "s_score": "1.5",
+                    "g_score": "1.5",
+                    "controversy_flag": "true",
+                },
+            ],
+        )
         svc.load_from_csv(csv_path)
         updated = svc.get_score("AMD")
         assert updated.environmental_score == 1.5
@@ -449,6 +584,7 @@ class TestESGCsvIngest:
 # ─────────────────────────────────────────────────────────────────────────────
 # ACT-S8-4: PromptRegistry wired into SelfAuditPacket
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestPromptRegistryWiring:
     """Tests for PromptRegistry → SelfAuditPacket integration."""

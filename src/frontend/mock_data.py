@@ -5,7 +5,6 @@ publicly available information. They are NOT live data.
 """
 
 from __future__ import annotations
-from datetime import date
 
 DEMO_DATE = "2026-03-24"
 
@@ -438,15 +437,17 @@ def get_claim_ledger(tickers: list[str]) -> list[dict]:
         if not snap:
             continue
         for cat in snap.get("recent_catalysts", []):
-            claims.append({
-                "claim_id": f"CLM-{ticker}-{claim_id:03d}",
-                "ticker": ticker,
-                "claim_text": cat,
-                "evidence_class": "PRIMARY_FACT",
-                "source": snap["data_freshness"],
-                "tier": 3,
-                "confidence": "medium",
-                "status": "pass",
-            })
+            claims.append(
+                {
+                    "claim_id": f"CLM-{ticker}-{claim_id:03d}",
+                    "ticker": ticker,
+                    "claim_text": cat,
+                    "evidence_class": "PRIMARY_FACT",
+                    "source": snap["data_freshness"],
+                    "tier": 3,
+                    "confidence": "medium",
+                    "status": "pass",
+                }
+            )
             claim_id += 1
     return claims

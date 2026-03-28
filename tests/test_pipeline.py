@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from research_pipeline.pipeline.gates import GateResult, PipelineGates
 from research_pipeline.pipeline.engine import PipelineEngine
@@ -24,7 +23,9 @@ class TestPipelineEngine:
 
     def test_gate_result_failure(self):
         result = GateResult(
-            stage=3, passed=False, reason="reconciliation failed",
+            stage=3,
+            passed=False,
+            reason="reconciliation failed",
             blockers=["RED: NVDA price — divergence 5.2%"],
         )
         assert result.passed is False
@@ -56,7 +57,7 @@ class TestPipelineEngine:
         import tempfile
         from pathlib import Path
 
-        from research_pipeline.config.loader import PipelineConfig, load_pipeline_config
+        from research_pipeline.config.loader import load_pipeline_config
         from research_pipeline.config.settings import Settings
 
         # Construct a minimal Settings object for instantiation check

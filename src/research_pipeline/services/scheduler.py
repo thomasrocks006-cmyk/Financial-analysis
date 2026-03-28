@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import traceback
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any, Awaitable, Callable
 
 from research_pipeline.schemas.market_data import MarketSnapshot
 from research_pipeline.schemas.reports import DiffSummary
@@ -18,8 +17,7 @@ logger = logging.getLogger(__name__)
 # ── Types ─────────────────────────────────────────────────────────────────────
 
 AlertFn = Callable[[str, Exception], Awaitable[None]]  # (run_id, exc) -> None
-PipelineFn = Callable[[str], Awaitable[Any]]            # (run_id) -> result
-
+PipelineFn = Callable[[str], Awaitable[Any]]  # (run_id) -> result
 
 
 class SchedulerMonitoringService:
@@ -108,7 +106,8 @@ class SchedulerMonitoringService:
         if skip_if_already_ran and self.already_ran_today():
             logger.info(
                 "Scheduler: skipping run %s — already completed today (%s)",
-                run_id, date.today().isoformat(),
+                run_id,
+                date.today().isoformat(),
             )
             return None
 
@@ -121,15 +120,15 @@ class SchedulerMonitoringService:
 
         except Exception as exc:
             tb = traceback.format_exc()
-            logger.error(
-                "Scheduler: run %s FAILED — %s\n%s", run_id, exc, tb
-            )
+            logger.error("Scheduler: run %s FAILED — %s\n%s", run_id, exc, tb)
             # Persist the failure for diagnostics
-            self._state.setdefault("failed_runs", []).append({
-                "run_id": run_id,
-                "failed_at": datetime.now(timezone.utc).isoformat(),
-                "error": str(exc),
-            })
+            self._state.setdefault("failed_runs", []).append(
+                {
+                    "run_id": run_id,
+                    "failed_at": datetime.now(timezone.utc).isoformat(),
+                    "error": str(exc),
+                }
+            )
             self._save_state()
 
             # Fire alert callback
@@ -165,7 +164,9 @@ class SchedulerMonitoringService:
                 triggered.append(diff.ticker)
                 logger.warning(
                     "WATCHLIST TRIGGER: %s price moved %+.1f%% (threshold ±%.1f%%)",
-                    diff.ticker, diff.change_pct, threshold,
+                    diff.ticker,
+                    diff.change_pct,
+                    threshold,
                 )
 
         return sorted(set(triggered))
@@ -196,27 +197,31 @@ class SchedulerMonitoringService:
                     flagged = new_val != 0
                     if flagged:
                         # Always record this — zero-origin means infinite % change
-                        diffs.append(DiffSummary(
-                            ticker=curr.ticker,
-                            field=field_name,
-                            previous_value=old_val,
-                            current_value=new_val,
-                            change_pct=None,
-                            flagged=True,
-                        ))
+                        diffs.append(
+                            DiffSummary(
+                                ticker=curr.ticker,
+                                field=field_name,
+                                previous_value=old_val,
+                                current_value=new_val,
+                                change_pct=None,
+                                flagged=True,
+                            )
+                        )
                 else:
                     change_pct = round((new_val - old_val) / abs(old_val) * 100, 2)
                     flagged = abs(change_pct) >= self.alert_threshold_pct
 
                     if abs(change_pct) > 0.01:
-                        diffs.append(DiffSummary(
-                            ticker=curr.ticker,
-                            field=field_name,
-                            previous_value=old_val,
-                            current_value=new_val,
-                            change_pct=change_pct,
-                            flagged=flagged,
-                        ))
+                        diffs.append(
+                            DiffSummary(
+                                ticker=curr.ticker,
+                                field=field_name,
+                                previous_value=old_val,
+                                current_value=new_val,
+                                change_pct=change_pct,
+                                flagged=flagged,
+                            )
+                        )
 
         return diffs
 

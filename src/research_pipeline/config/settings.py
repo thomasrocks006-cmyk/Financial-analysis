@@ -39,7 +39,9 @@ class APIKeys:
         if not self.finnhub_api_key:
             missing.append("FINNHUB_API_KEY")
         if not (self.anthropic_api_key or self.openai_api_key or self.google_api_key):
-            missing.append("ANTHROPIC_API_KEY or OPENAI_API_KEY or GOOGLE_API_KEY (at least one LLM key required)")
+            missing.append(
+                "ANTHROPIC_API_KEY or OPENAI_API_KEY or GOOGLE_API_KEY (at least one LLM key required)"
+            )
         return missing
 
 
@@ -72,7 +74,11 @@ class Settings:
             self.prompts_dir = self.project_root / "prompts"
 
         # Ensure directories exist
-        for d in [self.storage_dir, self.reports_dir,
-                  self.storage_dir / "raw", self.storage_dir / "processed",
-                  self.storage_dir / "artifacts"]:
+        for d in [
+            self.storage_dir,
+            self.reports_dir,
+            self.storage_dir / "raw",
+            self.storage_dir / "processed",
+            self.storage_dir / "artifacts",
+        ]:
             d.mkdir(parents=True, exist_ok=True)

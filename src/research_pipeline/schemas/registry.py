@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Optional
 from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
-    from research_pipeline.schemas.governance import SelfAuditPacket
+    pass
 
 
 class RunStatus(str, Enum):
@@ -22,6 +22,7 @@ class RunStatus(str, Enum):
 
 class RunRecord(BaseModel):
     """A complete run registry entry — every run is logged."""
+
     run_id: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     universe: list[str] = []
@@ -42,6 +43,7 @@ class RunRecord(BaseModel):
 
 class HumanOverride(BaseModel):
     """When a human overrides an automated gate or decision."""
+
     override_id: str
     run_id: str
     approver: str
@@ -54,6 +56,7 @@ class HumanOverride(BaseModel):
 
 class PromptVersion(BaseModel):
     """Track prompt/agent versions for reproducibility."""
+
     agent_name: str
     prompt_version: str
     prompt_hash: str
@@ -64,6 +67,7 @@ class PromptVersion(BaseModel):
 
 class GoldenTest(BaseModel):
     """A regression test case."""
+
     test_id: str
     category: str  # claim_classification, reconciliation, gating, etc.
     input_fixture: dict[str, Any] = {}
@@ -74,6 +78,7 @@ class GoldenTest(BaseModel):
 
 class SelfAudit(BaseModel):
     """Self-audit scorecard appended to every report."""
+
     run_id: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     source_tier_mix: dict[str, int] = {}  # tier -> count

@@ -26,19 +26,9 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-logger = logging.getLogger(__name__)
-
-try:
-    import httpx
-    _HTTPX_AVAILABLE = True
-except ImportError:
-    _HTTPX_AVAILABLE = False
-    logger.warning("httpx not available — QualitativeDataService will return empty packages")
-
 from research_pipeline.schemas.qualitative import (
     AnalystAction,
     AnalystEstimates,
-    CoverageDepth,
     EarningsTranscript,
     EstimatePeriod,
     InsiderActivitySummary,
@@ -52,8 +42,18 @@ from research_pipeline.schemas.qualitative import (
     SentimentSignals,
 )
 
+logger = logging.getLogger(__name__)
+
+try:
+    import httpx
+
+    _HTTPX_AVAILABLE = True
+except ImportError:
+    _HTTPX_AVAILABLE = False
+    logger.warning("httpx not available — QualitativeDataService will return empty packages")
+
 _TIMEOUT_SECS = 15.0
-_MAX_CONCURRENT = 4   # max simultaneous ticker ingestions
+_MAX_CONCURRENT = 4  # max simultaneous ticker ingestions
 
 
 def _parse_date(val: Any) -> Optional[datetime]:
@@ -68,7 +68,7 @@ def _parse_date(val: Any) -> Optional[datetime]:
     val = str(val).strip()
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d", "%Y-%m-%dT%H:%M:%SZ"):
         try:
-            dt = datetime.strptime(val[:len(fmt)], fmt)
+            dt = datetime.strptime(val[: len(fmt)], fmt)
             return dt.replace(tzinfo=timezone.utc)
         except ValueError:
             continue
@@ -102,15 +102,16 @@ class QualitativeDataService:
 
     # ── Public API ────────────────────────────────────────────────────
 
-    async def ingest_universe(
-        self, tickers: list[str]
-    ) -> dict[str, QualitativePackage]:
+    async def ingest_universe(self, tickers: list[str]) -> dict[str, QualitativePackage]:
         """Ingest all qualitative data for a list of tickers concurrently.
 
         Returns dict mapping ticker → QualitativePackage.
         """
         if not _HTTPX_AVAILABLE:
-            return {t: QualitativePackage(ticker=t, coverage_gaps=["httpx_unavailable"]) for t in tickers}
+            return {
+                t: QualitativePackage(ticker=t, coverage_gaps=["httpx_unavailable"])
+                for t in tickers
+            }
 
         async with httpx.AsyncClient(timeout=_TIMEOUT_SECS) as client:
             tasks = [self._ingest_one(client, t) for t in tickers]
@@ -137,9 +138,7 @@ class QualitativeDataService:
 
     # ── Internal orchestration ─────────────────────────────────────────
 
-    async def _ingest_one(
-        self, client: httpx.AsyncClient, ticker: str
-    ) -> QualitativePackage:
+    async def _ingest_one(self, client: httpx.AsyncClient, ticker: str) -> QualitativePackage:
         async with self._sem:
             gaps: list[str] = []
 
@@ -270,11 +269,17 @@ class QualitativeDataService:
 
     async def _fetch_news_finnhub(self, client: httpx.AsyncClient, ticker: str) -> list:
         from datetime import date, timedelta
+
         today = date.today()
         from_date = (today - timedelta(days=30)).isoformat()
         r = await client.get(
             f"{self.FINNHUB_BASE}/company-news",
-            params={"symbol": ticker, "from": from_date, "to": today.isoformat(), "token": self.finnhub_key},
+            params={
+                "symbol": ticker,
+                "from": from_date,
+                "to": today.isoformat(),
+                "token": self.finnhub_key,
+            },
         )
         r.raise_for_status()
         data = r.json()
@@ -282,35 +287,45 @@ class QualitativeDataService:
 
     # ── Parsers ────────────────────────────────────────────────────────
 
-    def _merge_news(
-        self, ticker: str, fmp_items: list, finnhub_items: list
-    ) -> list[NewsItem]:
+    def _merge_news(self, ticker: str, fmp_items: list, finnhub_items: list) -> list[NewsItem]:
         seen: set[str] = set()
         merged: list[NewsItem] = []
 
-        def _add(headline: str, summary: str, source: str, pub_date: Any,
-                 url: str = "", sentiment_score: Optional[float] = None) -> None:
+        def _add(
+            headline: str,
+            summary: str,
+            source: str,
+            pub_date: Any,
+            url: str = "",
+            sentiment_score: Optional[float] = None,
+        ) -> None:
             h = _headline_hash(headline)
             if h in seen:
                 return
             seen.add(h)
             sl: Optional[SentimentLabel] = None
             if sentiment_score is not None:
-                sl = (SentimentLabel.BULLISH if sentiment_score > 0.1
-                      else SentimentLabel.BEARISH if sentiment_score < -0.1
-                      else SentimentLabel.NEUTRAL)
-            merged.append(NewsItem(
-                ticker=ticker,
-                headline=headline,
-                summary=summary,
-                published_at=_parse_date(pub_date),
-                source=source,
-                url=url,
-                sentiment_label=sl,
-                sentiment_score=sentiment_score,
-            ))
+                sl = (
+                    SentimentLabel.BULLISH
+                    if sentiment_score > 0.1
+                    else SentimentLabel.BEARISH
+                    if sentiment_score < -0.1
+                    else SentimentLabel.NEUTRAL
+                )
+            merged.append(
+                NewsItem(
+                    ticker=ticker,
+                    headline=headline,
+                    summary=summary,
+                    published_at=_parse_date(pub_date),
+                    source=source,
+                    url=url,
+                    sentiment_label=sl,
+                    sentiment_score=sentiment_score,
+                )
+            )
 
-        for item in (fmp_items or []):
+        for item in fmp_items or []:
             if isinstance(item, dict):
                 _add(
                     headline=item.get("title", ""),
@@ -320,7 +335,7 @@ class QualitativeDataService:
                     url=item.get("url", ""),
                     sentiment_score=item.get("sentiment"),
                 )
-        for item in (finnhub_items or []):
+        for item in finnhub_items or []:
             if isinstance(item, dict):
                 _add(
                     headline=item.get("headline", ""),
@@ -333,16 +348,18 @@ class QualitativeDataService:
 
     def _parse_press_releases(self, ticker: str, raw: list) -> list[PressRelease]:
         items: list[PressRelease] = []
-        for item in (raw or []):
+        for item in raw or []:
             if not isinstance(item, dict):
                 continue
-            items.append(PressRelease(
-                ticker=ticker,
-                title=item.get("title", ""),
-                date=_parse_date(item.get("date")),
-                text=item.get("text", "")[:1000],
-                source_url=item.get("url", ""),
-            ))
+            items.append(
+                PressRelease(
+                    ticker=ticker,
+                    title=item.get("title", ""),
+                    date=_parse_date(item.get("date")),
+                    text=item.get("text", "")[:1000],
+                    source_url=item.get("url", ""),
+                )
+            )
         return items[:10]
 
     def _parse_transcript(self, ticker: str, raw: Any) -> Optional[EarningsTranscript]:
@@ -362,35 +379,41 @@ class QualitativeDataService:
 
     def _parse_sec_filings(self, ticker: str, raw: list) -> list[SECFiling]:
         filings: list[SECFiling] = []
-        for item in (raw or []):
+        for item in raw or []:
             if not isinstance(item, dict):
                 continue
             filing_type = item.get("type", item.get("formType", ""))
-            filings.append(SECFiling(
-                ticker=ticker,
-                filing_type=filing_type,
-                filed_date=_parse_date(item.get("filledDate", item.get("filedAt", item.get("date")))),
-                period_of_report=str(item.get("periodOfReport", "")),
-                filing_url=item.get("link", item.get("linkToFilingDetails", "")),
-                description=item.get("description", "")[:200],
-                is_material=filing_type in ("8-K", "10-K", "10-Q"),
-            ))
+            filings.append(
+                SECFiling(
+                    ticker=ticker,
+                    filing_type=filing_type,
+                    filed_date=_parse_date(
+                        item.get("filledDate", item.get("filedAt", item.get("date")))
+                    ),
+                    period_of_report=str(item.get("periodOfReport", "")),
+                    filing_url=item.get("link", item.get("linkToFilingDetails", "")),
+                    description=item.get("description", "")[:200],
+                    is_material=filing_type in ("8-K", "10-K", "10-Q"),
+                )
+            )
         return filings[:15]
 
     def _parse_analyst_actions(self, ticker: str, raw: list) -> list[AnalystAction]:
         actions: list[AnalystAction] = []
-        for item in (raw or []):
+        for item in raw or []:
             if not isinstance(item, dict):
                 continue
-            actions.append(AnalystAction(
-                ticker=ticker,
-                firm=item.get("analystFirm", item.get("gradeCompany", item.get("firm", ""))),
-                action=item.get("action", item.get("analystChange", "")),
-                previous_grade=item.get("previousGrade", item.get("previousRating", "")),
-                new_grade=item.get("newGrade", item.get("currentRating", "")),
-                action_date=_parse_date(item.get("gradingDate", item.get("date"))),
-                price_target=float(item["priceTarget"]) if item.get("priceTarget") else None,
-            ))
+            actions.append(
+                AnalystAction(
+                    ticker=ticker,
+                    firm=item.get("analystFirm", item.get("gradeCompany", item.get("firm", ""))),
+                    action=item.get("action", item.get("analystChange", "")),
+                    previous_grade=item.get("previousGrade", item.get("previousRating", "")),
+                    new_grade=item.get("newGrade", item.get("currentRating", "")),
+                    action_date=_parse_date(item.get("gradingDate", item.get("date"))),
+                    price_target=float(item["priceTarget"]) if item.get("priceTarget") else None,
+                )
+            )
         return actions[:15]
 
     def _parse_insider(self, ticker: str, raw: list) -> InsiderActivitySummary:
@@ -398,7 +421,7 @@ class QualitativeDataService:
         total_bought = 0.0
         total_sold = 0.0
 
-        for item in (raw or []):
+        for item in raw or []:
             if not isinstance(item, dict):
                 continue
             raw_dir = item.get("acquistionOrDisposition", item.get("transactionType", ""))
@@ -418,17 +441,19 @@ class QualitativeDataService:
             elif direction == InsiderDirection.SELL:
                 total_sold += value
 
-            transactions.append(InsiderTransaction(
-                ticker=ticker,
-                reporter_name=item.get("reportingName", item.get("name", "")),
-                role=item.get("typeOfOwner", item.get("title", "")),
-                direction=direction,
-                shares=shares,
-                price_per_share=price,
-                total_value=value,
-                transaction_date=_parse_date(item.get("transactionDate", item.get("date"))),
-                filing_date=_parse_date(item.get("filingDate")),
-            ))
+            transactions.append(
+                InsiderTransaction(
+                    ticker=ticker,
+                    reporter_name=item.get("reportingName", item.get("name", "")),
+                    role=item.get("typeOfOwner", item.get("title", "")),
+                    direction=direction,
+                    shares=shares,
+                    price_per_share=price,
+                    total_value=value,
+                    transaction_date=_parse_date(item.get("transactionDate", item.get("date"))),
+                    filing_date=_parse_date(item.get("filingDate")),
+                )
+            )
 
         return InsiderActivitySummary(
             ticker=ticker,
@@ -448,12 +473,24 @@ class QualitativeDataService:
             return EstimatePeriod(
                 period_label=label,
                 fiscal_period=str(item.get("period", item.get("date", ""))),
-                estimated_revenue_avg=float(item["estimatedRevenueAvg"]) if item.get("estimatedRevenueAvg") else None,
-                estimated_revenue_low=float(item["estimatedRevenueLow"]) if item.get("estimatedRevenueLow") else None,
-                estimated_revenue_high=float(item["estimatedRevenueHigh"]) if item.get("estimatedRevenueHigh") else None,
-                estimated_eps_avg=float(item["estimatedEpsAvg"]) if item.get("estimatedEpsAvg") else None,
-                estimated_eps_low=float(item["estimatedEpsLow"]) if item.get("estimatedEpsLow") else None,
-                estimated_eps_high=float(item["estimatedEpsHigh"]) if item.get("estimatedEpsHigh") else None,
+                estimated_revenue_avg=float(item["estimatedRevenueAvg"])
+                if item.get("estimatedRevenueAvg")
+                else None,
+                estimated_revenue_low=float(item["estimatedRevenueLow"])
+                if item.get("estimatedRevenueLow")
+                else None,
+                estimated_revenue_high=float(item["estimatedRevenueHigh"])
+                if item.get("estimatedRevenueHigh")
+                else None,
+                estimated_eps_avg=float(item["estimatedEpsAvg"])
+                if item.get("estimatedEpsAvg")
+                else None,
+                estimated_eps_low=float(item["estimatedEpsLow"])
+                if item.get("estimatedEpsLow")
+                else None,
+                estimated_eps_high=float(item["estimatedEpsHigh"])
+                if item.get("estimatedEpsHigh")
+                else None,
                 num_analysts_revenue=int(item.get("numberAnalystsEstimatedRevenue", 0) or 0),
                 num_analysts_eps=int(item.get("numberAnalystsEstimatedEps", 0) or 0),
             )
@@ -471,8 +508,11 @@ class QualitativeDataService:
         if not raw:
             return None
         items = raw if isinstance(raw, list) else [raw]
-        scores = [float(i["sentiment"]) for i in items
-                  if isinstance(i, dict) and i.get("sentiment") is not None]
+        scores = [
+            float(i["sentiment"])
+            for i in items
+            if isinstance(i, dict) and i.get("sentiment") is not None
+        ]
         if not scores:
             return None
         avg_score = sum(scores) / len(scores)

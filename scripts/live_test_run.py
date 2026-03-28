@@ -64,7 +64,7 @@ async def fetch_all_data(ticker: str, client: httpx.AsyncClient) -> dict:
 
     # FMP: quote  (stable endpoint uses symbol= param, returns list)
     try:
-        data = await fmp_get(client, f"/quote", {"symbol": ticker})
+        data = await fmp_get(client, "/quote", {"symbol": ticker})
         q = data[0] if isinstance(data, list) and data else (data or {})
         if not q or "Error Message" in str(q):
             raise ValueError(f"FMP returned no data: {q}")
@@ -90,7 +90,7 @@ async def fetch_all_data(ticker: str, client: httpx.AsyncClient) -> dict:
 
     # FMP: price target consensus
     try:
-        data = await fmp_get(client, f"/price-target-consensus", {"symbol": ticker})
+        data = await fmp_get(client, "/price-target-consensus", {"symbol": ticker})
         r = data[0] if isinstance(data, list) and data else (data or {})
         if not r or "Error Message" in str(r):
             raise ValueError(str(r))
@@ -108,7 +108,7 @@ async def fetch_all_data(ticker: str, client: httpx.AsyncClient) -> dict:
 
     # FMP: analyst estimates (forward revenue/EPS) — premium endpoint, may 400/402
     try:
-        data = await fmp_get(client, f"/analyst-estimates", {"symbol": ticker, "limit": 4})
+        data = await fmp_get(client, "/analyst-estimates", {"symbol": ticker, "limit": 4})
         if not data or isinstance(data, dict):
             raise ValueError(str(data))
         results["fmp_estimates"] = [
@@ -128,7 +128,7 @@ async def fetch_all_data(ticker: str, client: httpx.AsyncClient) -> dict:
 
     # FMP: key metrics (EV/EBITDA, FCF yield, etc.)
     try:
-        data = await fmp_get(client, f"/key-metrics", {"symbol": ticker, "limit": 1})
+        data = await fmp_get(client, "/key-metrics", {"symbol": ticker, "limit": 1})
         km = data[0] if isinstance(data, list) and data else {}
         if not km or "Error Message" in str(km):
             raise ValueError(str(km))
@@ -455,11 +455,11 @@ async def main():
     print("="*70)
     print(llm_output)
     print("\n" + "="*70)
-    print(f"  COST SUMMARY")
+    print("  COST SUMMARY")
     print("="*70)
     print(f"  Stage 5 alone:          ${cost:.4f}")
-    print(f"  Extrapolated full run:  ~$0.15–$0.35 (3 stocks, optimal model mix)")
-    print(f"  Full run (all Opus):    ~$0.80–$1.20 (3 stocks)")
+    print("  Extrapolated full run:  ~$0.15–$0.35 (3 stocks, optimal model mix)")
+    print("  Full run (all Opus):    ~$0.80–$1.20 (3 stocks)")
     print("="*70 + "\n")
 
 

@@ -30,6 +30,7 @@ class PublicationStatus(str, Enum):
 # ── Valuation schemas ──────────────────────────────────────────────────────
 class ValuationSnapshot(BaseModel):
     """Current valuation metrics for a name."""
+
     ticker: str
     date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     price: float
@@ -42,6 +43,7 @@ class ValuationSnapshot(BaseModel):
 
 class ReturnScenario(BaseModel):
     """A single bull / base / bear scenario."""
+
     label: str  # "base", "bull", "bear"
     probability_pct: Optional[float] = None
     revenue_cagr_pct: float
@@ -56,6 +58,7 @@ class ReturnScenario(BaseModel):
 
 class DriverDecomposition(BaseModel):
     """Decompose expected return into drivers."""
+
     revenue_growth_pct: float = 0.0
     margin_expansion_pct: float = 0.0
     multiple_rerate_pct: float = 0.0
@@ -65,6 +68,7 @@ class DriverDecomposition(BaseModel):
 
 class ValuationCard(BaseModel):
     """Complete valuation output for one name."""
+
     ticker: str
     run_id: str
     date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -86,6 +90,7 @@ class ValuationCard(BaseModel):
 # ── Sector analysis schemas ────────────────────────────────────────────────
 class FourBoxOutput(BaseModel):
     """Structured four-box sector analyst output per name."""
+
     ticker: str
     company_name: str
     analyst_role: str  # "compute", "power_energy", "infrastructure"
@@ -102,6 +107,7 @@ class FourBoxOutput(BaseModel):
 # ── Red team schemas ───────────────────────────────────────────────────────
 class FalsificationTest(BaseModel):
     """A single falsification test result."""
+
     test_name: str
     assumption_challenged: str
     outcome_if_wrong: str  # "breaks", "weakens significantly", "survives"
@@ -110,6 +116,7 @@ class FalsificationTest(BaseModel):
 
 class RedTeamAssessment(BaseModel):
     """Red team output for one name or the portfolio."""
+
     target: str  # ticker or "PORTFOLIO"
     run_id: str
     date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -124,6 +131,7 @@ class RedTeamAssessment(BaseModel):
 # ── Macro & geopolitical schemas ───────────────────────────────────────────
 class MacroRegimeMemo(BaseModel):
     """Macro and regime strategist output."""
+
     run_id: str
     date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     regime_classification: str = ""  # e.g. "late-cycle expansion"
@@ -136,6 +144,7 @@ class MacroRegimeMemo(BaseModel):
 
 class PoliticalRiskAssessment(BaseModel):
     """Political and geopolitical risk analyst output."""
+
     run_id: str
     date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     ticker: str = ""
@@ -150,6 +159,7 @@ class PoliticalRiskAssessment(BaseModel):
 # ── Portfolio schemas ──────────────────────────────────────────────────────
 class PortfolioPosition(BaseModel):
     """A single position in a portfolio variant."""
+
     ticker: str
     weight_pct: float
     subtheme: str  # "compute", "power", "infrastructure", "materials", "etf"
@@ -161,6 +171,7 @@ class PortfolioPosition(BaseModel):
 
 class PortfolioVariant(BaseModel):
     """One of the three required portfolio variants."""
+
     variant_name: str  # "balanced", "higher_return", "lower_volatility"
     run_id: str
     date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -191,6 +202,7 @@ class PortfolioVariant(BaseModel):
 # ── Review gate schemas ────────────────────────────────────────────────────
 class ReviewIssue(BaseModel):
     """An issue found during associate review."""
+
     severity: str  # "critical", "major", "minor"
     description: str
     ticker: Optional[str] = None
@@ -200,6 +212,7 @@ class ReviewIssue(BaseModel):
 
 class AssociateReviewResult(BaseModel):
     """Associate reviewer gate output."""
+
     run_id: str
     date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     status: PublicationStatus = PublicationStatus.FAIL

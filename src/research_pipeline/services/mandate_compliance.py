@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from research_pipeline.schemas.governance import (
     MandateConfig,
@@ -16,11 +15,23 @@ logger = logging.getLogger(__name__)
 
 # Default subtheme mapping
 TICKER_SUBTHEMES = {
-    "NVDA": "compute", "AVGO": "compute", "TSM": "compute", "AMD": "compute", "ANET": "compute",
-    "CEG": "power", "VST": "power", "GEV": "power", "NLR": "power",
-    "PWR": "infrastructure", "ETN": "infrastructure", "HUBB": "infrastructure",
-    "APH": "infrastructure", "FIX": "infrastructure", "NXT": "infrastructure",
-    "FCX": "materials", "BHP": "materials",
+    "NVDA": "compute",
+    "AVGO": "compute",
+    "TSM": "compute",
+    "AMD": "compute",
+    "ANET": "compute",
+    "CEG": "power",
+    "VST": "power",
+    "GEV": "power",
+    "NLR": "power",
+    "PWR": "infrastructure",
+    "ETN": "infrastructure",
+    "HUBB": "infrastructure",
+    "APH": "infrastructure",
+    "FIX": "infrastructure",
+    "NXT": "infrastructure",
+    "FCX": "materials",
+    "BHP": "materials",
 }
 
 
@@ -36,34 +47,49 @@ def default_mandate() -> MandateConfig:
         min_liquidity_adv_days=5.0,
         rules=[
             MandateRule(
-                rule_id="R001", rule_type="max_weight",
+                rule_id="R001",
+                rule_type="max_weight",
                 description="No single name >15%",
-                threshold=15.0, hard_limit=True,
+                threshold=15.0,
+                hard_limit=True,
             ),
             MandateRule(
-                rule_id="R002", rule_type="sector_cap",
-                description="No sector >40%", parameter="compute",
-                threshold=40.0, hard_limit=True,
+                rule_id="R002",
+                rule_type="sector_cap",
+                description="No sector >40%",
+                parameter="compute",
+                threshold=40.0,
+                hard_limit=True,
             ),
             MandateRule(
-                rule_id="R003", rule_type="sector_cap",
-                description="No sector >40%", parameter="power",
-                threshold=40.0, hard_limit=True,
+                rule_id="R003",
+                rule_type="sector_cap",
+                description="No sector >40%",
+                parameter="power",
+                threshold=40.0,
+                hard_limit=True,
             ),
             MandateRule(
-                rule_id="R004", rule_type="sector_cap",
-                description="No sector >40%", parameter="infrastructure",
-                threshold=40.0, hard_limit=True,
+                rule_id="R004",
+                rule_type="sector_cap",
+                description="No sector >40%",
+                parameter="infrastructure",
+                threshold=40.0,
+                hard_limit=True,
             ),
             MandateRule(
-                rule_id="R005", rule_type="min_positions",
+                rule_id="R005",
+                rule_type="min_positions",
                 description="Minimum 8 positions",
-                threshold=8.0, hard_limit=True,
+                threshold=8.0,
+                hard_limit=True,
             ),
             MandateRule(
-                rule_id="R006", rule_type="max_positions",
+                rule_id="R006",
+                rule_type="max_positions",
                 description="Maximum 25 positions",
-                threshold=25.0, hard_limit=False,
+                threshold=25.0,
+                hard_limit=False,
             ),
         ],
     )
@@ -94,15 +120,21 @@ class MandateComplianceEngine:
         for ticker, weight in weights.items():
             if weight > self.mandate.max_single_name_pct:
                 rule = MandateRule(
-                    rule_id="R_NAME", rule_type="max_weight",
+                    rule_id="R_NAME",
+                    rule_type="max_weight",
                     description=f"{ticker} exceeds {self.mandate.max_single_name_pct}% limit",
-                    parameter=ticker, threshold=self.mandate.max_single_name_pct,
+                    parameter=ticker,
+                    threshold=self.mandate.max_single_name_pct,
                     hard_limit=True,
                 )
-                violations.append(MandateViolation(
-                    rule=rule, actual_value=weight, breach_severity="hard",
-                    description=f"{ticker}: {weight:.1f}% > {self.mandate.max_single_name_pct}% max",
-                ))
+                violations.append(
+                    MandateViolation(
+                        rule=rule,
+                        actual_value=weight,
+                        breach_severity="hard",
+                        description=f"{ticker}: {weight:.1f}% > {self.mandate.max_single_name_pct}% max",
+                    )
+                )
 
         # Check sector concentration
         sector_weights: dict[str, float] = {}
@@ -113,37 +145,52 @@ class MandateComplianceEngine:
         for sector, total in sector_weights.items():
             if total > self.mandate.max_sector_pct:
                 rule = MandateRule(
-                    rule_id=f"R_SECTOR_{sector.upper()}", rule_type="sector_cap",
+                    rule_id=f"R_SECTOR_{sector.upper()}",
+                    rule_type="sector_cap",
                     description=f"Sector '{sector}' exceeds {self.mandate.max_sector_pct}% cap",
-                    parameter=sector, threshold=self.mandate.max_sector_pct,
+                    parameter=sector,
+                    threshold=self.mandate.max_sector_pct,
                     hard_limit=True,
                 )
-                violations.append(MandateViolation(
-                    rule=rule, actual_value=total, breach_severity="hard",
-                    description=f"Sector '{sector}': {total:.1f}% > {self.mandate.max_sector_pct}% max",
-                ))
+                violations.append(
+                    MandateViolation(
+                        rule=rule,
+                        actual_value=total,
+                        breach_severity="hard",
+                        description=f"Sector '{sector}': {total:.1f}% > {self.mandate.max_sector_pct}% max",
+                    )
+                )
 
         # Check position count
         n_positions = len(weights)
         if n_positions < self.mandate.min_positions:
-            violations.append(MandateViolation(
-                rule=MandateRule(
-                    rule_id="R_MIN_POS", rule_type="min_positions",
-                    description=f"Below minimum {self.mandate.min_positions} positions",
-                    threshold=self.mandate.min_positions, hard_limit=True,
-                ),
-                actual_value=n_positions, breach_severity="hard",
-                description=f"Only {n_positions} positions, minimum is {self.mandate.min_positions}",
-            ))
+            violations.append(
+                MandateViolation(
+                    rule=MandateRule(
+                        rule_id="R_MIN_POS",
+                        rule_type="min_positions",
+                        description=f"Below minimum {self.mandate.min_positions} positions",
+                        threshold=self.mandate.min_positions,
+                        hard_limit=True,
+                    ),
+                    actual_value=n_positions,
+                    breach_severity="hard",
+                    description=f"Only {n_positions} positions, minimum is {self.mandate.min_positions}",
+                )
+            )
 
         if n_positions > self.mandate.max_positions:
-            warnings.append(f"Portfolio has {n_positions} positions, above soft limit of {self.mandate.max_positions}")
+            warnings.append(
+                f"Portfolio has {n_positions} positions, above soft limit of {self.mandate.max_positions}"
+            )
 
         # Check liquidity
         if liquidity_days:
             for ticker, days in liquidity_days.items():
                 if days > self.mandate.min_liquidity_adv_days * 2:
-                    warnings.append(f"{ticker}: {days:.1f} days to liquidate exceeds 2x ADV threshold")
+                    warnings.append(
+                        f"{ticker}: {days:.1f} days to liquidate exceeds 2x ADV threshold"
+                    )
 
         is_compliant = len([v for v in violations if v.breach_severity == "hard"]) == 0
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -22,20 +22,67 @@ DEFAULT_FACTOR_PREMIA = {
 
 # Heuristic factor loadings by subtheme (used when no regression data available)
 SUBTHEME_FACTOR_PROFILES = {
-    "compute": {"market_beta": 1.35, "size_loading": -0.3, "value_loading": -0.5, "momentum_loading": 0.4, "quality_loading": 0.3, "volatility_loading": 0.4},
-    "power": {"market_beta": 0.85, "size_loading": 0.1, "value_loading": 0.2, "momentum_loading": 0.2, "quality_loading": 0.4, "volatility_loading": -0.1},
-    "infrastructure": {"market_beta": 1.05, "size_loading": 0.2, "value_loading": 0.1, "momentum_loading": 0.15, "quality_loading": 0.2, "volatility_loading": 0.0},
-    "materials": {"market_beta": 1.10, "size_loading": 0.0, "value_loading": 0.3, "momentum_loading": -0.1, "quality_loading": 0.1, "volatility_loading": 0.2},
-    "etf": {"market_beta": 1.0, "size_loading": 0.0, "value_loading": 0.0, "momentum_loading": 0.0, "quality_loading": 0.0, "volatility_loading": 0.0},
+    "compute": {
+        "market_beta": 1.35,
+        "size_loading": -0.3,
+        "value_loading": -0.5,
+        "momentum_loading": 0.4,
+        "quality_loading": 0.3,
+        "volatility_loading": 0.4,
+    },
+    "power": {
+        "market_beta": 0.85,
+        "size_loading": 0.1,
+        "value_loading": 0.2,
+        "momentum_loading": 0.2,
+        "quality_loading": 0.4,
+        "volatility_loading": -0.1,
+    },
+    "infrastructure": {
+        "market_beta": 1.05,
+        "size_loading": 0.2,
+        "value_loading": 0.1,
+        "momentum_loading": 0.15,
+        "quality_loading": 0.2,
+        "volatility_loading": 0.0,
+    },
+    "materials": {
+        "market_beta": 1.10,
+        "size_loading": 0.0,
+        "value_loading": 0.3,
+        "momentum_loading": -0.1,
+        "quality_loading": 0.1,
+        "volatility_loading": 0.2,
+    },
+    "etf": {
+        "market_beta": 1.0,
+        "size_loading": 0.0,
+        "value_loading": 0.0,
+        "momentum_loading": 0.0,
+        "quality_loading": 0.0,
+        "volatility_loading": 0.0,
+    },
 }
 
 # Ticker -> subtheme mapping
 TICKER_SUBTHEMES = {
-    "NVDA": "compute", "AVGO": "compute", "TSM": "compute", "AMD": "compute", "ANET": "compute",
-    "CEG": "power", "VST": "power", "GEV": "power", "NLR": "power",
-    "PWR": "infrastructure", "ETN": "infrastructure", "HUBB": "infrastructure",
-    "APH": "infrastructure", "FIX": "infrastructure", "NXT": "infrastructure",
-    "FCX": "materials", "BHP": "materials",
+    "NVDA": "compute",
+    "AVGO": "compute",
+    "TSM": "compute",
+    "AMD": "compute",
+    "ANET": "compute",
+    "CEG": "power",
+    "VST": "power",
+    "GEV": "power",
+    "NLR": "power",
+    "PWR": "infrastructure",
+    "ETN": "infrastructure",
+    "HUBB": "infrastructure",
+    "APH": "infrastructure",
+    "FIX": "infrastructure",
+    "NXT": "infrastructure",
+    "FCX": "materials",
+    "BHP": "materials",
 }
 
 
@@ -131,8 +178,12 @@ class FactorExposureEngine:
     ) -> dict[str, float]:
         """Compute weighted portfolio-level factor exposures."""
         portfolio = {
-            "market_beta": 0.0, "size_loading": 0.0, "value_loading": 0.0,
-            "momentum_loading": 0.0, "quality_loading": 0.0, "volatility_loading": 0.0,
+            "market_beta": 0.0,
+            "size_loading": 0.0,
+            "value_loading": 0.0,
+            "momentum_loading": 0.0,
+            "quality_loading": 0.0,
+            "volatility_loading": 0.0,
         }
 
         total_weight = sum(weights.values())

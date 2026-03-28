@@ -149,7 +149,8 @@ Return ONLY the JSON object with the "esg_scores" array."""
 
         # ── Remaining inputs (market data etc.) ──────────────────────────
         extra = {
-            k: v for k, v in inputs.items()
+            k: v
+            for k, v in inputs.items()
             if k not in ("tickers", "esg_baseline_profiles", "sector_outputs")
         }
         if extra:
@@ -174,9 +175,7 @@ Return ONLY the JSON object with the "esg_scores" array."""
             )
 
         if not isinstance(scores, list) or len(scores) == 0:
-            raise StructuredOutputError(
-                "EsgAnalystAgent: 'esg_scores' must be a non-empty array."
-            )
+            raise StructuredOutputError("EsgAnalystAgent: 'esg_scores' must be a non-empty array.")
 
         violations: list[str] = []
         for entry in scores:

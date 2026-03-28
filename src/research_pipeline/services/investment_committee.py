@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
 from typing import Any
 
 from research_pipeline.schemas.governance import (
@@ -27,7 +26,9 @@ DEFAULT_COMMITTEE = [
     CommitteeMember(member_id="IC-PM", role="pm", name="Portfolio Manager (System)"),
     CommitteeMember(member_id="IC-RISK", role="risk_officer", name="Risk Officer (System)"),
     CommitteeMember(member_id="IC-ANALYST", role="analyst", name="Lead Analyst (System)"),
-    CommitteeMember(member_id="IC-COMPLIANCE", role="compliance", name="Compliance Officer (System)"),
+    CommitteeMember(
+        member_id="IC-COMPLIANCE", role="compliance", name="Compliance Officer (System)"
+    ),
 ]
 
 
@@ -80,16 +81,19 @@ class InvestmentCommitteeService:
                 risk_summary=risk_summary,
                 review_result=review_result,
             )
-            votes.append(CommitteeVoteRecord(
-                member=member,
-                vote=vote,
-                rationale=rationale,
-                conditions=conditions,
-            ))
+            votes.append(
+                CommitteeVoteRecord(
+                    member=member,
+                    vote=vote,
+                    rationale=rationale,
+                    conditions=conditions,
+                )
+            )
 
         # Determine outcome
         approve_count = sum(
-            1 for v in votes
+            1
+            for v in votes
             if v.vote in (CommitteeVote.APPROVE, CommitteeVote.APPROVE_WITH_CONDITIONS)
         )
         reject_count = sum(1 for v in votes if v.vote == CommitteeVote.REJECT)
@@ -103,10 +107,10 @@ class InvestmentCommitteeService:
             outcome = CommitteeVote.REJECT
             minutes = f"Rejected by committee ({reject_count} reject votes)."
         elif approve_count >= self.required_votes:
-            has_conditions = any(
-                v.vote == CommitteeVote.APPROVE_WITH_CONDITIONS for v in votes
+            has_conditions = any(v.vote == CommitteeVote.APPROVE_WITH_CONDITIONS for v in votes)
+            outcome = (
+                CommitteeVote.APPROVE_WITH_CONDITIONS if has_conditions else CommitteeVote.APPROVE
             )
-            outcome = CommitteeVote.APPROVE_WITH_CONDITIONS if has_conditions else CommitteeVote.APPROVE
             all_conditions = []
             for v in votes:
                 all_conditions.extend(v.conditions)
@@ -130,7 +134,11 @@ class InvestmentCommitteeService:
 
         logger.info(
             "IC decision for %s: %s (%d approve, %d reject, quorum=%s)",
-            run_id, outcome.value, approve_count, reject_count, quorum_met,
+            run_id,
+            outcome.value,
+            approve_count,
+            reject_count,
+            quorum_met,
         )
         return record
 
@@ -195,7 +203,11 @@ class InvestmentCommitteeService:
         # pass_with_disclosure is no longer a valid outcome (binary PASS/FAIL only).
         # If an unexpected value appears here treat it conservatively as FAIL.
         if review_result and review_result.get("status") not in ("pass", None):
-            return CommitteeVote.REJECT, f"Unexpected review status '{review_result.get('status')}' — treated as FAIL", []
+            return (
+                CommitteeVote.REJECT,
+                f"Unexpected review status '{review_result.get('status')}' — treated as FAIL",
+                [],
+            )
 
         return CommitteeVote.APPROVE, "Portfolio quality satisfactory", []
 
@@ -223,7 +235,11 @@ class InvestmentCommitteeService:
             conditions.append(f"Max weight {max_weight}% — consider trimming")
 
         if conditions:
-            return CommitteeVote.APPROVE_WITH_CONDITIONS, "Risk within limits but elevated", conditions
+            return (
+                CommitteeVote.APPROVE_WITH_CONDITIONS,
+                "Risk within limits but elevated",
+                conditions,
+            )
         return CommitteeVote.APPROVE, "Risk metrics within acceptable limits", []
 
     def _analyst_vote(
@@ -235,14 +251,22 @@ class InvestmentCommitteeService:
         """Analyst evaluates research quality."""
         evidence_gate = gate_results.get("stage_5_gate", "unknown")
         if evidence_gate == "fail":
-            return CommitteeVote.REJECT, "Evidence gate (Stage 5) failed — insufficient sourcing", []
+            return (
+                CommitteeVote.REJECT,
+                "Evidence gate (Stage 5) failed — insufficient sourcing",
+                [],
+            )
 
         if review_result and review_result.get("issues"):
             issue_count = len(review_result["issues"])
             if issue_count > 3:
                 return CommitteeVote.REJECT, f"Review raised {issue_count} issues — too many", []
             conditions.append(f"Address {issue_count} reviewer issues before publication")
-            return CommitteeVote.APPROVE_WITH_CONDITIONS, "Research quality acceptable with issues", conditions
+            return (
+                CommitteeVote.APPROVE_WITH_CONDITIONS,
+                "Research quality acceptable with issues",
+                conditions,
+            )
 
         return CommitteeVote.APPROVE, "Research quality satisfactory", []
 
@@ -253,7 +277,9 @@ class InvestmentCommitteeService:
     ) -> tuple[CommitteeVote, str, list[str]]:
         """Compliance evaluates mandate adherence."""
         if not mandate_check:
-            conditions.append("No mandate compliance check performed — require pre-publication check")
+            conditions.append(
+                "No mandate compliance check performed — require pre-publication check"
+            )
             return CommitteeVote.APPROVE_WITH_CONDITIONS, "Mandate check not available", conditions
 
         if not mandate_check.is_compliant:

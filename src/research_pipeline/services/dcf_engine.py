@@ -6,7 +6,6 @@ import logging
 from dataclasses import dataclass, field
 from typing import Optional
 
-import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +13,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class DCFAssumptions:
     """Input assumptions for a DCF model."""
+
     ticker: str
     revenue_base: float  # current year revenue
     revenue_growth_rates: list[float] = field(default_factory=lambda: [0.10] * 5)
@@ -28,6 +28,7 @@ class DCFAssumptions:
 @dataclass
 class DCFResult:
     """Output from a DCF calculation."""
+
     ticker: str
     enterprise_value: float
     equity_value: float
@@ -39,6 +40,7 @@ class DCFResult:
 @dataclass
 class SensitivityTable:
     """2D sensitivity grid."""
+
     row_label: str  # e.g. "WACC"
     col_label: str  # e.g. "Terminal Growth"
     row_values: list[float] = field(default_factory=list)
@@ -54,6 +56,7 @@ class RelativeValuationResult:
     the ``composite_implied_price`` is a simple average; call
     ``weight_composite()`` to use a custom blend.
     """
+
     ticker: str
     current_price: float
     peer_ev_ebitda_multiple: Optional[float] = None
@@ -105,7 +108,7 @@ class DCFEngine:
         rev = assumptions.revenue_base
 
         for i in range(len(assumptions.revenue_growth_rates)):
-            rev *= (1 + assumptions.revenue_growth_rates[i])
+            rev *= 1 + assumptions.revenue_growth_rates[i]
             revenues.append(rev)
             ebitda = rev * assumptions.ebitda_margin_path[i]
             capex = rev * assumptions.capex_pct_revenue
@@ -149,7 +152,7 @@ class DCFEngine:
         net_debt: float,
         wacc: float,
         terminal_growth: float,
-        revenue_base: float,        # REQUIRED: current revenue ($M), NOT normalised
+        revenue_base: float,  # REQUIRED: current revenue ($M), NOT normalised
         years: int = 5,
         ebitda_margin: float = 0.30,
         capex_pct: float = 0.08,
@@ -171,7 +174,7 @@ class DCFEngine:
             mid = (low + high) / 2
             assumptions = DCFAssumptions(
                 ticker=ticker,
-                revenue_base=revenue_base,          # actual revenue
+                revenue_base=revenue_base,  # actual revenue
                 revenue_growth_rates=[mid] * years,
                 ebitda_margin_path=[ebitda_margin] * years,
                 capex_pct_revenue=capex_pct,
@@ -295,9 +298,7 @@ class DCFEngine:
         if available:
             composite = round(sum(available) / len(available), 2)
             if current_price > 0:
-                composite_upside = round(
-                    (composite - current_price) / current_price * 100, 1
-                )
+                composite_upside = round((composite - current_price) / current_price * 100, 1)
 
         return RelativeValuationResult(
             ticker=ticker,

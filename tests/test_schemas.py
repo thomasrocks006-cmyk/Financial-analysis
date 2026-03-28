@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 
 import pytest
 
@@ -28,7 +27,6 @@ from research_pipeline.schemas.portfolio import (
     PortfolioPosition,
     PortfolioVariant,
     ThesisIntegrity,
-    ValuationCard,
     ValuationSnapshot,
     ReturnScenario,
     RedTeamAssessment,
@@ -113,8 +111,13 @@ class TestClaims:
         assert ledger.get_claims_for_ticker("AAPL") == []
 
     def test_evidence_classes(self):
-        expected = {"primary_fact", "mgmt_guidance", "independent_confirmation",
-                    "consensus_datapoint", "house_inference"}
+        expected = {
+            "primary_fact",
+            "mgmt_guidance",
+            "independent_confirmation",
+            "consensus_datapoint",
+            "house_inference",
+        }
         actual = {e.value for e in EvidenceClass}
         assert actual == expected
 
@@ -158,22 +161,34 @@ class TestMarketData:
     def test_reconciliation_report_counts(self):
         fields = [
             ReconciliationField(
-                field_name="price", ticker="NVDA",
-                source_a="fmp", source_a_value=125.50,
-                source_b="finnhub", source_b_value=125.80,
-                divergence_pct=0.24, status=ReconciliationStatus.GREEN,
+                field_name="price",
+                ticker="NVDA",
+                source_a="fmp",
+                source_a_value=125.50,
+                source_b="finnhub",
+                source_b_value=125.80,
+                divergence_pct=0.24,
+                status=ReconciliationStatus.GREEN,
             ),
             ReconciliationField(
-                field_name="target", ticker="NVDA",
-                source_a="fmp", source_a_value=150.0,
-                source_b="finnhub", source_b_value=180.0,
-                divergence_pct=20.0, status=ReconciliationStatus.RED,
+                field_name="target",
+                ticker="NVDA",
+                source_a="fmp",
+                source_a_value=150.0,
+                source_b="finnhub",
+                source_b_value=180.0,
+                divergence_pct=20.0,
+                status=ReconciliationStatus.RED,
             ),
             ReconciliationField(
-                field_name="eps", ticker="NVDA",
-                source_a="fmp", source_a_value=5.5,
-                source_b="finnhub", source_b_value=5.8,
-                divergence_pct=5.5, status=ReconciliationStatus.AMBER,
+                field_name="eps",
+                ticker="NVDA",
+                source_a="fmp",
+                source_a_value=5.5,
+                source_b="finnhub",
+                source_b_value=5.8,
+                divergence_pct=5.5,
+                status=ReconciliationStatus.AMBER,
             ),
         ]
         report = ReconciliationReport(run_id="test", fields=fields)
@@ -208,12 +223,18 @@ class TestPortfolio:
     def test_portfolio_variant_no_excess_single_stock(self):
         positions = [
             PortfolioPosition(
-                ticker="NVDA", weight_pct=20.0, subtheme="compute",
-                entry_quality=EntryQuality.STRONG, thesis_integrity=ThesisIntegrity.ROBUST,
+                ticker="NVDA",
+                weight_pct=20.0,
+                subtheme="compute",
+                entry_quality=EntryQuality.STRONG,
+                thesis_integrity=ThesisIntegrity.ROBUST,
             ),
             PortfolioPosition(
-                ticker="CEG", weight_pct=10.0, subtheme="power",
-                entry_quality=EntryQuality.STRONG, thesis_integrity=ThesisIntegrity.ROBUST,
+                ticker="CEG",
+                weight_pct=10.0,
+                subtheme="power",
+                entry_quality=EntryQuality.STRONG,
+                thesis_integrity=ThesisIntegrity.ROBUST,
             ),
         ]
         variant = PortfolioVariant(variant_name="test", run_id="test", positions=positions)
@@ -225,12 +246,18 @@ class TestPortfolio:
         # Compute at 30% (under 40% limit) — should pass
         positions = [
             PortfolioPosition(
-                ticker="NVDA", weight_pct=15.0, subtheme="compute",
-                entry_quality=EntryQuality.STRONG, thesis_integrity=ThesisIntegrity.ROBUST,
+                ticker="NVDA",
+                weight_pct=15.0,
+                subtheme="compute",
+                entry_quality=EntryQuality.STRONG,
+                thesis_integrity=ThesisIntegrity.ROBUST,
             ),
             PortfolioPosition(
-                ticker="AVGO", weight_pct=15.0, subtheme="compute",
-                entry_quality=EntryQuality.STRONG, thesis_integrity=ThesisIntegrity.ROBUST,
+                ticker="AVGO",
+                weight_pct=15.0,
+                subtheme="compute",
+                entry_quality=EntryQuality.STRONG,
+                thesis_integrity=ThesisIntegrity.ROBUST,
             ),
         ]
         variant = PortfolioVariant(variant_name="test", run_id="test", positions=positions)
@@ -243,16 +270,25 @@ class TestPortfolio:
         # Compute at 45% (over 40% limit)
         positions = [
             PortfolioPosition(
-                ticker="NVDA", weight_pct=15.0, subtheme="compute",
-                entry_quality=EntryQuality.STRONG, thesis_integrity=ThesisIntegrity.ROBUST,
+                ticker="NVDA",
+                weight_pct=15.0,
+                subtheme="compute",
+                entry_quality=EntryQuality.STRONG,
+                thesis_integrity=ThesisIntegrity.ROBUST,
             ),
             PortfolioPosition(
-                ticker="AVGO", weight_pct=15.0, subtheme="compute",
-                entry_quality=EntryQuality.STRONG, thesis_integrity=ThesisIntegrity.ROBUST,
+                ticker="AVGO",
+                weight_pct=15.0,
+                subtheme="compute",
+                entry_quality=EntryQuality.STRONG,
+                thesis_integrity=ThesisIntegrity.ROBUST,
             ),
             PortfolioPosition(
-                ticker="TSM", weight_pct=15.0, subtheme="compute",
-                entry_quality=EntryQuality.ACCEPTABLE, thesis_integrity=ThesisIntegrity.MODERATE,
+                ticker="TSM",
+                weight_pct=15.0,
+                subtheme="compute",
+                entry_quality=EntryQuality.ACCEPTABLE,
+                thesis_integrity=ThesisIntegrity.MODERATE,
             ),
         ]
         variant = PortfolioVariant(variant_name="test", run_id="test", positions=positions)
@@ -263,8 +299,11 @@ class TestPortfolio:
     def test_fragile_thesis_flagged(self):
         positions = [
             PortfolioPosition(
-                ticker="NVDA", weight_pct=10.0, subtheme="compute",
-                entry_quality=EntryQuality.STRONG, thesis_integrity=ThesisIntegrity.FRAGILE,
+                ticker="NVDA",
+                weight_pct=10.0,
+                subtheme="compute",
+                entry_quality=EntryQuality.STRONG,
+                thesis_integrity=ThesisIntegrity.FRAGILE,
             ),
         ]
         variant = PortfolioVariant(variant_name="test", run_id="test", positions=positions)
@@ -273,21 +312,28 @@ class TestPortfolio:
 
     def test_valuation_snapshot(self):
         snap = ValuationSnapshot(
-            ticker="NVDA", price=125.50, market_cap=3.08e12,
-            trailing_pe=55.2, forward_pe=32.1,
+            ticker="NVDA",
+            price=125.50,
+            market_cap=3.08e12,
+            trailing_pe=55.2,
+            forward_pe=32.1,
         )
         assert snap.price == 125.50
 
     def test_return_scenario(self):
         scenario = ReturnScenario(
-            label="bull", revenue_cagr_pct=0.40, exit_multiple=35.0,
+            label="bull",
+            revenue_cagr_pct=0.40,
+            exit_multiple=35.0,
             exit_multiple_rationale="AI dominance premium",
         )
         assert scenario.label == "bull"
 
     def test_four_box_output(self):
         fb = FourBoxOutput(
-            ticker="NVDA", company_name="NVIDIA", analyst_role="compute",
+            ticker="NVDA",
+            company_name="NVIDIA",
+            analyst_role="compute",
             box1_verified_facts="Revenue grew 400%",
             box4_analyst_judgment="Strong conviction",
         )
@@ -296,7 +342,8 @@ class TestPortfolio:
 
     def test_red_team_assessment(self):
         rta = RedTeamAssessment(
-            target="NVDA", run_id="test",
+            target="NVDA",
+            run_id="test",
             what_is_priced_in="40% CAGR for 3 years",
             falsification_tests=[
                 FalsificationTest(
@@ -395,9 +442,13 @@ class TestReports:
 
     def test_stock_card(self):
         card = StockCard(
-            ticker="NVDA", company_name="NVIDIA Corporation", subtheme="compute",
-            four_box_summary="Strong", valuation_summary="Fair",
-            entry_quality="strong", thesis_integrity="robust",
+            ticker="NVDA",
+            company_name="NVIDIA Corporation",
+            subtheme="compute",
+            four_box_summary="Strong",
+            valuation_summary="Fair",
+            entry_quality="strong",
+            thesis_integrity="robust",
         )
         assert card.ticker == "NVDA"
 
@@ -408,15 +459,20 @@ class TestReports:
 
     def test_scenario_result(self):
         sr = ScenarioResult(
-            ticker="NVDA", scenario_name="AI Capex Slowdown",
-            estimated_impact_pct=-15.0, severity="high",
+            ticker="NVDA",
+            scenario_name="AI Capex Slowdown",
+            estimated_impact_pct=-15.0,
+            severity="high",
         )
         assert sr.severity == "high"
 
     def test_diff_summary(self):
         ds = DiffSummary(
-            ticker="NVDA", field="price",
-            previous_value=120.0, current_value=130.0,
-            change_pct=8.33, flagged=True,
+            ticker="NVDA",
+            field="price",
+            previous_value=120.0,
+            current_value=130.0,
+            change_pct=8.33,
+            flagged=True,
         )
         assert ds.flagged is True

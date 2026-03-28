@@ -57,6 +57,7 @@ def s7_config() -> PipelineConfig:
 
 def _ingest_row(ticker: str) -> dict:
     from datetime import datetime, timezone
+
     return {
         "ticker": ticker,
         "source": "fmp",
@@ -106,112 +107,179 @@ def _esg_entry(ticker: str) -> dict:
 
 def _patch_all_agents(engine: PipelineEngine) -> None:
     """Patch every LLM agent so the smoke pipeline runs without network calls."""
-    engine.orchestrator_agent.run = AsyncMock(return_value=_ar(
-        "orchestrator", {"status": "proceed", "universe": S7_UNIVERSE}
-    ))
-    engine.evidence_agent.run = AsyncMock(return_value=_ar(
-        "evidence_librarian",
-        {"claims": [{"claim_id": "C1", "ticker": "NVDA",
-                     "claim_text": "NVDA Q4 revenue $18B",
-                     "evidence_class": "primary_fact",
-                     "source_id": "SRC-1", "confidence": "high",
-                     "status": "pass"}],
-         "sources": [{"source_id": "SRC-1", "source_type": "filing",
-                      "tier": 1, "url": None, "notes": "10-K"}]},
-    ))
-    engine.compute_analyst.run = AsyncMock(return_value=_ar(
-        "sector_analyst_compute",
-        {"sector_outputs": [_sector_out(t) for t in S7_UNIVERSE]},
-    ))
-    engine.power_analyst.run = AsyncMock(return_value=_ar(
-        "sector_analyst_power", {"sector_outputs": []}
-    ))
-    engine.infra_analyst.run = AsyncMock(return_value=_ar(
-        "sector_analyst_infrastructure", {"sector_outputs": []}
-    ))
-    engine.esg_analyst_agent.run = AsyncMock(return_value=_ar(
-        "esg_analyst",
-        {"esg_scores": [_esg_entry(t) for t in S7_UNIVERSE],
-         "parse_violations": []},
-    ))
-    engine.valuation_agent.run = AsyncMock(return_value=_ar(
-        "valuation_analyst",
-        {"valuations": [{"ticker": "NVDA", "date": "2026-01-01",
-                         "section_5_scenarios": [{
-                             "case": "base", "probability_pct": 50,
-                             "revenue_cagr": "20%", "exit_multiple": "30x",
-                             "exit_multiple_rationale": "sector median",
-                             "implied_return_1y": "15%",
-                             "implied_return_3y": "50% [HOUSE VIEW]",
-                             "key_assumption": "data center demand",
-                             "what_breaks_it": "capex cut",
-                         }],
-                         "entry_quality": "ACCEPTABLE",
-                         "methodology_tag": "HOUSE VIEW"}]},
-    ))
-    engine.macro_agent.run = AsyncMock(return_value=_ar(
-        "macro_strategist",
-        {"regime": "expansion", "rate_outlook": "neutral",
-         "usd_outlook": "stable", "equity_risk_premium": 5.0},
-    ))
-    engine.political_agent.run = AsyncMock(return_value=_ar(
-        "political_risk", {"risk_level": "low", "key_risks": []}
-    ))
-    engine.red_team_agent.run = AsyncMock(return_value=_ar(
-        "red_team_analyst",
-        {"assessments": [{"ticker": "NVDA",
-                          "falsification_tests": ["FT-1", "FT-2", "FT-3"],
-                          "required_tests": {}}]},
-    ))
-    engine.reviewer_agent.run = AsyncMock(return_value=_ar(
-        "associate_reviewer",
-        {"status": "pass", "issues": [], "methodology_tags_complete": True,
-         "dates_complete": True, "claim_mapping_complete": True},
-    ))
-    engine.pm_agent.run = AsyncMock(return_value=_ar(
-        "portfolio_manager",
-        {"variants": [
-            {"name": "balanced",
-             "positions": [
-                 {"ticker": t, "weight_pct": 100 / len(S7_UNIVERSE)}
-                 for t in S7_UNIVERSE
-             ]},
-        ]},
-    ))
-    engine.quant_analyst_agent.run = AsyncMock(return_value=_ar(
-        "quant_research_analyst",
-        {"risk_signal": "neutral",
-         "primary_concern": "concentration",
-         "recommended_action": "monitor",
-         "section_1_factor_interpretation": {"dominant_factors": ["momentum"]},
-         "section_2_risk_assessment": {"var_95_commentary": "moderate"},
-         "section_3_benchmark_divergence": {
-             "etf_differentiation_score": 60,
-             "etf_replication_risk": False,
-             "tracking_error_commentary": "high active share",
-             "active_bets_narrative": "NVDA+12%",
-             "information_ratio_signal": "IR=0.7",
-             "etf_overlap_summary": "60% differentiated",
-         },
-         "section_4_construction_signal": {
-             "factor_tilt_recommendation": "maintain",
-             "concentration_recommendation": "trim NVDA",
-             "benchmark_recommendation": "differentiated",
-             "constructive_changes": [],
-         },
-         "analyst_confidence": "medium",
-         "data_quality_note": "test"},
-    ))
-    engine.fixed_income_agent.run = AsyncMock(return_value=_ar(
-        "fixed_income_analyst",
-        {"yield_curve_regime": "normal",
-         "10y_yield_context": "4.3% neutral",
-         "cost_of_capital_trend": "stable",
-         "rate_sensitivity_score": 5.0,
-         "key_risks": [],
-         "offsetting_factors": [],
-         "methodology_note": "10y yield tracking"},
-    ))
+    engine.orchestrator_agent.run = AsyncMock(
+        return_value=_ar("orchestrator", {"status": "proceed", "universe": S7_UNIVERSE})
+    )
+    engine.evidence_agent.run = AsyncMock(
+        return_value=_ar(
+            "evidence_librarian",
+            {
+                "claims": [
+                    {
+                        "claim_id": "C1",
+                        "ticker": "NVDA",
+                        "claim_text": "NVDA Q4 revenue $18B",
+                        "evidence_class": "primary_fact",
+                        "source_id": "SRC-1",
+                        "confidence": "high",
+                        "status": "pass",
+                    }
+                ],
+                "sources": [
+                    {
+                        "source_id": "SRC-1",
+                        "source_type": "filing",
+                        "tier": 1,
+                        "url": None,
+                        "notes": "10-K",
+                    }
+                ],
+            },
+        )
+    )
+    engine.compute_analyst.run = AsyncMock(
+        return_value=_ar(
+            "sector_analyst_compute",
+            {"sector_outputs": [_sector_out(t) for t in S7_UNIVERSE]},
+        )
+    )
+    engine.power_analyst.run = AsyncMock(
+        return_value=_ar("sector_analyst_power", {"sector_outputs": []})
+    )
+    engine.infra_analyst.run = AsyncMock(
+        return_value=_ar("sector_analyst_infrastructure", {"sector_outputs": []})
+    )
+    engine.esg_analyst_agent.run = AsyncMock(
+        return_value=_ar(
+            "esg_analyst",
+            {"esg_scores": [_esg_entry(t) for t in S7_UNIVERSE], "parse_violations": []},
+        )
+    )
+    engine.valuation_agent.run = AsyncMock(
+        return_value=_ar(
+            "valuation_analyst",
+            {
+                "valuations": [
+                    {
+                        "ticker": "NVDA",
+                        "date": "2026-01-01",
+                        "section_5_scenarios": [
+                            {
+                                "case": "base",
+                                "probability_pct": 50,
+                                "revenue_cagr": "20%",
+                                "exit_multiple": "30x",
+                                "exit_multiple_rationale": "sector median",
+                                "implied_return_1y": "15%",
+                                "implied_return_3y": "50% [HOUSE VIEW]",
+                                "key_assumption": "data center demand",
+                                "what_breaks_it": "capex cut",
+                            }
+                        ],
+                        "entry_quality": "ACCEPTABLE",
+                        "methodology_tag": "HOUSE VIEW",
+                    }
+                ]
+            },
+        )
+    )
+    engine.macro_agent.run = AsyncMock(
+        return_value=_ar(
+            "macro_strategist",
+            {
+                "regime": "expansion",
+                "rate_outlook": "neutral",
+                "usd_outlook": "stable",
+                "equity_risk_premium": 5.0,
+            },
+        )
+    )
+    engine.political_agent.run = AsyncMock(
+        return_value=_ar("political_risk", {"risk_level": "low", "key_risks": []})
+    )
+    engine.red_team_agent.run = AsyncMock(
+        return_value=_ar(
+            "red_team_analyst",
+            {
+                "assessments": [
+                    {
+                        "ticker": "NVDA",
+                        "falsification_tests": ["FT-1", "FT-2", "FT-3"],
+                        "required_tests": {},
+                    }
+                ]
+            },
+        )
+    )
+    engine.reviewer_agent.run = AsyncMock(
+        return_value=_ar(
+            "associate_reviewer",
+            {
+                "status": "pass",
+                "issues": [],
+                "methodology_tags_complete": True,
+                "dates_complete": True,
+                "claim_mapping_complete": True,
+            },
+        )
+    )
+    engine.pm_agent.run = AsyncMock(
+        return_value=_ar(
+            "portfolio_manager",
+            {
+                "variants": [
+                    {
+                        "name": "balanced",
+                        "positions": [
+                            {"ticker": t, "weight_pct": 100 / len(S7_UNIVERSE)} for t in S7_UNIVERSE
+                        ],
+                    },
+                ]
+            },
+        )
+    )
+    engine.quant_analyst_agent.run = AsyncMock(
+        return_value=_ar(
+            "quant_research_analyst",
+            {
+                "risk_signal": "neutral",
+                "primary_concern": "concentration",
+                "recommended_action": "monitor",
+                "section_1_factor_interpretation": {"dominant_factors": ["momentum"]},
+                "section_2_risk_assessment": {"var_95_commentary": "moderate"},
+                "section_3_benchmark_divergence": {
+                    "etf_differentiation_score": 60,
+                    "etf_replication_risk": False,
+                    "tracking_error_commentary": "high active share",
+                    "active_bets_narrative": "NVDA+12%",
+                    "information_ratio_signal": "IR=0.7",
+                    "etf_overlap_summary": "60% differentiated",
+                },
+                "section_4_construction_signal": {
+                    "factor_tilt_recommendation": "maintain",
+                    "concentration_recommendation": "trim NVDA",
+                    "benchmark_recommendation": "differentiated",
+                    "constructive_changes": [],
+                },
+                "analyst_confidence": "medium",
+                "data_quality_note": "test",
+            },
+        )
+    )
+    engine.fixed_income_agent.run = AsyncMock(
+        return_value=_ar(
+            "fixed_income_analyst",
+            {
+                "yield_curve_regime": "normal",
+                "10y_yield_context": "4.3% neutral",
+                "cost_of_capital_trend": "stable",
+                "rate_sensitivity_score": 5.0,
+                "key_risks": [],
+                "offsetting_factors": [],
+                "methodology_note": "10y yield tracking",
+            },
+        )
+    )
 
 
 @pytest.fixture
@@ -219,9 +287,11 @@ def s7_engine(s7_settings, s7_config, tmp_path):
     """Fully mocked PipelineEngine for session 7 smoke runs."""
     engine = PipelineEngine(s7_settings, s7_config)
     _patch_all_agents(engine)
+
     # Patch ingestor to return deterministic market data
     async def _mock_ingest(tickers):
         return [_ingest_row(t) for t in tickers]
+
     engine.ingestor.ingest_universe = _mock_ingest
     return engine
 
@@ -229,14 +299,13 @@ def s7_engine(s7_settings, s7_config, tmp_path):
 @pytest.fixture
 def s7_result(s7_engine):
     """Run the full pipeline once and return the result dict."""
-    return asyncio.get_event_loop().run_until_complete(
-        s7_engine.run_full_pipeline(S7_UNIVERSE)
-    )
+    return asyncio.get_event_loop().run_until_complete(s7_engine.run_full_pipeline(S7_UNIVERSE))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ACT-S7-1: Performance Attribution
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestPerformanceAttribution:
     """Tests for BHB attribution wired into Stage 14."""
@@ -297,6 +366,7 @@ class TestPerformanceAttribution:
 # ACT-S7-4: Portfolio Optimisation
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestPortfolioOptimisation:
     """Tests for risk-parity / min-variance / max-sharpe wired into Stage 12."""
 
@@ -309,30 +379,25 @@ class TestPortfolioOptimisation:
 
     def test_risk_parity_weights_non_empty(self, s7_engine, s7_result):
         """Risk parity weights dict is non-empty after a full run."""
-        weights = (
-            s7_engine.stage_outputs[12]["optimisation_results"]["risk_parity"]["weights"]
-        )
+        weights = s7_engine.stage_outputs[12]["optimisation_results"]["risk_parity"]["weights"]
         assert isinstance(weights, dict) and weights
 
     def test_risk_parity_weights_sum_to_100(self, s7_engine, s7_result):
         """Risk parity weights sum to approximately 100%."""
-        weights = (
-            s7_engine.stage_outputs[12]["optimisation_results"]["risk_parity"]["weights"]
-        )
+        weights = s7_engine.stage_outputs[12]["optimisation_results"]["risk_parity"]["weights"]
         total = sum(weights.values())
         assert abs(total - 100.0) < 1.0, f"Risk parity weights sum = {total}, expected ~100"
 
     def test_min_variance_weights_sum_to_100(self, s7_engine, s7_result):
         """Min-variance weights sum to approximately 100%."""
-        weights = (
-            s7_engine.stage_outputs[12]["optimisation_results"]["min_variance"]["weights"]
-        )
+        weights = s7_engine.stage_outputs[12]["optimisation_results"]["min_variance"]["weights"]
         total = sum(weights.values())
         assert abs(total - 100.0) < 1.0, f"Min-variance weights sum = {total}, expected ~100"
 
     def test_standalone_optimiser_risk_parity(self):
         """PortfolioOptimisationEngine.compute_risk_parity works independently."""
         import numpy as np
+
         rng = np.random.default_rng(42)
         tickers = ["A", "B", "C"]
         returns = {t: rng.normal(0.0005, 0.02, 252).tolist() for t in tickers}
@@ -346,6 +411,7 @@ class TestPortfolioOptimisation:
 # ─────────────────────────────────────────────────────────────────────────────
 # ACT-S7-2: ESG Data Enrichment
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestEsgDataEnrichment:
     """Tests for ESGService baseline profiles enriching EsgAnalystAgent prompts."""
@@ -366,10 +432,12 @@ class TestEsgDataEnrichment:
                 "controversy_flag": False,
             }
         ]
-        rendered = agent.format_input({
-            "tickers": ["NVDA"],
-            "esg_baseline_profiles": baseline_profiles,
-        })
+        rendered = agent.format_input(
+            {
+                "tickers": ["NVDA"],
+                "esg_baseline_profiles": baseline_profiles,
+            }
+        )
         assert "ESG BASELINE PROFILES" in rendered
         assert "NVDA" in rendered
 
@@ -388,17 +456,21 @@ class TestEsgDataEnrichment:
             model="claude-opus-4-6",
             prompts_dir=Path("/tmp"),
         )
-        rendered = agent.format_input({
-            "tickers": ["META"],
-            "esg_baseline_profiles": [{
-                "ticker": "META",
-                "overall_rating": "BBB",
-                "environmental_score": 5.5,
-                "social_score": 4.5,
-                "governance_score": 6.0,
-                "controversy_flag": True,
-            }],
-        })
+        rendered = agent.format_input(
+            {
+                "tickers": ["META"],
+                "esg_baseline_profiles": [
+                    {
+                        "ticker": "META",
+                        "overall_rating": "BBB",
+                        "environmental_score": 5.5,
+                        "social_score": 4.5,
+                        "governance_score": 6.0,
+                        "controversy_flag": True,
+                    }
+                ],
+            }
+        )
         assert "E=5.5" in rendered or "5.5" in rendered
         # Controversy flag should be flagged
         assert "controversy" in rendered.lower()
@@ -423,8 +495,7 @@ class TestEsgDataEnrichment:
         # Second positional arg is the context dict
         context = call_args[0][1]
         assert "esg_baseline_profiles" in context, (
-            "ESG agent not receiving esg_baseline_profiles: "
-            f"context keys = {list(context.keys())}"
+            f"ESG agent not receiving esg_baseline_profiles: context keys = {list(context.keys())}"
         )
         assert isinstance(context["esg_baseline_profiles"], list)
 
@@ -432,6 +503,7 @@ class TestEsgDataEnrichment:
 # ─────────────────────────────────────────────────────────────────────────────
 # ACT-S7-3: SelfAuditPacket Latency Fields
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestSelfAuditLatency:
     """Tests for per-stage timing fields in SelfAuditPacket."""
@@ -459,9 +531,7 @@ class TestSelfAuditLatency:
         audit = s7_result.get("audit_packet") or {}
         latencies = audit.get("stage_latencies_ms", {})
         for key in latencies:
-            assert re.match(r"^stage_\d+$", key), (
-                f"Unexpected latency key format: '{key}'"
-            )
+            assert re.match(r"^stage_\d+$", key), f"Unexpected latency key format: '{key}'"
 
     def test_total_pipeline_duration_positive(self, s7_engine, s7_result):
         """total_pipeline_duration_s is a positive number after a full run."""
@@ -474,9 +544,7 @@ class TestSelfAuditLatency:
         audit = s7_result.get("audit_packet") or {}
         latencies = audit.get("stage_latencies_ms", {})
         for key, ms in latencies.items():
-            assert isinstance(ms, (int, float)) and ms >= 0, (
-                f"Latency for {key} is invalid: {ms}"
-            )
+            assert isinstance(ms, (int, float)) and ms >= 0, f"Latency for {key} is invalid: {ms}"
 
     def test_stage_timings_tracked_in_engine(self, s7_engine, s7_result):
         """Engine._stage_timings dict is populated after run_full_pipeline."""

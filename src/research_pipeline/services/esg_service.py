@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from research_pipeline.schemas.governance import ESGConfig, ESGRating, ESGScore
@@ -95,7 +96,10 @@ class ESGService:
         ticker_idx = rating_order.index(score.overall_rating)
         threshold_idx = rating_order.index(self.config.exclude_below_rating)
         if ticker_idx > threshold_idx:  # higher index = worse rating
-            return True, f"{ticker} ESG rating {score.overall_rating.value} below threshold {self.config.exclude_below_rating.value}"
+            return (
+                True,
+                f"{ticker} ESG rating {score.overall_rating.value} below threshold {self.config.exclude_below_rating.value}",
+            )
 
         # Controversy flag
         if self.config.exclude_controversial and score.controversy_flag:
@@ -104,7 +108,10 @@ class ESGService:
         # Minimum composite score
         composite = (score.environmental_score + score.social_score + score.governance_score) / 3
         if composite < self.config.min_esg_score:
-            return True, f"{ticker} composite ESG score {composite:.1f} below minimum {self.config.min_esg_score}"
+            return (
+                True,
+                f"{ticker} composite ESG score {composite:.1f} below minimum {self.config.min_esg_score}",
+            )
 
         return False, ""
 
@@ -140,7 +147,9 @@ class ESGService:
                 results["excluded_tickers"].append({"ticker": ticker, "reason": reason})
 
             # Soft warnings for borderline cases
-            composite = (score.environmental_score + score.social_score + score.governance_score) / 3
+            composite = (
+                score.environmental_score + score.social_score + score.governance_score
+            ) / 3
             if not excluded and composite < self.config.min_esg_score + 1.0:
                 results["warnings"].append(
                     f"{ticker} ESG composite {composite:.1f} is within 1.0 of limit ({self.config.min_esg_score})"
@@ -148,9 +157,15 @@ class ESGService:
 
         # Portfolio-level weighted ESG score (if weights provided)
         if weights:
-            weighted_e = sum(self.get_score(t).environmental_score * weights.get(t, 0) / 100 for t in tickers)
-            weighted_s = sum(self.get_score(t).social_score * weights.get(t, 0) / 100 for t in tickers)
-            weighted_g = sum(self.get_score(t).governance_score * weights.get(t, 0) / 100 for t in tickers)
+            weighted_e = sum(
+                self.get_score(t).environmental_score * weights.get(t, 0) / 100 for t in tickers
+            )
+            weighted_s = sum(
+                self.get_score(t).social_score * weights.get(t, 0) / 100 for t in tickers
+            )
+            weighted_g = sum(
+                self.get_score(t).governance_score * weights.get(t, 0) / 100 for t in tickers
+            )
             results["portfolio_weighted_esg"] = {
                 "environmental": round(weighted_e, 2),
                 "social": round(weighted_s, 2),
@@ -178,7 +193,7 @@ class ESGService:
 
     # ── ACT-S8-3: CSV ingest ──────────────────────────────────────────────
 
-    def load_from_csv(self, csv_path: str | "Path") -> int:  # type: ignore[name-defined]
+    def load_from_csv(self, csv_path: str | Path) -> int:
         """Load ESG profiles from a CSV file, overriding heuristic defaults.
 
         Expected CSV columns (header row required)::
@@ -214,10 +229,7 @@ class ESGService:
                         "s": float(row.get("s_score") or 5.0),
                         "g": float(row.get("g_score") or 5.0),
                         "controversy": (
-                            (row.get("controversy_flag") or "false")
-                            .strip()
-                            .lower()
-                            == "true"
+                            (row.get("controversy_flag") or "false").strip().lower() == "true"
                         ),
                     }
                     # Validate rating value
@@ -232,7 +244,7 @@ class ESGService:
         logger.info("ESGService loaded %d profiles from %s", loaded, path)
         return loaded
 
-    def to_csv(self, output_path: str | "Path") -> int:  # type: ignore[name-defined]  # ACT-S10-2
+    def to_csv(self, output_path: str | Path) -> int:  # ACT-S10-2
         """Export all ESG profiles to a CSV file.
 
         Merges the module-level ``_DEFAULT_ESG_SCORES`` dictionary with any
@@ -271,7 +283,14 @@ class ESGService:
         path = _Path(output_path)
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        fieldnames = ["ticker", "overall_rating", "e_score", "s_score", "g_score", "controversy_flag"]
+        fieldnames = [
+            "ticker",
+            "overall_rating",
+            "e_score",
+            "s_score",
+            "g_score",
+            "controversy_flag",
+        ]
         with open(path, "w", newline="") as fh:
             writer = csv.DictWriter(fh, fieldnames=fieldnames)
             writer.writeheader()

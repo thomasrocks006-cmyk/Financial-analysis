@@ -18,6 +18,7 @@ class ReconciliationStatus(str, Enum):
 
 class MarketSnapshot(BaseModel):
     """Point-in-time market data for a single ticker."""
+
     ticker: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     source: str  # "fmp" or "finnhub"
@@ -34,6 +35,7 @@ class MarketSnapshot(BaseModel):
 
 class ConsensusSnapshot(BaseModel):
     """Analyst consensus data for a single ticker."""
+
     ticker: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     source: str
@@ -51,6 +53,7 @@ class ConsensusSnapshot(BaseModel):
 
 class RatingsSnapshot(BaseModel):
     """Ratings and recommendation trends."""
+
     ticker: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     source: str
@@ -63,6 +66,7 @@ class RatingsSnapshot(BaseModel):
 
 class EarningsEvent(BaseModel):
     """Upcoming or past earnings event."""
+
     ticker: str
     date: datetime
     eps_estimate: Optional[float] = None
@@ -75,6 +79,7 @@ class EarningsEvent(BaseModel):
 
 class AnalystEstimate(BaseModel):
     """Forward earnings/revenue estimates."""
+
     ticker: str
     period: str  # "FY2026", "Q1_2026", etc.
     source: str
@@ -87,6 +92,7 @@ class AnalystEstimate(BaseModel):
 
 class ReconciliationField(BaseModel):
     """A single field-level reconciliation result."""
+
     field_name: str
     ticker: str
     source_a: str
@@ -102,6 +108,7 @@ class ReconciliationField(BaseModel):
 
 class ReconciliationReport(BaseModel):
     """Complete reconciliation output for a run."""
+
     run_id: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     fields: list[ReconciliationField] = []
@@ -123,6 +130,7 @@ class ReconciliationReport(BaseModel):
 
 class DataQualityReport(BaseModel):
     """Data QA & lineage check results."""
+
     run_id: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     schema_valid: bool = True

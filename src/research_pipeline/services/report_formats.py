@@ -26,9 +26,10 @@ class ReportFormat(str, Enum):
 @dataclass
 class RenderedReport:
     """Output of a ReportFormatService.render() call."""
+
     run_id: str
     format_type: ReportFormat
-    content: str           # JSON string (institutional_pdf) or text (others)
+    content: str  # JSON string (institutional_pdf) or text (others)
     rendered_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     content_type: str = "text/plain"
 
@@ -69,7 +70,9 @@ class InstitutionalPDFFormat:
                 "publication_date": date.today().isoformat(),
                 "status": final_report.get("publication_status", "DRAFT"),
                 "classification": "CONFIDENTIAL — FOR INSTITUTIONAL CLIENTS ONLY",
-                "report_title": final_report.get("title", f"AI Infrastructure Portfolio — {run_id}"),
+                "report_title": final_report.get(
+                    "title", f"AI Infrastructure Portfolio — {run_id}"
+                ),
                 "authors": final_report.get("authors", ["Research Division"]),
             },
             "sections": {
@@ -130,7 +133,7 @@ class ExecutiveSummaryFormat:
 
         lines = [
             "=" * 72,
-            f"  AI INFRASTRUCTURE RESEARCH PORTFOLIO — EXECUTIVE SUMMARY",
+            "  AI INFRASTRUCTURE RESEARCH PORTFOLIO — EXECUTIVE SUMMARY",
             f"  Run: {run_id}   |   Date: {date.today().isoformat()}",
             "=" * 72,
             "",
@@ -269,7 +272,9 @@ class ReportFormatService:
 
         renderer = self._formats[format_type]
         content = renderer.render(run_id, pipeline_output)
-        content_type = "application/json" if format_type == ReportFormat.INSTITUTIONAL_PDF else "text/plain"
+        content_type = (
+            "application/json" if format_type == ReportFormat.INSTITUTIONAL_PDF else "text/plain"
+        )
 
         return RenderedReport(
             run_id=run_id,
@@ -278,18 +283,11 @@ class ReportFormatService:
             content_type=content_type,
         )
 
-    def render_all(
-        self, run_id: str, pipeline_output: dict[str, Any]
-    ) -> list[RenderedReport]:
+    def render_all(self, run_id: str, pipeline_output: dict[str, Any]) -> list[RenderedReport]:
         """Render all three formats and return them."""
-        return [
-            self.render(run_id, pipeline_output, fmt)
-            for fmt in ReportFormat
-        ]
+        return [self.render(run_id, pipeline_output, fmt) for fmt in ReportFormat]
 
-    def save_all(
-        self, run_id: str, pipeline_output: dict[str, Any]
-    ) -> list[Path]:
+    def save_all(self, run_id: str, pipeline_output: dict[str, Any]) -> list[Path]:
         """Render all formats and save to output_dir."""
         reports = self.render_all(run_id, pipeline_output)
         return [r.save(self._output_dir) for r in reports]

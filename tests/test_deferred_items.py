@@ -40,6 +40,7 @@ from research_pipeline.schemas.governance import CommitteeVote
 
 # ── D-1: QualitativePackage schema ───────────────────────────────────────
 
+
 class TestQualitativeSchemas:
     def test_news_item_creates(self):
         item = NewsItem(
@@ -135,18 +136,27 @@ class TestQualitativePackage:
             press_releases=[PressRelease(ticker="NVDA", title="PR 1")],
             earnings_transcript=EarningsTranscript(ticker="NVDA", content="strong results"),
             sec_filings=[SECFiling(ticker="NVDA", filing_type="10-K", is_material=True)],
-            analyst_actions=[AnalystAction(ticker="NVDA", firm="Goldman", action="upgrade",
-                                           new_grade="Buy")],
+            analyst_actions=[
+                AnalystAction(ticker="NVDA", firm="Goldman", action="upgrade", new_grade="Buy")
+            ],
             insider_activity=InsiderActivitySummary(
                 ticker="NVDA",
-                transactions=[InsiderTransaction(ticker="NVDA", direction=InsiderDirection.BUY,
-                                                shares=100, price_per_share=500.0, total_value=50000)],
+                transactions=[
+                    InsiderTransaction(
+                        ticker="NVDA",
+                        direction=InsiderDirection.BUY,
+                        shares=100,
+                        price_per_share=500.0,
+                        total_value=50000,
+                    )
+                ],
                 total_bought_usd=50000,
             ),
             analyst_estimates=AnalystEstimates(
                 ticker="NVDA",
-                current_year=EstimatePeriod(period_label="current_year",
-                                            estimated_revenue_avg=50e9, num_analysts_revenue=30),
+                current_year=EstimatePeriod(
+                    period_label="current_year", estimated_revenue_avg=50e9, num_analysts_revenue=30
+                ),
             ),
             sentiment=SentimentSignals(ticker="NVDA", news_sentiment_score=0.3),
         )
@@ -158,7 +168,11 @@ class TestQualitativePackage:
 
     def test_coverage_depth_moderate(self):
         pkg = self._make_full_package()
-        assert pkg.coverage_depth in (CoverageDepth.MODERATE, CoverageDepth.DEEP, CoverageDepth.THIN)
+        assert pkg.coverage_depth in (
+            CoverageDepth.MODERATE,
+            CoverageDepth.DEEP,
+            CoverageDepth.THIN,
+        )
 
     def test_tier1_sources_present(self):
         pkg = self._make_full_package()
@@ -183,7 +197,9 @@ class TestQualitativePackage:
         assert "SEC Filing" in block or "10-K" in block
 
     def test_prompt_block_shows_coverage_gaps(self):
-        pkg = QualitativePackage(ticker="NVDA", coverage_gaps=["earnings_transcript", "sec_filings"])
+        pkg = QualitativePackage(
+            ticker="NVDA", coverage_gaps=["earnings_transcript", "sec_filings"]
+        )
         block = pkg.to_prompt_block()
         assert "gap" in block.lower() or "earnings_transcript" in block
 
@@ -195,6 +211,7 @@ class TestQualitativePackage:
 
 # ── D-1: QualitativeDataService parsers (offline) ─────────────────────────
 
+
 class TestQualitativeDataServiceParsers:
     """Test service parsers with static fixture data — no live API calls."""
 
@@ -202,11 +219,17 @@ class TestQualitativeDataServiceParsers:
 
     def setup_method(self):
         from research_pipeline.services.qualitative_data_service import QualitativeDataService
+
         self.svc = QualitativeDataService(fmp_key="", finnhub_key="")
 
     def test_parse_sec_filings(self):
         raw = [
-            {"type": "10-K", "filledDate": "2025-01-15", "link": "http://sec.gov/test", "description": "Annual report"},
+            {
+                "type": "10-K",
+                "filledDate": "2025-01-15",
+                "link": "http://sec.gov/test",
+                "description": "Annual report",
+            },
             {"type": "8-K", "filledDate": "2025-02-01"},
         ]
         filings = self.svc._parse_sec_filings("NVDA", raw)
@@ -217,8 +240,14 @@ class TestQualitativeDataServiceParsers:
 
     def test_parse_analyst_actions(self):
         raw = [
-            {"analystFirm": "Goldman", "action": "upgrade", "previousGrade": "Hold",
-             "newGrade": "Buy", "gradingDate": "2025-01-10", "priceTarget": 1000},
+            {
+                "analystFirm": "Goldman",
+                "action": "upgrade",
+                "previousGrade": "Hold",
+                "newGrade": "Buy",
+                "gradingDate": "2025-01-10",
+                "priceTarget": 1000,
+            },
         ]
         actions = self.svc._parse_analyst_actions("NVDA", raw)
         assert len(actions) == 1
@@ -228,9 +257,15 @@ class TestQualitativeDataServiceParsers:
 
     def test_parse_insider_buy(self):
         raw = [
-            {"reportingName": "Jensen Huang", "typeOfOwner": "CEO",
-             "acquistionOrDisposition": "A", "securitiesTransacted": 1000,
-             "price": 500.0, "value": 500000, "transactionDate": "2025-01-20"},
+            {
+                "reportingName": "Jensen Huang",
+                "typeOfOwner": "CEO",
+                "acquistionOrDisposition": "A",
+                "securitiesTransacted": 1000,
+                "price": 500.0,
+                "value": 500000,
+                "transactionDate": "2025-01-20",
+            },
         ]
         summary = self.svc._parse_insider("NVDA", raw)
         assert summary.total_bought_usd == pytest.approx(500000)
@@ -239,8 +274,13 @@ class TestQualitativeDataServiceParsers:
 
     def test_parse_insider_sell(self):
         raw = [
-            {"reportingName": "CFO", "acquistionOrDisposition": "D",
-             "securitiesTransacted": 500, "price": 500.0, "value": 250000},
+            {
+                "reportingName": "CFO",
+                "acquistionOrDisposition": "D",
+                "securitiesTransacted": 500,
+                "price": 500.0,
+                "value": 250000,
+            },
         ]
         summary = self.svc._parse_insider("NVDA", raw)
         assert summary.total_sold_usd == pytest.approx(250000)
@@ -271,10 +311,18 @@ class TestQualitativeDataServiceParsers:
 
     def test_parse_estimates(self):
         raw = [
-            {"estimatedRevenueAvg": 50e9, "estimatedEpsAvg": 1.5,
-             "numberAnalystsEstimatedRevenue": 30, "date": "2025-Q1"},
-            {"estimatedRevenueAvg": 200e9, "estimatedEpsAvg": 6.0,
-             "numberAnalystsEstimatedRevenue": 40, "date": "2025"},
+            {
+                "estimatedRevenueAvg": 50e9,
+                "estimatedEpsAvg": 1.5,
+                "numberAnalystsEstimatedRevenue": 30,
+                "date": "2025-Q1",
+            },
+            {
+                "estimatedRevenueAvg": 200e9,
+                "estimatedEpsAvg": 6.0,
+                "numberAnalystsEstimatedRevenue": 40,
+                "date": "2025",
+            },
         ]
         ests = self.svc._parse_estimates("NVDA", raw)
         assert ests is not None
@@ -298,6 +346,7 @@ class TestQualitativeDataServiceParsers:
 
 
 # ── D-4: QuantResearchAnalystAgent parse_output enforcement ──────────────
+
 
 class TestQuantResearchAnalystAgent:
     def setup_method(self):
@@ -409,6 +458,7 @@ class TestQuantResearchAnalystAgent:
 
 # ── A-3: PublicationStatus enum only has PASS and FAIL ────────────────────
 
+
 class TestPublicationStatusBinary:
     def test_only_pass_and_fail_exist(self):
         valid_values = {s.value for s in PublicationStatus}
@@ -429,6 +479,7 @@ class TestPublicationStatusBinary:
 
 
 # ── A-4: IC service _pm_vote rejects pass_with_disclosure ─────────────────
+
 
 class TestICPassWithDisclosureRemoved:
     def setup_method(self):
