@@ -344,6 +344,76 @@ class PipelineEngine:
             return MacroContextPacket(run_id=run_id)
         return MacroContextPacket.from_stage_8_output(parsed, run_id)
 
+    def _enrich_ledger_with_red_team(self, red_team_result: "Any") -> None:
+        """Symbiotic feedback: append Red Team adversarial claims to the Stage 5 ledger.
+
+        When the Red Team agent (Stage 10) produces falsification tests, those tests
+        are materialised as new ``Claim`` objects with ``evidence_class='house_inference'``
+        and ``status='caveat'``.  The enriched ledger is written back into
+        ``stage_outputs[5]`` so that the Associate Reviewer (Stage 11) sees the
+        complete evidence picture — original analyst claims *and* the adversarial
+        challenges raised by the Red Team.
+
+        Non-fatal: any exception is logged at WARNING level and the ledger is left
+        unchanged so downstream stages are not blocked.
+        """
+        if not (red_team_result and getattr(red_team_result, "success", False)):
+            return
+        parsed = getattr(red_team_result, "parsed_output", None) or {}
+        assessments = parsed.get("assessments") or []
+        if not assessments:
+            return
+
+        stage5_output = self.stage_outputs.get(5)
+        if not stage5_output or not isinstance(stage5_output, dict):
+            return
+
+        # Retrieve the serialised ledger stored by stage_5_evidence
+        ledger_data = stage5_output.get("ledger")
+        if not isinstance(ledger_data, dict):
+            return
+
+        try:
+            existing_claims: list = ledger_data.setdefault("claims", [])
+            run_id = self.run_record.run_id if self.run_record else "unknown"
+            added = 0
+            for assessment in assessments:
+                if not isinstance(assessment, dict):
+                    continue
+                ticker = assessment.get("ticker", "UNKNOWN")
+                for i, test in enumerate(assessment.get("tests", []), start=1):
+                    if not isinstance(test, dict):
+                        continue
+                    hypothesis = test.get("hypothesis") or test.get("test_description", "")
+                    verdict = test.get("verdict") or test.get("outcome", "")
+                    if not hypothesis:
+                        continue
+                    claim_text = f"[RED TEAM] {ticker}: {hypothesis}" + (
+                        f" — Verdict: {verdict}" if verdict else ""
+                    )
+                    existing_claims.append(
+                        {
+                            "claim_id": f"RT-{ticker}-{i:02d}",
+                            "run_id": run_id,
+                            "ticker": ticker,
+                            "claim_text": claim_text,
+                            "evidence_class": "house_inference",
+                            "source_id": "red_team_agent",
+                            "corroborated": False,
+                            "confidence": "medium",
+                            "status": "caveat",
+                            "owner_agent": "red_team_analyst",
+                        }
+                    )
+                    added += 1
+
+            # Write enriched ledger back to stage_outputs so stage 11 sees it
+            stage5_output["ledger"] = ledger_data
+            self.stage_outputs[5] = stage5_output
+            logger.info("Evidence ledger enriched with %d red team adversarial claims", added)
+        except Exception as exc:
+            logger.warning("Failed to enrich evidence ledger with red team claims: %s", exc)
+
     def _emit_audit_packet(self, universe: list[str]) -> "Optional[SelfAuditPacket]":
         """Build, persist and attach the SelfAuditPacket for every pipeline exit.
 
@@ -1123,6 +1193,12 @@ class PipelineEngine:
             },
         )
         self._save_stage_output(10, result.model_dump())
+
+        # Symbiotic feedback: enrich the Stage 5 evidence ledger with red team
+        # adversarial claims so the Associate Reviewer (Stage 11) sees the complete
+        # picture — both the original evidence base and the challenges raised.
+        self._enrich_ledger_with_red_team(result)
+
         gate = self.gates.gate_10_red_team(
             assessments_count=1 if result.success else 0,
             expected_count=1,
@@ -1629,8 +1705,26 @@ class PipelineEngine:
         )
 
     # ── Full pipeline execution ────────────────────────────────────────
+    def reset_run_state(self) -> None:
+        """Reset per-run mutable state so the engine instance can be reused safely.
+
+        Call this before invoking ``run_full_pipeline`` a second time on the same
+        engine instance, or use a fresh engine per run. Without this reset, stale
+        gate results, stage outputs and the cached review result from a previous
+        run would bleed into the next run.
+        """
+        self.run_record = None
+        self.gate_results = {}
+        self.stage_outputs = {}
+        self._review_result = None
+        self._stage_timings = {}
+        self._pipeline_start = 0.0
+
     async def run_full_pipeline(self, universe: list[str]) -> dict[str, Any]:
         """Execute the full 15-stage pipeline end-to-end."""
+        # Reset per-run state to ensure a clean slate even if the engine instance is reused.
+        self.reset_run_state()
+
         logger.info("╔══════════════════════════════════════════════╗")
         logger.info("║  AI Infrastructure Research Pipeline v8      ║")
         logger.info("║  Starting full pipeline run                  ║")

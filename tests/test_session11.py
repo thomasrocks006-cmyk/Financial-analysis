@@ -613,3 +613,121 @@ class TestGeminiTripleStrategy:
         assert "google.genai" in source or "_call_gemini_rest" in source, (
             "Strategy 2/3 (new SDK or REST) must be present (ISS-10)"
         )
+
+
+# ─── Reset run state + Red Team ledger enrichment ────────────────────────────
+
+
+class TestResetRunState:
+    """Verify that reset_run_state() clears all per-run mutable state."""
+
+    def test_reset_clears_stage_outputs(self):
+        engine = _make_engine()
+        engine.stage_outputs = {1: {"data": "old"}, 5: {"ledger": {}}}
+        engine.reset_run_state()
+        assert engine.stage_outputs == {}
+
+    def test_reset_clears_gate_results(self):
+        from research_pipeline.pipeline.gates import GateResult
+
+        engine = _make_engine()
+        engine.gate_results = {0: GateResult(stage=0, passed=True, reason="ok")}
+        engine.reset_run_state()
+        assert engine.gate_results == {}
+
+    def test_reset_clears_review_result(self):
+        from research_pipeline.schemas.portfolio import AssociateReviewResult, PublicationStatus
+
+        engine = _make_engine()
+        engine._review_result = AssociateReviewResult(
+            run_id="old-run", status=PublicationStatus.PASS
+        )
+        engine.reset_run_state()
+        assert engine._review_result is None
+
+    def test_reset_clears_run_record(self):
+        engine = _make_engine()
+        engine.reset_run_state()
+        assert engine.run_record is None
+
+    def test_reset_clears_stage_timings(self):
+        engine = _make_engine()
+        engine._stage_timings = {1: 123.4}
+        engine._pipeline_start = 999.0
+        engine.reset_run_state()
+        assert engine._stage_timings == {}
+        assert engine._pipeline_start == 0.0
+
+
+class TestRedTeamLedgerEnrichment:
+    """Verify that _enrich_ledger_with_red_team writes RT claims into stage_outputs[5]."""
+
+    def _make_mock_result(self, success: bool, assessments: list) -> MagicMock:
+        result = MagicMock()
+        result.success = success
+        result.parsed_output = {"assessments": assessments}
+        return result
+
+    def test_enrichment_adds_claims_to_ledger(self):
+        engine = _make_engine()
+        engine.stage_outputs[5] = {
+            "ledger": {"claims": [], "sources": []},
+        }
+        assessments = [
+            {
+                "ticker": "NVDA",
+                "tests": [
+                    {
+                        "hypothesis": "Demand could collapse if hyperscalers cut capex",
+                        "verdict": "partial",
+                    },
+                    {
+                        "hypothesis": "Competitive moat challenged by AMD CDNA4",
+                        "verdict": "unlikely",
+                    },
+                    {
+                        "hypothesis": "Export controls could freeze 20% of revenue",
+                        "verdict": "possible",
+                    },
+                ],
+            }
+        ]
+        result = self._make_mock_result(success=True, assessments=assessments)
+        engine._enrich_ledger_with_red_team(result)
+
+        ledger = engine.stage_outputs[5]["ledger"]
+        assert len(ledger["claims"]) == 3
+        assert all(c["owner_agent"] == "red_team_analyst" for c in ledger["claims"])
+        assert all(c["ticker"] == "NVDA" for c in ledger["claims"])
+        assert all("[RED TEAM]" in c["claim_text"] for c in ledger["claims"])
+
+    def test_enrichment_is_noop_when_agent_failed(self):
+        engine = _make_engine()
+        engine.stage_outputs[5] = {"ledger": {"claims": [], "sources": []}}
+        result = self._make_mock_result(success=False, assessments=[])
+        engine._enrich_ledger_with_red_team(result)
+        assert len(engine.stage_outputs[5]["ledger"]["claims"]) == 0
+
+    def test_enrichment_is_noop_when_no_stage5(self):
+        engine = _make_engine()
+        # stage_outputs[5] not set
+        result = self._make_mock_result(
+            success=True,
+            assessments=[{"ticker": "NVDA", "tests": [{"hypothesis": "test"}]}],
+        )
+        engine._enrich_ledger_with_red_team(result)  # Must not raise
+        assert 5 not in engine.stage_outputs
+
+    def test_enrichment_preserves_existing_claims(self):
+        engine = _make_engine()
+        existing = {"claim_id": "CLM-001", "claim_text": "existing", "ticker": "NVDA"}
+        engine.stage_outputs[5] = {"ledger": {"claims": [existing], "sources": []}}
+        result = self._make_mock_result(
+            success=True,
+            assessments=[{"ticker": "NVDA", "tests": [{"hypothesis": "new red team claim"}]}],
+        )
+        engine._enrich_ledger_with_red_team(result)
+        claims = engine.stage_outputs[5]["ledger"]["claims"]
+        assert len(claims) == 2
+        assert claims[0]["claim_id"] == "CLM-001"
+        assert claims[1]["owner_agent"] == "red_team_analyst"
