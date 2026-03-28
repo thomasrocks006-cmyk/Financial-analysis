@@ -828,42 +828,55 @@ These are concrete defects in the current code — not design gaps but bugs or u
 | Global Research | Stages 5–8 + associated agents | 7.5 / 10 ↑ | 9.0 / 10 | 1.5 |
 | Quantitative Research | Risk Engine + Scenario + QuantResearchAnalystAgent + FixedIncomeAnalystAgent | 7.5 / 10 ↑ | 9.0 / 10 | 1.5 |
 | Portfolio Management | Stage 12 + Portfolio Manager agent | 6.5 / 10 ↑ | 8.5 / 10 | 2.0 |
-| Investment Governance | Gates + Associate Reviewer + binary PASS/FAIL | 7.5 / 10 ↑ | 9.5 / 10 | 2.0 |
+| Investment Governance | Gates + Associate Reviewer + binary PASS/FAIL + gate hardening | 8.0 / 10 ↑ | 9.5 / 10 | 1.5 |
 | Performance Attribution | Not built | 0 / 10 | 8.5 / 10 | 8.5 |
 | ESG / Sustainable Investing | Not built | 0 / 10 | 7.5 / 10 | 7.5 |
-| Operations & Technology | Ingestion + Run Registry + pipeline_adapter + 427 tests + CI weekly workflow | 7.8 / 10 ↑ | 9.0 / 10 | 1.2 |
+| Operations & Technology | Ingestion + Run Registry + pipeline_adapter + 453 tests + CI weekly + robust parse_output | 8.3 / 10 ↑ | 9.0 / 10 | 0.7 |
 | Client Solutions / Reporting | Streamlit UI + Report Assembly + Quant Analytics Panel (VaR, ETF overlap, IC vote, FI context) | 7.5 / 10 ↑ | 8.5 / 10 | 1.0 |
 
-**Weighted platform score vs JPAM standard: 6.8 / 10 ↑** *(updated session 4 from 6.5)*  
-*(Weighted by division importance; primary remaining gaps: Performance Attribution not built, ESG/Governance not built, `engine.py` gate logic placeholder, `base_agent.py` silent JSON fallback)*
+**Weighted platform score vs JPAM standard: 7.1 / 10 ↑** *(updated session 5 from 6.8)*  
+*(Primary remaining gaps: Performance Attribution not built, ESG/Governance not built, SelfAuditPacket not yet wired)*
 
 ### 12.5 Next 10 Actions (Priority Order)
 
-1. Fix `engine.py` placeholder gate logic (lines 285–290, 413, 450–453) — **highest risk item in current code**
-2. Fix `base_agent.py` silent JSON fallback — **all agent outputs are currently untrusted**
+1. ~~Fix `engine.py` placeholder gate logic (lines 285–290, 413, 450–453)~~ — **DONE** session 5 (gates 9/12/13 real values; IC rejection enforced; concentration warnings surfaced)
+2. ~~Fix `base_agent.py` silent JSON fallback~~ — **DONE** session 5 (three-strategy parse_output: regex fence, bare json.loads, raw_decode preamble strip)
 3. ~~Reduce `frontend/pipeline_runner.py` to an adapter~~ — **DONE** (`pipeline_adapter.py` created; `PipelineEngineAdapter` is drop-in)
 4. ~~Merge `frontend/storage.py` into `RunRegistryService`~~ — **DONE** (`save_run` mirrors to registry; `list_saved_runs` merges both stores)
-5. Implement `SelfAuditPacket` schema and attach to every run — **governance foundation**
+5. Implement `SelfAuditPacket` schema and attach to every run — **governance foundation** (schema exists; wiring pending: ACT-S6-1)
 6. ~~Add drawdown analysis and VaR to `RiskEngine`~~ — **DONE** (`RiskPacket` with VaR/CVaR/max-drawdown/portfolio-volatility; ACT-6 session 3)
 7. ~~Add benchmark-relative analytics module~~ — **DONE** (`BenchmarkModule` with BHB factor attribution; already built)
-8. ~~Implement investment committee schema and human override log with identity~~ — **DONE** (`InvestmentCommitteeService` + `HumanOverride` built; IC vote displayed in Streamlit Quant Analytics panel)
+8. ~~Implement investment committee schema and human override log with identity~~ — **DONE** (`InvestmentCommitteeService` + `HumanOverride` built; IC vote displayed in Streamlit)
 9. ~~Begin historical portfolio logging~~ — **DONE** (`PortfolioSnapshot` / `PerformanceTracker` built and wired)
-10. Add `asyncio.gather` to market data ingestion — **quick operational win**
+10. ~~Add `asyncio.gather` to market data ingestion~~ — **DONE** (semaphore + `asyncio.gather` in both market data and qualitative ingestors)
 
 ### 12.6 Session 5 Candidate Actions
 
-1. ~~Fix `engine.py` placeholder gate logic (`stage_gate_met()` always returns True)~~ — **DONE** (gates 9/12/13 now use real computed values; IC rejection blocks gate 12; `all_sections_approved` uses review verdict; concentration_breaches surfaced in gate 9)
+1. ~~Fix `engine.py` placeholder gate logic~~ — **DONE** (gates 9/12/13 now use real computed values; IC rejection blocks gate 12; `all_sections_approved` uses review verdict; concentration_breaches surfaced in gate 9)
 2. ~~Fix `base_agent.py` silent JSON fallback~~ — **DONE** (three-strategy parse_output: regex fence extraction, direct `json.loads`, `JSONDecoder.raw_decode` to skip preamble; `re` imported; logs warning on preamble strip)
-3. Implement `SelfAuditPacket` schema — capture agent latency, token counts, confidence flags per stage
+3. Implement `SelfAuditPacket` schema — schema exists in `governance.py`; **wiring into engine pending** (ACT-S6-1)
 4. ~~Add `asyncio.gather` to market data ingestion~~ — **ALREADY DONE** (`ingest_universe` uses semaphore + `asyncio.gather`; qualitative ingestor same)
-5. ESG/Governance analyst agent — dedicated LLM ESG scorer (currently 0/10 coverage)
-6. Performance Attribution (BHB) with real historical data — requires time-series price store
-7. Add Redis-backed run cache — avoid re-fetching market data for same ticker set within 1 h
-8. Export Report-tab data to PDF — `weasyprint` or `pdfkit` rendering of Quant Analytics panel
+5. ESG/Governance analyst agent — dedicated LLM ESG scorer (currently 0/10 coverage) — **ACT-S6-2**
+6. Performance Attribution (BHB) with real historical data — requires time-series price store — **deferred**
+7. Add Redis-backed run cache — avoid re-fetching market data for same ticker set within 1 h — **deferred**
+8. Export Report-tab data to PDF — `weasyprint` or `pdfkit` rendering of Quant Analytics panel — **ACT-S6-3**
+
+### 12.7 Session 6 Work Plan
+
+Priority order for next session:
+
+| ID | Task | File(s) | JPAM Division | Effort |
+|---|---|---|---|---|
+| ACT-S6-1 | Wire `SelfAuditPacket` into every `run_full_pipeline` call — attach per-stage latency, token counts, agent confidence flags to the `RunRecord` persisted to disk | `engine.py`, `run_registry.py`, `governance.py` | Investment Governance | Low |
+| ACT-S6-2 | New `EsgAnalystAgent` — LLM agent scoring E/S/G factors per ticker; mandatory JSON output with per-ticker `esg_score`, `controversy_flags`, `exclusion_trigger`; wired into Stage 6 after sector analysts | `agents/esg_analyst.py`, `engine.py`, `app.py` | ESG / Sustainable Investing | High |
+| ACT-S6-3 | PDF export button in Streamlit Report tab — render the Quant Analytics panel + stage executive summaries to PDF using `pdfkit`; add download button | `src/frontend/app.py` | Client Solutions | Medium |
+| ACT-S6-4 | Verify and close A-1 debt — confirm `pipeline_runner.py` is no longer on import path; add deprecation warning or redirect to `pipeline_adapter` | `src/frontend/pipeline_runner.py` | Operations | Low |
+| ACT-S6-5 | Tests: `SelfAuditPacket` wiring, ESG agent parse/clamp/defaults, PDF export route smoke | `tests/test_session6.py` | Operations | Low |
+
+**Session 6 target state:** Weighted platform score 7.1 → 7.5+; ESG division 0 → 3/10; Investment Governance 8.0 → 8.5; `SelfAuditPacket` on every run.
 
 ---
 
-*Document updated: session 5 — ACT-S5-1 (gate 9/12/13 hardening), ACT-S5-2 (base_agent parse_output 3-strategy). Items 1, 2, 4 of §12.6 confirmed done. Test count: 453 passing.*  
+*Document updated: session 5 — ACT-S5-1 (gate 9/12/13 hardening), ACT-S5-2 (base_agent parse_output 3-strategy). All 10 Next Actions confirmed done. Test count: 453 passing. Session 6 plan in §12.7.*  
 *Document updated: March 28, 2026 — Extended gap analysis and JPAM roadmap goal logged.*  
-*Scores refreshed post-Phase-7 debt-clearing session: governance hardened (A-3/A-4), qualitative pipeline built (D-1), QuantResearchAnalystAgent wired (D-4), E2E smoke tests added (P-2), pipeline_adapter created (A-1), storage unified (A-2). Test count: 378 passing.*  
 *See ROADMAP.md for the complete 7-phase build plan.*

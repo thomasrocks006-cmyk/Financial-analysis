@@ -15,6 +15,7 @@
 | Session 3 (P-5, P-6, ACT-6) | All **COMPLETE** |
 | Session 4 (P-4, P-7, P-8) | All **COMPLETE** |
 | Session 5 (ACT-S5-1, ACT-S5-2) | All **COMPLETE** |
+| Session 6 | **PLANNED** — see §2 below |
 
 ---
 
@@ -50,6 +51,16 @@
 | ACT-S5-1 | **Engine** | Fix engine.py gate logic — gates 9/12/13 no longer hardcoded True | High | Low | ✅ session 5 |
 | ACT-S5-2 | **Agents** | Fix base_agent.parse_output — 3-strategy JSON extraction incl. preamble | High | Low | ✅ session 5 |
 
+### Session 6 — Planned Work Queue
+
+| ID | Area | Task | JPAM Division | Priority | Effort |
+|---|---|---|---|---|---|
+| ACT-S6-1 | **Governance** | Wire `SelfAuditPacket` into every engine run — attach per-stage latency, token counts, confidence flags to `RunRecord` | Investment Governance | High | Low |
+| ACT-S6-2 | **Agents** | ESG analyst agent — new `EsgAnalystAgent` scoring environmental/social/governance factors per ticker; wired into Stage 6 | ESG / Sustainable Investing | High | High |
+| ACT-S6-3 | **Frontend** | PDF export of Quant Analytics Report tab — `pdfkit` / `weasyprint` rendering triggered from Streamlit | Client Solutions | Medium | Medium |
+| ACT-S6-4 | **Schemas** | Remove legacy `PublicationStatus.PASS_WITH_DISCLOSURE` — confirmed still referenced in old test fixtures | Governance | Medium | Low |
+| ACT-S6-5 | **Testing** | Expand smoke test to assert `SelfAuditPacket` presence and ESG fields after session 6 additions | Operations | Medium | Low |
+
 ---
 
 ## 3. Post-Roadmap Build Candidates (original)
@@ -67,17 +78,19 @@
 
 ## 4. Division-Level Maturity
 
-| Division | Score (Session 2) | JPAM Target | Gap |
-|---|---|---|---|
-| Global Research | 7.5 / 10 | 9.0 / 10 | 1.5 |
-| Quantitative Research | 7.0 / 10 | 9.0 / 10 | 2.0 |
-| Portfolio Management | 6.5 / 10 | 8.5 / 10 | 2.0 |
-| Investment Governance | 7.5 / 10 | 9.5 / 10 | 2.0 |
-| Performance Attribution | 0 / 10 | 8.5 / 10 | 8.5 |
-| ESG / Sustainable Investing | 0 / 10 | 7.5 / 10 | 7.5 |
-| Operations & Technology | 7.5 / 10 | 9.0 / 10 | 1.5 |
-| Client Solutions / Reporting | 6.5 / 10 | 8.5 / 10 | 2.0 |
-| **Weighted platform score** | **6.5 / 10** | **9.0 / 10** | **2.5** |
+*Scores updated through session 5. Session 5 improved Investment Governance (gate hardening) and Operations & Technology (base_agent reliability).*
+
+| Division | Session 5 Score | JPAM Target | Gap | Primary Remaining Gap |
+|---|---|---|---|---|
+| Global Research | **7.5 / 10** | 9.0 / 10 | 1.5 | Agent outputs still partially shallow (political risk, macro) |
+| Quantitative Research | **7.5 / 10** | 9.0 / 10 | 1.5 | SelfAuditPacket not wired; no live historical return data |
+| Portfolio Management | **6.5 / 10** | 8.5 / 10 | 2.0 | IC vote blocks on mandate violations (good), but no weights optimiser |
+| Investment Governance | **8.0 / 10** ↑ | 9.5 / 10 | 1.5 | SelfAuditPacket not wired; PASS_WITH_DISCLOSURE in test fixtures |
+| Performance Attribution | **0 / 10** | 8.5 / 10 | 8.5 | Not built — requires time-series price store |
+| ESG / Sustainable Investing | **0 / 10** | 7.5 / 10 | 7.5 | Not built — ACT-S6-2 target |
+| Operations & Technology | **8.3 / 10** ↑ | 9.0 / 10 | 0.7 | base_agent fixed; asyncio.gather done; CI weekly workflow live |
+| Client Solutions / Reporting | **7.5 / 10** | 8.5 / 10 | 1.0 | No PDF export yet; Quant Analytics panel complete |
+| **Weighted platform score** | **7.1 / 10** ↑ | **9.0 / 10** | **1.9** | ESG and Performance Attribution are the main platform-score anchors |
 
 ---
 
@@ -151,53 +164,53 @@ These were explicitly marked ⬜ Deferred within completed phases. They are real
 
 ## 2. Architectural Debt
 
-Live code issues that remain from the architecture review. Not cosmetic — each causes real risk.
+Live code issues that remain from the architecture review.
 
-| ID | File | Issue | Severity | Fix Required |
+| ID | File | Issue | Severity | Status |
 |---|---|---|---|---|
-| A-1 | `src/frontend/pipeline_runner.py` | 1,851-line duplicate orchestration engine. Still runs its own full pipeline logic independently of `PipelineEngine`. Fixes applied to `engine.py` are not reflected here. | **Critical** | Reduce to thin adapter: call `PipelineEngine` stages directly; remove all duplicate orchestration logic |
-| A-2 | `src/frontend/storage.py` + `src/research_pipeline/services/run_registry.py` | Two separate persistence systems. Frontend writes its own JSON storage; backend maintains its own run registry. They do not share records. | High | Unify under `RunRegistryService`; frontend writes through the registry |
-| A-3 | `src/research_pipeline/schemas/portfolio.py` line 27 | `PublicationStatus.PASS_WITH_DISCLOSURE` still exists as a valid enum value (and line 217 treats it as passing). `AssociateReviewer` now rejects it, but the schema still permits it. | Medium | Remove `PASS_WITH_DISCLOSURE` from `PublicationStatus` enum; update `is_publishable()` property |
-| A-4 | `src/research_pipeline/services/investment_committee.py` line 195 | Still checks `review_result.get("status") == "pass_with_disclosure"` as a valid case, inconsistent with the binary PASS/FAIL mandate | Medium | Remove the `pass_with_disclosure` branch; treat it as FAIL |
+| A-1 | `src/frontend/pipeline_runner.py` | 1,851-line duplicate orchestration engine — fixes to `engine.py` not reflected here | **Critical** | 🔲 open |
+| A-2 | `src/frontend/storage.py` | Two separate persistence systems (frontend JSON vs backend registry) | High | ✅ **DONE** session 2 (storage mirrors to registry) |
+| A-3 | `src/research_pipeline/schemas/portfolio.py` | `PublicationStatus.PASS_WITH_DISCLOSURE` still in enum | Medium | ✅ **DONE** session 2 (enum value removed) |
+| A-4 | `src/research_pipeline/services/investment_committee.py` | `pass_with_disclosure` branch in `_pm_vote` | Medium | ✅ **DONE** session 2 (branch removed; treated as FAIL) |
 
 ---
 
 ## 3. Post-Roadmap Build Candidates
 
-These are not in any current ROADMAP phase but represent the logical next layer of the platform.
-
-| ID | Area | Task | JPAM Division | Priority | Effort |
+| ID | Area | Task | JPAM Division | Priority | Status |
 |---|---|---|---|---|---|
-| P-1 | **Documentation** | Update `ARCHITECTURE.md` component scorecard and gap tables to reflect post-Phase-7 reality. Many rows still say "Not started" for things that are now built. | — | High | Low |
-| P-2 | **Testing** | Product-level smoke tests: run full `PipelineEngine` end-to-end with mocked API responses and assert on final report structure | Operations | High | Medium |
-| P-3 | **Agent** | Quant Research Agent (see D-4 above) — LLM commentary layer over factor exposures, VaR output, ETF overlap results | Quant Research | High | Medium |
-| P-4 | **Frontend** | Wire new services into Streamlit UI: show ETF overlap score, observability cost table, and BHB attribution panel | Client Solutions | Medium | Medium |
-| P-5 | **Data** | Add a third market data source (e.g. Yahoo Finance via `yfinance`) as fallback when FMP or Finnhub quotas are exhausted | Operations | Medium | Low |
-| P-6 | **Services** | DCF Engine extension — add EV/EBITDA and P/E relative valuation methods for stocks where DCF is less applicable (e.g. early-stage or asset-light) | Quant Research | Medium | Medium |
-| P-7 | **Agents** | Multi-asset thesis agents — sector analysts currently assume equity. Need fixed-income thesis agent for the `FIXED_INCOME_UNIVERSE` tickers now in `universe_config.py` | Research | Medium | High |
-| P-8 | **Operations** | Live run validation — wire real API keys into CI (as secrets), run one pipeline pass per week against live FMP/Finnhub data, assert report completeness | Operations | Low | Low |
+| P-1 | **Documentation** | Update `ARCHITECTURE.md` scorecard | — | High | ✅ Done (sessions 2–5) |
+| P-2 | **Testing** | E2E pipeline smoke tests | Operations | High | ✅ Done session 2 (19 tests) |
+| P-3 | **Agent** | Quant Research Agent | Quant Research | High | ✅ Done as D-4 (session 2) |
+| P-4 | **Frontend** | Quant Analytics panel in Streamlit | Client Solutions | Medium | ✅ Done session 4 |
+| P-5 | **Data** | yfinance fallback data source | Operations | Medium | ✅ Done session 3 |
+| P-6 | **Services** | DCF extension — EV/EBITDA + P/E | Quant Research | Medium | ✅ Done session 3 |
+| P-7 | **Agents** | Fixed-income thesis agent | Research | Medium | ✅ Done session 4 |
+| P-8 | **Operations** | Weekly live-data CI job | Operations | Low | ✅ Done session 4 |
 
 ---
 
 ## 4. Division-Level Maturity
 
-Current best estimates post-Phase-7. Architecture doc scores are stale (pre-phase completion).
+*Stale pre-build baseline. See live scores in §4 of the primary tracker section above.*
 
-| Division | Pre-build Score | Post-Phase-7 Estimate | JPAM Target | Remaining Gap |
+| Division | Pre-build Score | Session 5 Score | JPAM Target | Remaining Gap |
 |---|---|---|---|---|
-| Global Research | 6.5 | **8.0** | 9.0 | 1.0 |
-| Quantitative Research | 5.5 | **8.0** | 9.0 | 1.0 |
-| Portfolio Management | 6.0 | **8.0** | 8.5 | 0.5 |
-| Investment Governance | 4.5 | **7.5** | 9.5 | 2.0 |
-| Performance Attribution | 0.0 | **6.5** | 8.5 | 2.0 |
-| ESG / Sustainable Investing | 0.0 | **6.0** | 7.5 | 1.5 |
-| Operations & Technology | 6.5 | **8.0** | 9.0 | 1.0 |
-| Client Solutions / Reporting | 6.5 | **7.0** | 8.5 | 1.5 |
-| **Weighted platform score** | **4.4** | **~7.5** | **9.0** | **1.5** |
+| Global Research | 6.5 | **7.5** | 9.0 | 1.5 |
+| Quantitative Research | 5.5 | **7.5** | 9.0 | 1.5 |
+| Portfolio Management | 6.0 | **6.5** | 8.5 | 2.0 |
+| Investment Governance | 4.5 | **8.0** ↑ | 9.5 | 1.5 |
+| Performance Attribution | 0.0 | **0** | 8.5 | 8.5 |
+| ESG / Sustainable Investing | 0.0 | **0** | 7.5 | 7.5 |
+| Operations & Technology | 6.5 | **8.3** ↑ | 9.0 | 0.7 |
+| Client Solutions / Reporting | 6.5 | **7.5** | 8.5 | 1.0 |
+| **Weighted platform score** | **4.4** | **7.1** ↑ | **9.0** | **1.9** |
 
 ---
 
 ## 5. Test Coverage
+
+*This lower section is a legacy view; the live test table is in §5 of the primary tracker section.*
 
 | File | Tests | Area |
 |---|---|---|
@@ -212,12 +225,11 @@ Current best estimates post-Phase-7. Architecture doc scores are stale (pre-phas
 | `test_quant_engines.py` | ~30 | Factor engine, VaR, optimisation |
 | `test_schemas.py` | ~30 | Schema validation |
 | `test_services.py` | ~20 | Deterministic services |
-| **Total** | **303** | All passing |
-
-**Coverage gaps:**
-- No end-to-end pipeline smoke test (P-2 above)
-- `golden_tests.py` categories not tested with real assertions (D-3 above)
-- `frontend/pipeline_runner.py` has zero dedicated tests
+| `test_smoke_pipeline.py` | 19 | E2E pipeline smoke tests + adapter |
+| `test_deferred_items.py` | 56 | D-1/D-4/A-3/A-4 debt items |
+| `test_next_section.py` | 49 | Sessions 3–4 features |
+| `test_session5.py` | 26 | Sessions 5 gate hardening + parse_output |
+| **Total** | **453** | All passing |
 
 ---
 
@@ -226,14 +238,17 @@ Current best estimates post-Phase-7. Architecture doc scores are stale (pre-phas
 | Purpose | Path |
 |---|---|
 | Main pipeline orchestrator | `src/research_pipeline/pipeline/engine.py` |
-| All 11 LLM agents | `src/research_pipeline/agents/` |
-| 30 deterministic services | `src/research_pipeline/services/` |
-| Governance schemas | `src/research_pipeline/schemas/governance.py` |
+| All 13 LLM agents | `src/research_pipeline/agents/` |
+| 30+ deterministic services | `src/research_pipeline/services/` |
+| Governance schemas (incl. SelfAuditPacket) | `src/research_pipeline/schemas/governance.py` |
+| Fixed-income analyst agent | `src/research_pipeline/agents/fixed_income_analyst.py` |
+| Quant Research Agent | `src/research_pipeline/agents/quant_research_analyst.py` |
+| Pipeline adapter | `src/frontend/pipeline_adapter.py` |
 | Universe configs | `src/research_pipeline/config/universe_config.py` |
-| LLM fallback chain | `src/research_pipeline/agents/base_agent.py` → `_FALLBACK_CHAIN` |
+| LLM fallback + parse_output | `src/research_pipeline/agents/base_agent.py` |
 | Observability | `src/research_pipeline/services/observability.py` |
-| Memory injection | `src/research_pipeline/services/memory_injection.py` |
 | ETF overlap engine | `src/research_pipeline/services/etf_overlap_engine.py` |
-| Report formats (3 variants) | `src/research_pipeline/services/report_formats.py` |
-| CI/CD | `.github/workflows/ci.yml` |
-| Frontend (warn: architectural debt A-1) | `src/frontend/pipeline_runner.py` |
+| Risk engine + VaR | `src/research_pipeline/services/risk_engine.py` |
+| BHB benchmark module | `src/research_pipeline/services/benchmark_module.py` |
+| Run registry | `src/research_pipeline/services/run_registry.py` |
+| CI weekly live-data | `.github/workflows/weekly_live_data.yml` |
