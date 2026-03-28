@@ -162,3 +162,81 @@ class AuditTrail(BaseModel):
             entry_id=entry_id, run_id=self.run_id, action=action,
             stage=stage, actor=actor, details=details or {}, outcome=outcome,
         ))
+
+
+# ── Self-Audit Packet ────────────────────────────────────────────────────────
+
+class SelfAuditPacket(BaseModel):
+    """Per-run structured self-audit attached to every published output.
+
+    Built at Stage 13 and included in the final report as the mandatory
+    'Audit Appendix'. Enables external verification of evidence quality
+    without re-running the full pipeline.
+    """
+    run_id: str
+    generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    # Evidence quality metrics
+    total_claims: int = 0
+    tier1_claims: int = 0
+    tier2_claims: int = 0
+    tier3_claims: int = 0
+    tier4_claims: int = 0
+    pass_claims: int = 0
+    caveat_claims: int = 0
+    fail_claims: int = 0
+
+    # Methodology compliance
+    methodology_tags_present: bool = False
+    dates_complete: bool = False
+    source_hygiene_score: float = 0.0  # 0-10
+
+    # Agent outcomes
+    agents_succeeded: list[str] = []
+    agents_failed: list[str] = []
+    total_retries: int = 0
+
+    # Gate outcomes
+    gates_passed: list[int] = []
+    gates_failed: list[int] = []
+
+    # Red team coverage
+    tickers_with_red_team: list[str] = []
+    min_falsification_tests: int = 0  # minimum across all tickers
+
+    # IC outcome
+    ic_approved: Optional[bool] = None
+    ic_vote_breakdown: dict[str, str] = {}  # member → vote
+
+    # Mandate & ESG
+    mandate_compliant: Optional[bool] = None
+    esg_exclusions: list[str] = []
+
+    # Summary verdict
+    publication_quality_score: float = 0.0  # 0-10 derived metric
+    blockers: list[str] = []
+
+    @property
+    def tier1_2_pct(self) -> float:
+        """Percentage of claims with Tier 1 or 2 sources."""
+        if self.total_claims == 0:
+            return 0.0
+        return round((self.tier1_claims + self.tier2_claims) / self.total_claims * 100, 1)
+
+    def compute_quality_score(self) -> float:
+        """Derive publication quality score 0-10 from gathered metrics."""
+        score = 10.0
+        if self.fail_claims > 0:
+            score -= min(4.0, self.fail_claims * 0.5)
+        if self.caveat_claims > 0:
+            score -= min(2.0, self.caveat_claims * 0.2)
+        if not self.methodology_tags_present:
+            score -= 2.0
+        if not self.dates_complete:
+            score -= 0.5
+        if self.min_falsification_tests < 3:
+            score -= 1.0
+        if self.agents_failed:
+            score -= min(2.0, len(self.agents_failed) * 0.5)
+        self.publication_quality_score = max(0.0, round(score, 1))
+        return self.publication_quality_score

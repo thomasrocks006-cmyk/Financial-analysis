@@ -82,5 +82,48 @@ HARD RULES:
 - Do NOT treat consensus as truth
 - When current price is above consensus target, flag explicitly
 - No single-point fair values — always provide ranges
+- methodology_tag is MANDATORY — every output must have it set (not null/empty)
 
 Return a JSON array of valuation outputs."""
+
+    def format_input(self, inputs: dict[str, Any]) -> str:
+        import json
+        return json.dumps(inputs, indent=2, default=str)
+
+    def parse_output(self, raw_response: str) -> dict[str, Any]:
+        """Enforce mandatory methodology_tag on every price target."""
+        from research_pipeline.agents.base_agent import StructuredOutputError
+
+        parsed = super().parse_output(raw_response)
+        entries = parsed if isinstance(parsed, list) else parsed.get("valuations", [])
+
+        if not isinstance(entries, list) or len(entries) == 0:
+            raise StructuredOutputError(
+                "ValuationAnalyst: expected a JSON array of valuation outputs; got empty."
+            )
+
+        violations: list[str] = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            ticker = entry.get("ticker", "?")
+            meth_tag = entry.get("methodology_tag", "")
+            entry_quality = entry.get("entry_quality", "")
+            if not meth_tag:
+                violations.append(f"[{ticker}] missing 'methodology_tag' — all targets must be tagged HOUSE VIEW or methodology")
+            if not entry_quality:
+                violations.append(f"[{ticker}] missing 'entry_quality' field")
+            scenarios = entry.get("section_5_scenarios", [])
+            for sc in (scenarios if isinstance(scenarios, list) else []):
+                if isinstance(sc, dict) and not sc.get("what_breaks_it"):
+                    violations.append(f"[{ticker}] scenario '{sc.get('case', '?')}' missing 'what_breaks_it' falsification")
+
+        if violations:
+            raise StructuredOutputError(
+                "ValuationAnalyst: methodology or structure violations:\n"
+                + "\n".join(violations)
+            )
+
+        if isinstance(parsed, list):
+            return {"valuations": parsed}
+        return parsed

@@ -80,4 +80,48 @@ PORTFOLIO-LEVEL OUTPUT:
 HARD RULES:
 - Minimum 3 concrete disconfirming risks per name (not generic)
 - Identify story/valuation mismatch risk
-- If current price > consensus target, thesis integrity cannot be ROBUST"""
+- If current price > consensus target, thesis integrity cannot be ROBUST
+
+Return a JSON object with keys "assessments" (array, one per ticker) and "portfolio_summary" (object)."""
+
+    def format_input(self, inputs: dict[str, Any]) -> str:
+        import json
+        return json.dumps(inputs, indent=2, default=str)
+
+    def parse_output(self, raw_response: str) -> dict[str, Any]:
+        """Enforce minimum 3 falsification tests per ticker."""
+        from research_pipeline.agents.base_agent import StructuredOutputError
+
+        parsed = super().parse_output(raw_response)
+
+        # Accept either {"assessments": [...]} or a bare list
+        assessments = parsed.get("assessments", parsed) if isinstance(parsed, dict) else parsed
+
+        if isinstance(assessments, list):
+            violations: list[str] = []
+            for assessment in assessments:
+                if not isinstance(assessment, dict):
+                    continue
+                ticker = assessment.get("ticker", "?")
+                tests = assessment.get("section_2_falsification_tests", [])
+                if not isinstance(tests, list) or len(tests) < 3:
+                    violations.append(
+                        f"[{ticker}] has {len(tests) if isinstance(tests, list) else 0} "
+                        f"falsification tests — minimum 3 required per name"
+                    )
+                required = assessment.get("required_tests", {})
+                if not isinstance(required, dict) or len(required) < 3:
+                    violations.append(
+                        f"[{ticker}] missing required_tests block (ai_efficiency_shock, "
+                        f"hyperscaler_capex_pause, etc.)"
+                    )
+
+            if violations:
+                raise StructuredOutputError(
+                    "RedTeam: insufficient falsification coverage — agent must fix:\n"
+                    + "\n".join(violations)
+                )
+
+        if isinstance(parsed, list):
+            return {"assessments": parsed}
+        return parsed

@@ -11,6 +11,7 @@ class AssociateReviewerAgent(BaseAgent):
     """Senior associate gatekeeper — binary pass/fail before anything reaches the PM.
 
     Nothing reaches the Portfolio Manager without passing here.
+    PASS_WITH_DISCLOSURE is NOT a valid outcome — there is no soft pass.
     """
 
     def __init__(self, **kwargs):
@@ -39,9 +40,10 @@ The gate FAILS if ANY of the following are true:
 - Any company described as "specified" or "exclusive" partner when source says "contributor"
 - Any stock's audit status field is undefined/null/empty
 - Red Team assessment not completed for all names
+- Red Team has fewer than 3 falsification tests for any name
 - CAVEAT claims not explicitly labelled in body text
 
-GATE PASSES when: All FAIL claims resolved, all CAVEAT claims labelled, all fields populated, all methodology tags present, all four analysts submitted.
+GATE PASSES when: All FAIL claims resolved, all CAVEAT claims labelled, all fields populated, all methodology tags present, all four analysts submitted, red team has ≥3 tests per name.
 
 CROSS-ANALYST CONSISTENCY CHECKS:
 After gate passes, verify:
@@ -51,12 +53,12 @@ After gate passes, verify:
 
 YOUR OUTPUT:
 {
-  "publication_status": "PASS | PASS_WITH_DISCLOSURE | FAIL",
+  "publication_status": "PASS | FAIL",
   "gate_checks": [
     {"check": "description", "status": "pass|fail", "note": "issue if fail"}
   ],
   "cross_analyst_issues": ["consistency issues found"],
-  "required_corrections": ["specific items to fix before next attempt"],
+  "required_corrections": ["specific items to fix before next attempt — MUST be empty for PASS"],
   "integration_notes": "summary of how analyst outputs connect",
   "self_audit_packet": {
     "total_claims": 0,
@@ -70,4 +72,48 @@ YOUR OUTPUT:
   "ready_for_pm": true/false
 }
 
-HARD RULE: Gate status is binary. No "soft pass" or "conditional publication." Either ready or not."""
+HARD RULE: Gate status is BINARY — PASS or FAIL only. There is no PASS_WITH_DISCLOSURE.
+PASS requires: required_corrections is empty AND ready_for_pm is true AND no FAIL gate checks."""
+
+    def format_input(self, inputs: dict[str, Any]) -> str:
+        import json
+        return json.dumps(inputs, indent=2, default=str)
+
+    def parse_output(self, raw_response: str) -> dict[str, Any]:
+        """Enforce binary PASS/FAIL. Convert any PASS_WITH_DISCLOSURE to FAIL."""
+        from research_pipeline.agents.base_agent import StructuredOutputError
+
+        parsed = super().parse_output(raw_response)
+        if not isinstance(parsed, dict):
+            raise StructuredOutputError(
+                "AssociateReviewer: expected a JSON object, got array."
+            )
+
+        status = str(parsed.get("publication_status", "fail")).lower().strip()
+
+        # Normalise: reject any soft-pass variant
+        if status in ("pass_with_disclosure", "conditional_pass", "pass with disclosure"):
+            # Force fail — soft pass is not permitted
+            parsed["publication_status"] = "FAIL"
+            parsed.setdefault("required_corrections", []).append(
+                "publication_status was 'PASS_WITH_DISCLOSURE' — not a valid outcome. "
+                "All items must be explicitly resolved before PASS is granted."
+            )
+            parsed["ready_for_pm"] = False
+
+        # Validate that a PASS has no required corrections outstanding
+        if parsed.get("publication_status", "").upper() == "PASS":
+            corrections = parsed.get("required_corrections", [])
+            if corrections:
+                parsed["publication_status"] = "FAIL"
+                parsed.setdefault("required_corrections", []).append(
+                    "Status changed to FAIL: PASS cannot coexist with required_corrections."
+                )
+                parsed["ready_for_pm"] = False
+
+        if "publication_status" not in parsed:
+            raise StructuredOutputError(
+                "AssociateReviewer: 'publication_status' field missing from output."
+            )
+
+        return parsed

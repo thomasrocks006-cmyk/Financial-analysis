@@ -21,7 +21,7 @@ class SectorAnalystBase(BaseAgent):
 
     def _four_box_prompt_section(self) -> str:
         return """
-OUTPUT STRUCTURE — Four Boxes per name:
+OUTPUT STRUCTURE — Four Boxes per name (required for EVERY ticker):
 {
   "ticker": "TICKER",
   "company_name": "Name",
@@ -41,6 +41,45 @@ NOT ALLOWED:
 - Cite weak sources for core facts
 - Import unverified claims from Box 2/3 into Box 4 as established facts
 - Vague TAM inflation or overclaiming partner announcements as hard demand"""
+
+    _REQUIRED_FOUR_BOX_FIELDS = (
+        "ticker", "company_name", "date",
+        "box1_verified_facts", "box2_management_guidance",
+        "box3_consensus_market_view", "box4_analyst_judgment",
+        "key_risks",
+    )
+
+    def parse_output(self, raw_response: str) -> dict[str, Any]:
+        """Validate that a four-box entry exists for every ticker with required fields."""
+        from research_pipeline.agents.base_agent import StructuredOutputError
+
+        parsed = super().parse_output(raw_response)
+        entries = parsed if isinstance(parsed, list) else parsed.get("sector_outputs", [])
+
+        if not isinstance(entries, list) or len(entries) == 0:
+            raise StructuredOutputError(
+                f"{self.name}: expected a JSON array of four-box outputs; got "
+                f"{type(parsed).__name__} with 0 items."
+            )
+
+        missing: list[str] = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            ticker = entry.get("ticker", "?")
+            for field in self._REQUIRED_FOUR_BOX_FIELDS:
+                if not entry.get(field):
+                    missing.append(f"[{ticker}] missing '{field}'")
+
+        if missing:
+            raise StructuredOutputError(
+                f"{self.name}: four-box output missing required fields — agent must fix:\n"
+                + "\n".join(missing)
+            )
+
+        if isinstance(parsed, list):
+            return {"sector_outputs": parsed}
+        return parsed
 
 
 class SectorAnalystCompute(SectorAnalystBase):

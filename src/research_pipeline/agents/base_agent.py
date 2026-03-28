@@ -83,20 +83,91 @@ class BaseAgent(ABC):
     def version(self) -> str:
         return f"v8.0-{self.prompt_hash[:8]}"
 
+    # Phase 7.4 — Provider fallback chain.
+    # Tried in order on RateLimitError/ServiceUnavailableError.
+    _FALLBACK_CHAIN: list[str] = ["claude-opus-4-6", "gpt-4o", "gemini-1.5-pro"]
+
     async def call_llm(
         self, messages: list[dict[str, str]], response_format: type | None = None
     ) -> str:
-        """Call the LLM with retry logic. Supports Anthropic Claude and OpenAI."""
+        """Call the LLM with retry logic and provider fallback.
+
+        Primary: configured model.
+        Fallback chain (Phase 7.4): claude-opus-4-6 → gpt-4o → gemini-1.5-pro
+        on rate-limit or quota errors only.  Other errors are NOT silently swallowed.
+        """
         import os
 
-        is_anthropic = self.model.startswith("claude")
+        providers_to_try: list[tuple[str, str]] = []
 
-        if is_anthropic:
-            return await self._call_anthropic(messages, os.getenv("ANTHROPIC_API_KEY", ""))
-        else:
-            return await self._call_openai(messages, os.getenv("OPENAI_API_KEY", ""), response_format)
+        # Build the ordered list: primary model first, then fallbacks that differ
+        primary = self.model
+        models_order = [primary] + [m for m in self._FALLBACK_CHAIN if m != primary]
 
-    async def _call_anthropic(self, messages: list[dict[str, str]], api_key: str) -> str:
+        for model in models_order:
+            if model.startswith("claude"):
+                providers_to_try.append((model, "anthropic"))
+            elif model.startswith("gemini"):
+                providers_to_try.append((model, "gemini"))
+            else:
+                providers_to_try.append((model, "openai"))
+
+        last_exc: Exception | None = None
+
+        for model_name, provider in providers_to_try:
+            try:
+                if provider == "anthropic":
+                    result = await self._call_anthropic(
+                        messages, os.getenv("ANTHROPIC_API_KEY", ""), model_override=model_name
+                    )
+                elif provider == "gemini":
+                    result = await self._call_gemini(
+                        messages, os.getenv("GOOGLE_API_KEY", ""), model_override=model_name
+                    )
+                else:
+                    result = await self._call_openai(
+                        messages,
+                        os.getenv("OPENAI_API_KEY", ""),
+                        response_format,
+                        model_override=model_name,
+                    )
+
+                if model_name != primary:
+                    logger.warning(
+                        "%s: used fallback model '%s' (primary '%s' unavailable)",
+                        self.name, model_name, primary,
+                    )
+
+                return result
+
+            except Exception as exc:
+                exc_str = str(exc).lower()
+                # Only fall back for rate-limit / quota / service-unavailable errors
+                is_retryable = any(kw in exc_str for kw in (
+                    "rate limit", "rate_limit", "ratelimit",
+                    "quota", "overloaded", "service unavailable",
+                    "503", "529", "too many requests", "429",
+                ))
+                if is_retryable:
+                    logger.warning(
+                        "%s: provider '%s' / model '%s' rate-limited — trying next fallback: %s",
+                        self.name, provider, model_name, exc,
+                    )
+                    last_exc = exc
+                    continue
+                # Non-retryable error — raise immediately, do not try fallbacks
+                raise
+
+        raise RuntimeError(
+            f"{self.name}: all LLM fallback models exhausted. Last error: {last_exc}"
+        )
+
+    async def _call_anthropic(
+        self,
+        messages: list[dict[str, str]],
+        api_key: str,
+        model_override: str | None = None,
+    ) -> str:
         """Call Anthropic Claude API."""
         try:
             import anthropic as _anthropic
@@ -113,12 +184,13 @@ class BaseAgent(ABC):
             else:
                 user_messages.append(m)
 
+        model = model_override or self.model
         client = _anthropic.AsyncAnthropic(api_key=api_key)
 
         for attempt in range(1, self.max_retries + 1):
             try:
                 kwargs: dict[str, Any] = {
-                    "model": self.model,
+                    "model": model,
                     "max_tokens": 8192,
                     "messages": user_messages,
                     "temperature": self.temperature,
@@ -142,6 +214,7 @@ class BaseAgent(ABC):
         messages: list[dict[str, str]],
         api_key: str,
         response_format: type | None = None,
+        model_override: str | None = None,
     ) -> str:
         """Call OpenAI API."""
         try:
@@ -150,12 +223,13 @@ class BaseAgent(ABC):
             logger.warning("OpenAI not installed — returning mock response")
             return json.dumps({"mock": True, "agent": self.name})
 
+        model = model_override or self.model
         client = AsyncOpenAI(api_key=api_key)
 
         for attempt in range(1, self.max_retries + 1):
             try:
                 kwargs: dict[str, Any] = {
-                    "model": self.model,
+                    "model": model,
                     "messages": messages,
                     "temperature": self.temperature,
                 }
@@ -172,6 +246,73 @@ class BaseAgent(ABC):
                     raise
 
         return ""
+
+    async def _call_gemini(
+        self,
+        messages: list[dict[str, str]],
+        api_key: str,
+        model_override: str | None = None,
+    ) -> str:
+        """Call Google Gemini API (Phase 7.4 fallback provider).
+
+        Uses google-generativeai if installed; falls back to a REST call otherwise.
+        """
+        model = model_override or self.model
+        try:
+            import google.generativeai as genai  # type: ignore[import]
+        except ImportError:
+            # Fallback: raw REST with httpx / requests
+            logger.warning("google-generativeai not installed — using REST fallback")
+            return await self._call_gemini_rest(messages, api_key, model)
+
+        genai.configure(api_key=api_key)
+        g_model = genai.GenerativeModel(model)
+
+        # Flatten messages to text prompt (Gemini basic API)
+        text_parts = "\n".join(
+            f"[{m['role'].upper()}]\n{m['content']}" for m in messages
+        )
+
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                response = await g_model.generate_content_async(text_parts)
+                return response.text
+            except Exception as exc:
+                logger.warning(
+                    "%s: Gemini attempt %d failed: %s", self.name, attempt, exc
+                )
+                if attempt == self.max_retries:
+                    raise
+
+        return ""
+
+    async def _call_gemini_rest(
+        self,
+        messages: list[dict[str, str]],
+        api_key: str,
+        model: str,
+    ) -> str:
+        """Minimal Gemini REST fallback — no extra SDK required."""
+        import asyncio
+        import urllib.request
+        import urllib.error
+
+        text_parts = "\n".join(
+            f"[{m['role'].upper()}]\n{m['content']}" for m in messages
+        )
+        payload = json.dumps({"contents": [{"parts": [{"text": text_parts}]}]}).encode()
+        url = (
+            f"https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{model}:generateContent?key={api_key}"
+        )
+
+        def _blocking_request() -> str:
+            req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                body = json.loads(resp.read())
+                return body["candidates"][0]["content"]["parts"][0]["text"]
+
+        return await asyncio.get_event_loop().run_in_executor(None, _blocking_request)
 
     def build_messages(self, user_content: str) -> list[dict[str, str]]:
         """Build standard message list with system prompt."""

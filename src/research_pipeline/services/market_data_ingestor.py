@@ -237,18 +237,26 @@ class MarketDataIngestor:
 
         return result
 
-    async def ingest_universe(self, tickers: list[str]) -> list[dict[str, Any]]:
-        """Ingest all tickers in the universe."""
-        results = []
-        for ticker in tickers:
-            try:
-                result = await self.ingest_ticker(ticker)
-                results.append(result)
-                logger.info("Ingested %s", ticker)
-            except Exception as exc:
-                logger.error("Failed to ingest %s: %s", ticker, exc)
-                results.append({"ticker": ticker, "error": str(exc)})
-        return results
+    async def ingest_universe(self, tickers: list[str], max_concurrent: int = 5) -> list[dict[str, Any]]:
+        """Ingest all tickers concurrently using asyncio.gather with a semaphore for rate control.
+
+        max_concurrent limits simultaneous outbound requests to avoid hitting API rate limits.
+        """
+        import asyncio
+        semaphore = asyncio.Semaphore(max_concurrent)
+
+        async def _ingest_with_sem(ticker: str) -> dict[str, Any]:
+            async with semaphore:
+                try:
+                    result = await self.ingest_ticker(ticker)
+                    logger.info("Ingested %s", ticker)
+                    return result
+                except Exception as exc:
+                    logger.error("Failed to ingest %s: %s", ticker, exc)
+                    return {"ticker": ticker, "error": str(exc)}
+
+        results = await asyncio.gather(*(_ingest_with_sem(t) for t in tickers))
+        return list(results)
 
     def detect_stale(self, snapshot: MarketSnapshot, max_hours: int = 24) -> bool:
         """Return True if the snapshot is older than max_hours."""

@@ -56,6 +56,11 @@ from research_pipeline.services.audit_exporter import AuditExporter
 from research_pipeline.services.cache_layer import CacheLayer, QuotaManager
 from research_pipeline.services.rebalancing_engine import RebalancingEngine
 
+# New Phase 7 Services
+from research_pipeline.services.etf_overlap_engine import ETFOverlapEngine
+from research_pipeline.services.observability import ObservabilityService
+from research_pipeline.services.report_formats import ReportFormatService
+
 # Agents
 from research_pipeline.agents.orchestrator import OrchestratorAgent
 from research_pipeline.agents.evidence_librarian import EvidenceLibrarianAgent
@@ -120,6 +125,15 @@ class PipelineEngine:
         self.rebalancing_engine = RebalancingEngine()
         self.cache = CacheLayer(cache_dir=settings.storage_dir / "cache")
         self.quota_manager = QuotaManager(quotas={"fmp_api": 250, "finnhub_api": 250, "llm_tokens": 500_000})
+
+        # New Phase 7 Services — ETF Overlap, Observability, Report Formats
+        self.etf_overlap_engine = ETFOverlapEngine()
+        self.observability = ObservabilityService(
+            output_dir=settings.storage_dir / "telemetry"
+        )
+        self.report_format_service = ReportFormatService(
+            output_dir=settings.storage_dir / "reports"
+        )
 
         # Initialize agents
         prompts_dir = settings.prompts_dir
@@ -476,6 +490,22 @@ class PipelineEngine:
         if drawdown_result:
             risk_output["drawdown_analysis"] = drawdown_result.model_dump()
 
+        # Phase 2.7 / 7.4: ETF overlap analysis
+        try:
+            etf_overlaps = self.etf_overlap_engine.analyse_portfolio(
+                run_id=self.run_record.run_id,
+                portfolio_weights={t: 1.0 / len(universe) for t in universe},
+            )
+            risk_output["etf_overlap"] = etf_overlaps.to_dict()
+            risk_output["etf_differentiation_score"] = etf_overlaps.differentiation_score
+            if self.etf_overlap_engine.flag_etf_replication(etf_overlaps):
+                logger.warning(
+                    "ETF OVERLAP WARNING: portfolio exceeds replication threshold — "
+                    "differentiation_score=%.1f", etf_overlaps.differentiation_score
+                )
+        except Exception as exc:
+            logger.warning("ETF overlap analysis failed: %s", exc)
+
         self._save_stage_output(9, risk_output)
         gate = self.gates.gate_9_risk(
             risk_packet_present=True,
@@ -763,6 +793,10 @@ class PipelineEngine:
         logger.info("║  Starting full pipeline run                  ║")
         logger.info("╚══════════════════════════════════════════════╝")
 
+        # Phase 7.5: Start observability tracking
+        if self.run_record:
+            self.observability.start_run(self.run_record.run_id)
+
         # Stage 0: Bootstrap
         if not await self.stage_0_bootstrap(universe):
             await self.stage_14_monitoring()
@@ -835,6 +869,37 @@ class PipelineEngine:
 
         # Stage 14: Monitoring & Logging
         await self.stage_14_monitoring()
+
+        # Phase 7.5: End observability tracking and save telemetry
+        if self.run_record:
+            try:
+                run_obs = self.observability.end_run(self.run_record.run_id)
+                telemetry_path = self.observability.save(self.run_record.run_id)
+                logger.info(
+                    "Observability saved to %s | total_cost=$%.4f | duration=%.1fs",
+                    telemetry_path, run_obs.total_llm_cost_usd, run_obs.total_duration_seconds,
+                )
+            except Exception as exc:
+                logger.warning("Observability save failed: %s", exc)
+
+            # Phase 7.9: Render client reports
+            try:
+                pipeline_output_for_reports = {
+                    "final_report": self.stage_outputs.get(13, {}),
+                    "portfolio": self.stage_outputs.get(12, {}),
+                    "risk_package": self.stage_outputs.get(9, {}),
+                    "ic_outcome": self.stage_outputs.get(12, {}).get("ic_record", {}),
+                    "mandate_result": self.stage_outputs.get(12, {}).get("mandate", {}),
+                    "sector_outputs": self.stage_outputs.get(6, []),
+                    "valuations": self.stage_outputs.get(7, {}),
+                    "red_team": self.stage_outputs.get(10, {}),
+                }
+                report_paths = self.report_format_service.save_all(
+                    self.run_record.run_id, pipeline_output_for_reports
+                )
+                logger.info("Reports saved: %s", [str(p) for p in report_paths])
+            except Exception as exc:
+                logger.warning("Report format rendering failed: %s", exc)
 
         return {
             "status": "completed",
