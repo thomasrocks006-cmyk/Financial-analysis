@@ -103,12 +103,37 @@ class RiskEngine:
         returns: dict[str, list[float]],
         subthemes: dict[str, str],
         etf_holdings: dict[str, list[str]] | None = None,
+        var_result: Any | None = None,
+        drawdown: Any | None = None,
     ) -> RiskPacket:
-        """Produce the full risk packet."""
+        """Produce the full risk packet.
+
+        Args:
+            run_id: Pipeline run identifier.
+            weights: Portfolio weights {ticker: weight_pct}.
+            returns: Historical return series {ticker: [r1, r2, ...]}.
+            subthemes: Subtheme mapping {ticker: subtheme_name}.
+            etf_holdings: ETF constituent lists {etf_ticker: [holdings]}.
+            var_result: Optional VaRResult (or its model_dump()) from VaREngine.
+            drawdown: Optional DrawdownAnalysis (or its model_dump()) from VaREngine.
+        """
         corr = self.compute_correlation_matrix(returns)
         concentration = self.compute_concentration(weights, subthemes)
         vol_contrib = self.compute_contribution_to_variance(weights, returns)
         etf_overlap = self.detect_etf_overlap(list(weights.keys()), etf_holdings or {})
+
+        # Normalise var_result and drawdown to plain dicts
+        def _to_dict(obj: Any) -> dict | None:
+            if obj is None:
+                return None
+            if isinstance(obj, dict):
+                return obj
+            if hasattr(obj, "model_dump"):
+                return obj.model_dump()
+            return dict(obj)
+
+        var_dict = _to_dict(var_result)
+        dd_dict = _to_dict(drawdown)
 
         return RiskPacket(
             run_id=run_id,
@@ -116,4 +141,8 @@ class RiskEngine:
             concentration_report=concentration,
             etf_overlap=etf_overlap,
             volatility_contributions=vol_contrib,
+            var_analysis=var_dict,
+            drawdown_analysis=dd_dict,
+            var_method=(var_dict or {}).get("method", ""),
+            confidence_level=(var_dict or {}).get("confidence_level"),
         )

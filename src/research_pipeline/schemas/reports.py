@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -67,7 +67,15 @@ class ScenarioResult(BaseModel):
 
 
 class RiskPacket(BaseModel):
-    """Quantitative risk output for the portfolio."""
+    """Quantitative risk output for the portfolio.
+
+    Action 6 — VaR and drawdown fields added so the full quantitative
+    picture is surfaced in one packet rather than across separate objects.
+
+    ``var_analysis`` and ``drawdown_analysis`` are stored as plain dicts
+    (model_dump() of VaRResult / DrawdownAnalysis) so this schema has no
+    cross-package import dependency.
+    """
     run_id: str
     date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     correlation_matrix: dict[str, dict[str, float]] = {}
@@ -76,3 +84,20 @@ class RiskPacket(BaseModel):
     volatility_contributions: dict[str, float] = {}
     scenario_results: list[ScenarioResult] = []
     drawdown_risk_summary: str = ""
+    # Action 6 — VaR / drawdown from VaREngine embedded at build time
+    var_analysis: Optional[dict[str, Any]] = None     # VaRResult.model_dump()
+    drawdown_analysis: Optional[dict[str, Any]] = None  # DrawdownAnalysis.model_dump()
+    var_method: str = ""                              # "parametric" | "historical"
+    confidence_level: Optional[float] = None          # e.g. 0.95
+    # Convenience read-only properties
+    @property
+    def var_pct(self) -> Optional[float]:
+        return (self.var_analysis or {}).get("var_pct")
+
+    @property
+    def cvar_pct(self) -> Optional[float]:
+        return (self.var_analysis or {}).get("cvar_pct")
+
+    @property
+    def max_drawdown_pct(self) -> Optional[float]:
+        return (self.drawdown_analysis or {}).get("max_drawdown_pct")

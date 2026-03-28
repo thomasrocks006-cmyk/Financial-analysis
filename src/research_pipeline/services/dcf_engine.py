@@ -46,8 +46,54 @@ class SensitivityTable:
     grid: list[list[float]] = field(default_factory=list)  # implied price per cell
 
 
+@dataclass
+class RelativeValuationResult:
+    """Output from EV/EBITDA and P/E relative valuation methods.
+
+    Both methods produce an implied share price. When both are available
+    the ``composite_implied_price`` is a simple average; call
+    ``weight_composite()`` to use a custom blend.
+    """
+    ticker: str
+    current_price: float
+    peer_ev_ebitda_multiple: Optional[float] = None
+    ev_ebitda_implied_price: Optional[float] = None
+    ev_ebitda_upside_pct: Optional[float] = None  # vs current_price
+    peer_pe_multiple: Optional[float] = None
+    pe_implied_price: Optional[float] = None
+    pe_upside_pct: Optional[float] = None  # vs current_price
+    composite_implied_price: Optional[float] = None
+    composite_upside_pct: Optional[float] = None
+    methodology_note: str = ""
+
+    def weight_composite(
+        self, ev_ebitda_weight: float = 0.5, pe_weight: float = 0.5
+    ) -> Optional[float]:
+        """Blend the two methods with custom weights.
+
+        If only one method produced an implied price, that price is returned
+        directly (i.e. the missing method is treated as weight=0).
+        Returns None if neither method produced a price.
+        """
+        ev = self.ev_ebitda_implied_price
+        pe = self.pe_implied_price
+        if ev is None and pe is None:
+            return None
+        if ev is None:
+            return round(pe, 2)  # type: ignore[arg-type]
+        if pe is None:
+            return round(ev, 2)
+        return round(ev * ev_ebitda_weight + pe * pe_weight, 2)
+
+
 class DCFEngine:
-    """Deterministic DCF computation — no LLM.
+    """Deterministic DCF + relative valuation computation — no LLM.
+
+    Methods:
+    - ``compute_dcf``          — standard unlevered FCF discounted to EV
+    - ``reverse_dcf``          — back-solve for implied revenue CAGR
+    - ``sensitivity_table``    — WACC × terminal-growth grid
+    - ``relative_valuation``   — EV/EBITDA and P/E comps approach (P-6)
 
     Engine computes; agent interprets.
     """
@@ -175,4 +221,94 @@ class DCFEngine:
             row_values=wacc_range,
             col_values=tg_range,
             grid=grid,
+        )
+
+    # ── P-6: Relative valuation (EV/EBITDA and P/E) ───────────────────
+
+    def relative_valuation(
+        self,
+        ticker: str,
+        current_price: float,
+        ebitda: Optional[float] = None,
+        net_debt: float = 0.0,
+        shares_outstanding: float = 1.0,
+        peer_ev_ebitda_multiple: Optional[float] = None,
+        eps: Optional[float] = None,
+        peer_pe_multiple: Optional[float] = None,
+    ) -> RelativeValuationResult:
+        """Compute implied share price using EV/EBITDA and/or P/E multiples.
+
+        At least one of (ebitda + peer_ev_ebitda_multiple) or
+        (eps + peer_pe_multiple) must be provided, otherwise both implied
+        prices are returned as None.
+
+        Args:
+            ticker: Ticker symbol.
+            current_price: Current market price per share.
+            ebitda: Last-twelve-months EBITDA ($M).
+            net_debt: Net debt ($M, positive = more debt than cash).
+            shares_outstanding: Shares outstanding (millions).
+            peer_ev_ebitda_multiple: Peer-group median EV/EBITDA multiple.
+            eps: Last-twelve-months EPS.
+            peer_pe_multiple: Peer-group median P/E multiple.
+
+        Returns:
+            RelativeValuationResult with implied prices and upside percentages.
+        """
+        ev_ebitda_price: Optional[float] = None
+        ev_ebitda_upside: Optional[float] = None
+        pe_price: Optional[float] = None
+        pe_upside: Optional[float] = None
+        notes: list[str] = []
+
+        # EV/EBITDA method
+        if ebitda is not None and peer_ev_ebitda_multiple is not None:
+            if shares_outstanding > 0:
+                implied_ev = ebitda * peer_ev_ebitda_multiple
+                implied_equity = implied_ev - net_debt
+                ev_ebitda_price = round(implied_equity / shares_outstanding, 2)
+                if current_price > 0:
+                    ev_ebitda_upside = round(
+                        (ev_ebitda_price - current_price) / current_price * 100, 1
+                    )
+                notes.append(
+                    f"EV/EBITDA: {ebitda:.1f}M EBITDA × {peer_ev_ebitda_multiple:.1f}x "
+                    f"= ${implied_ev:.1f}M EV"
+                )
+            else:
+                notes.append("EV/EBITDA skipped: shares_outstanding must be > 0")
+
+        # P/E method
+        if eps is not None and peer_pe_multiple is not None:
+            if eps > 0:
+                pe_price = round(eps * peer_pe_multiple, 2)
+                if current_price > 0:
+                    pe_upside = round((pe_price - current_price) / current_price * 100, 1)
+                notes.append(f"P/E: ${eps:.2f} EPS × {peer_pe_multiple:.1f}x")
+            else:
+                notes.append("P/E skipped: EPS must be positive for P/E method")
+
+        # Simple average composite
+        composite: Optional[float] = None
+        composite_upside: Optional[float] = None
+        available = [p for p in (ev_ebitda_price, pe_price) if p is not None]
+        if available:
+            composite = round(sum(available) / len(available), 2)
+            if current_price > 0:
+                composite_upside = round(
+                    (composite - current_price) / current_price * 100, 1
+                )
+
+        return RelativeValuationResult(
+            ticker=ticker,
+            current_price=current_price,
+            peer_ev_ebitda_multiple=peer_ev_ebitda_multiple,
+            ev_ebitda_implied_price=ev_ebitda_price,
+            ev_ebitda_upside_pct=ev_ebitda_upside,
+            peer_pe_multiple=peer_pe_multiple,
+            pe_implied_price=pe_price,
+            pe_upside_pct=pe_upside,
+            composite_implied_price=composite,
+            composite_upside_pct=composite_upside,
+            methodology_note=" | ".join(notes) if notes else "No methods applied",
         )

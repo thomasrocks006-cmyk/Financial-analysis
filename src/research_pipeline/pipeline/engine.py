@@ -477,20 +477,24 @@ class PipelineEngine:
         except Exception as exc:
             logger.warning("VaR computation failed: %s", exc)
 
-        risk_packet = RiskPacket(
+        risk_packet = self.risk_engine.build_risk_packet(
             run_id=self.run_record.run_id,
-            scenario_results=scenario_results,
+            weights={t: 1.0 / len(universe) for t in universe},
+            returns={t: [] for t in universe},   # synthetic returns present in var_result
+            subthemes={t: "compute" for t in universe},
+            var_result=var_result,
+            drawdown=drawdown_result,
         )
+        risk_packet.scenario_results = scenario_results
 
-        # Build enhanced risk output
+        # Build enhanced risk output — start from the typed packet
         risk_output = risk_packet.model_dump()
         risk_output["factor_exposures"] = factor_data
         if portfolio_factor_exp:
             risk_output["portfolio_factor_exposure"] = portfolio_factor_exp
+        # Keep var_95 alias so quant agent and legacy code still find it
         if var_result:
             risk_output["var_95"] = var_result.model_dump()
-        if drawdown_result:
-            risk_output["drawdown_analysis"] = drawdown_result.model_dump()
 
         # Phase 2.7 / 7.4: ETF overlap analysis
         try:

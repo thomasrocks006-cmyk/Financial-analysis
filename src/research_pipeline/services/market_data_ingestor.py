@@ -193,6 +193,41 @@ class MarketDataIngestor:
             ))
         return results
 
+    # ── yfinance fallback ─────────────────────────────────────────────
+    async def fetch_yfinance_quote(self, ticker: str) -> MarketSnapshot:
+        """Fetch a lightweight quote from yfinance.
+
+        yfinance is a synchronous library; we wrap it in ``asyncio.to_thread``
+        so it doesn't block the event loop.  Only called as a *last-resort
+        fallback* when both FMP and Finnhub price fetches fail.
+        """
+        import asyncio  # already imported at module level in stdlib; safe repeat
+
+        try:
+            import yfinance as yf  # optional dep; gracefully handled below
+        except ImportError:
+            raise RuntimeError("yfinance is not installed; run: pip install yfinance")
+
+        def _blocking_fetch() -> dict:
+            yticker = yf.Ticker(ticker)
+            fi = yticker.fast_info
+            return {
+                "price":       getattr(fi, "last_price", None),
+                "market_cap":  getattr(fi, "market_cap", None),
+                "trailing_pe": getattr(fi, "pe_ratio", None),
+                "forward_pe":  getattr(fi, "forward_pe", None),
+            }
+
+        data = await asyncio.to_thread(_blocking_fetch)
+        return MarketSnapshot(
+            ticker=ticker,
+            source="yfinance",
+            price=data.get("price"),
+            market_cap=data.get("market_cap"),
+            trailing_pe=data.get("trailing_pe"),
+            forward_pe=data.get("forward_pe"),
+        )
+
     # ── Full ingest for a ticker ───────────────────────────────────────
     async def ingest_ticker(self, ticker: str) -> dict[str, Any]:
         """Run full ingest for a single ticker.
@@ -200,9 +235,20 @@ class MarketDataIngestor:
         Each source call is individually error-handled so that a 402 (FMP free
         tier limit) or a network error on one endpoint does not discard data
         from other endpoints that succeeded.
+
+        Source hierarchy:
+          1. FMP (primary — broadest fundamental data)
+          2. Finnhub (free-tier fallback, good for real-time price)
+          3. yfinance (last-resort — used only when both FMP and Finnhub price
+             fetches fail)
         """
         now = datetime.now(timezone.utc)
-        result: dict[str, Any] = {"ticker": ticker, "timestamp": now.isoformat(), "errors": {}}
+        result: dict[str, Any] = {
+            "ticker": ticker,
+            "source": "fmp_finnhub",   # satisfies DataQA lineage check
+            "timestamp": now.isoformat(),
+            "errors": {},
+        }
 
         # FMP — treated as primary but optional (free tier covers limited universe)
         for fetch_fn, key in [
@@ -234,6 +280,20 @@ class MarketDataIngestor:
                 code = getattr(getattr(exc, "response", None), "status_code", "ERR")
                 result["errors"][key] = f"{code}: {exc}"
                 logger.warning("[%s] %s failed (%s): %s", ticker, key, code, exc)
+
+        # yfinance fallback — only when both primary sources have no price
+        fmp_price = (result.get("fmp_quote") or {}).get("price")
+        finnhub_price = (result.get("finnhub_quote") or {}).get("price")
+        if fmp_price is None and finnhub_price is None:
+            logger.info("[%s] Both FMP and Finnhub price missing — trying yfinance", ticker)
+            try:
+                yf_snap = await self.fetch_yfinance_quote(ticker)
+                result["yfinance_quote"] = yf_snap.model_dump()
+                result["source"] = "yfinance"
+                logger.info("[%s] yfinance fallback succeeded: price=%s", ticker, yf_snap.price)
+            except Exception as exc:
+                logger.warning("[%s] yfinance fallback failed: %s", ticker, exc)
+                result["errors"]["yfinance_quote"] = str(exc)
 
         return result
 

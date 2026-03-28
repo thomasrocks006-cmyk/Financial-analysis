@@ -1,8 +1,121 @@
 # Project Tracker — AI Research & Portfolio Platform
 
 > **Last updated:** March 28, 2026  
-> **Test suite:** 303 / 303 passing  
-> **Commit:** `1374e5d`
+> **Test suite:** 378 / 378 passing  
+> **Commit:** `9cf1588` (session 2 complete)
+
+---
+
+## Status Summary
+
+| Area | Status |
+|---|---|
+| ROADMAP Phases 0–7 | All **COMPLETE** |
+| Session 2 debt-clearing (10 items) | All **COMPLETE** |
+| Next build session (P-4 to P-8 + Actions 5–9) | In progress |
+
+---
+
+## 1. Completed Items (Sessions 1 & 2)
+
+| ID | Task | Done |
+|---|---|---|
+| D-1 | Qualitative data pipeline — Pydantic v2 schemas + async 8-source service | ✅ |
+| D-2 | Prompts audit | ⏭ deferred (human judgment) |
+| D-3 | Golden test suite — real assertions in `golden_tests.py` | ✅ |
+| D-4 | Quant Research Analyst Agent — LLM over factor/VaR/ETF outputs | ✅ |
+| A-1 | `pipeline_runner.py` → thin adapter (`pipeline_adapter.py`) | ✅ |
+| A-2 | `storage.py` unified with `RunRegistryService` | ✅ |
+| A-3 | Binary `PASS`/`FAIL` only — `PASS_WITH_DISCLOSURE` removed | ✅ |
+| A-4 | IC `_pm_vote` no longer auto-approves unexpected statuses | ✅ |
+| P-1 | `ARCHITECTURE.md` scorecard updated (overall 6.6 → 7.8) | ✅ |
+| P-2 | E2E smoke tests — 19 tests, full 15-stage pipeline mocked | ✅ |
+
+---
+
+## 2. Current Work Queue
+
+| ID | Area | Task | Priority | Effort | Status |
+|---|---|---|---|---|---|
+| P-5 | **Data** | yfinance as third data source fallback | Medium | Low | 🔲 |
+| ACT-6 | **Quant** | Drawdown analysis + CVaR in `RiskEngine` | High | Medium | 🔲 |
+| ACT-5 | **Governance** | `SelfAuditPacket` schema attached to every run | High | Low | 🔲 |
+| P-6 | **Services** | DCF extension — EV/EBITDA and P/E relative valuation | Medium | Medium | 🔲 |
+| ACT-7 | **Quant** | Benchmark-relative analytics module | Medium | Medium | 🔲 |
+| P-4 | **Frontend** | Wire ETF overlap + observability + BHB attribution into Streamlit | Medium | Medium | 🔲 |
+| P-7 | **Agents** | Fixed-income thesis agent | Medium | High | 🔲 |
+| P-8 | **CI** | Weekly live-data validation run as CI job | Low | Low | 🔲 |
+
+---
+
+## 3. Post-Roadmap Build Candidates (original)
+
+| ID | Area | Task | JPAM Division | Priority | Effort |
+|---|---|---|---|---|---|
+| P-3 | **Agent** | Quant Research Agent | Quant Research | High | Medium | ✅ done as D-4 |
+| P-4 | **Frontend** | Wire ETF overlap, observability, BHB attribution into Streamlit | Client Solutions | Medium | Medium | 🔲 |
+| P-5 | **Data** | yfinance fallback when FMP/Finnhub quotas exhausted | Operations | Medium | Low | 🔲 |
+| P-6 | **Services** | DCF extension — EV/EBITDA and P/E methods | Quant Research | Medium | Medium | 🔲 |
+| P-7 | **Agents** | Fixed-income thesis agent | Research | Medium | High | 🔲 |
+| P-8 | **Operations** | Live run validation — weekly CI job against real APIs | Operations | Low | Low | 🔲 |
+
+---
+
+## 4. Division-Level Maturity
+
+| Division | Score (Session 2) | JPAM Target | Gap |
+|---|---|---|---|
+| Global Research | 7.5 / 10 | 9.0 / 10 | 1.5 |
+| Quantitative Research | 7.0 / 10 | 9.0 / 10 | 2.0 |
+| Portfolio Management | 6.5 / 10 | 8.5 / 10 | 2.0 |
+| Investment Governance | 7.5 / 10 | 9.5 / 10 | 2.0 |
+| Performance Attribution | 0 / 10 | 8.5 / 10 | 8.5 |
+| ESG / Sustainable Investing | 0 / 10 | 7.5 / 10 | 7.5 |
+| Operations & Technology | 7.5 / 10 | 9.0 / 10 | 1.5 |
+| Client Solutions / Reporting | 6.5 / 10 | 8.5 / 10 | 2.0 |
+| **Weighted platform score** | **6.5 / 10** | **9.0 / 10** | **2.5** |
+
+---
+
+## 5. Test Coverage
+
+| File | Tests | Area |
+|---|---|---|
+| `test_deferred_items.py` | 56 | D-1 schemas/parsers, D-4 agent, A-3/A-4 governance |
+| `test_gates.py` | ~30 | Gate enforcement |
+| `test_governance.py` | ~25 | Governance schemas + IC |
+| `test_memory_audit.py` | ~20 | Research memory + audit |
+| `test_new_schemas.py` | ~20 | New Pydantic models |
+| `test_performance_services.py` | ~25 | BHB attribution, performance tracker |
+| `test_phase1_hardening.py` | 24 | Agent parse_output + LLM fallback |
+| `test_phase6_7.py` | 52 | Memory injection, observability, universe config, report formats |
+| `test_pipeline.py` | ~30 | Pipeline engine + stages |
+| `test_quant_engines.py` | ~30 | Factor engine, VaR, optimisation |
+| `test_schemas.py` | ~30 | Schema validation |
+| `test_services.py` | ~20 | Deterministic services |
+| `test_smoke_pipeline.py` | 19 | E2E pipeline + adapter |
+| **Total** | **378** | All passing |
+
+---
+
+## 6. Quick Reference — Key Files
+
+| Purpose | Path |
+|---|---|
+| Main pipeline orchestrator | `src/research_pipeline/pipeline/engine.py` |
+| All 12 LLM agents | `src/research_pipeline/agents/` |
+| Deterministic services | `src/research_pipeline/services/` |
+| Qualitative schemas (new) | `src/research_pipeline/schemas/qualitative.py` |
+| Quant Research Agent (new) | `src/research_pipeline/agents/quant_research_analyst.py` |
+| Pipeline adapter (new) | `src/frontend/pipeline_adapter.py` |
+| Governance schemas | `src/research_pipeline/schemas/governance.py` |
+| Universe configs | `src/research_pipeline/config/universe_config.py` |
+| Market data ingestor | `src/research_pipeline/services/market_data_ingestor.py` |
+| Risk engine | `src/research_pipeline/services/risk_engine.py` |
+| DCF engine | `src/research_pipeline/services/dcf_engine.py` |
+| ETF overlap engine | `src/research_pipeline/services/etf_overlap_engine.py` |
+| Run registry | `src/research_pipeline/services/run_registry.py` |
+
 
 ---
 
