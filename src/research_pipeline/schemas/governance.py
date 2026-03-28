@@ -216,6 +216,9 @@ class SelfAuditPacket(BaseModel):
     stage_latencies_ms: dict[str, float] = Field(default_factory=dict)  # "stage_0" -> ms
     total_pipeline_duration_s: float = 0.0
 
+    # Prompt versioning (ACT-S8-4)
+    prompt_drift_reports: list[dict] = Field(default_factory=list)  # PromptDriftReport dicts
+
     # Summary verdict
     publication_quality_score: float = 0.0  # 0-10 derived metric
     blockers: list[str] = []

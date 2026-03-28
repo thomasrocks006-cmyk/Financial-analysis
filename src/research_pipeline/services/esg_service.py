@@ -175,3 +175,59 @@ class ESGService:
             )
 
         return "\n".join(lines)
+
+    # ── ACT-S8-3: CSV ingest ──────────────────────────────────────────────
+
+    def load_from_csv(self, csv_path: str | "Path") -> int:  # type: ignore[name-defined]
+        """Load ESG profiles from a CSV file, overriding heuristic defaults.
+
+        Expected CSV columns (header row required)::
+
+            ticker, overall_rating, e_score, s_score, g_score, controversy_flag
+
+        ``overall_rating`` must be a valid ESGRating value (AAA, AA, A, BBB, BB, B, CCC).
+        ``controversy_flag`` accepts "true" / "false" (case-insensitive).
+        Rows with missing or invalid data are skipped with a warning.
+
+        Returns:
+            Number of ESG profiles successfully loaded.
+        """
+        import csv
+        from pathlib import Path as _Path
+
+        path = _Path(csv_path)
+        if not path.exists():
+            logger.error("ESG CSV not found: %s", path)
+            return 0
+
+        loaded = 0
+        with open(path, newline="") as fh:
+            reader = csv.DictReader(fh)
+            for row in reader:
+                ticker = (row.get("ticker") or "").strip().upper()
+                if not ticker:
+                    continue
+                try:
+                    profile: dict = {
+                        "overall": (row.get("overall_rating") or "BBB").strip(),
+                        "e": float(row.get("e_score") or 5.0),
+                        "s": float(row.get("s_score") or 5.0),
+                        "g": float(row.get("g_score") or 5.0),
+                        "controversy": (
+                            (row.get("controversy_flag") or "false")
+                            .strip()
+                            .lower()
+                            == "true"
+                        ),
+                    }
+                    # Validate rating value
+                    ESGRating(profile["overall"])
+                    # Update in-memory store and invalidate score cache
+                    _DEFAULT_ESG_SCORES[ticker] = profile
+                    self._scores_cache.pop(ticker, None)
+                    loaded += 1
+                except (ValueError, KeyError) as exc:
+                    logger.warning("ESG CSV row invalid for %s: %s", ticker, exc)
+
+        logger.info("ESGService loaded %d profiles from %s", loaded, path)
+        return loaded

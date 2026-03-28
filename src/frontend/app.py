@@ -1536,6 +1536,34 @@ with tab_report:
                                     st.dataframe(pd.DataFrame(rows).set_index("Ticker"), use_container_width=True)
                     st.caption("Optimisation uses synthetic return data — for structural illustration only. Use live price data for production weights.")
 
+                # ── Rebalancing Signals (ACT-S8-2) ────────────────────────
+                rebal_data = portfolio_out.get("rebalance_proposal")
+                if rebal_data and rebal_data.get("trades"):
+                    st.markdown("---")
+                    st.markdown("#### ⚖️ Rebalancing Signals (Risk Parity vs Baseline)")
+                    rb1, rb2, rb3 = st.columns(3)
+                    rb1.metric("Trades Required", rebal_data.get("trade_count", len(rebal_data["trades"])))
+                    rb2.metric("Turnover", f"{rebal_data.get('total_turnover_pct', 0):.1f}%")
+                    rb3.metric("Est. Avg Impact", f"{rebal_data.get('estimated_total_impact_bps', 0):.1f} bps")
+                    with st.expander("Trade-Level Detail", expanded=False):
+                        import pandas as pd  # noqa: PLC0415
+                        trade_rows = []
+                        for t in rebal_data["trades"]:
+                            trade_rows.append({
+                                "Ticker": t["ticker"],
+                                "Direction": t["direction"].upper(),
+                                "Current %": t["current_weight_pct"],
+                                "Target %": t["target_weight_pct"],
+                                "Delta %": t["delta_weight_pct"],
+                                "Est. Value $": f"{t.get('estimated_value', 0):,.0f}",
+                                "Impact bps": t.get("market_impact_bps", 0),
+                                "Priority": t.get("priority", "normal"),
+                            })
+                        if trade_rows:
+                            st.dataframe(pd.DataFrame(trade_rows).set_index("Ticker"), use_container_width=True)
+                    if rebal_data.get("summary"):
+                        st.caption(rebal_data["summary"])
+
                 # ── Performance Attribution (BHB) (ACT-S7-1) ──────────────
                 stage14_out = _stage_out(14)
                 attribution = stage14_out.get("attribution", {})

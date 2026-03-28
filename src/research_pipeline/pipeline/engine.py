@@ -56,6 +56,8 @@ from research_pipeline.services.performance_tracker import PerformanceTracker
 from research_pipeline.services.audit_exporter import AuditExporter
 from research_pipeline.services.cache_layer import CacheLayer, QuotaManager
 from research_pipeline.services.rebalancing_engine import RebalancingEngine
+from research_pipeline.services.live_return_store import LiveReturnStore  # ACT-S8-1
+from research_pipeline.services.prompt_registry import PromptRegistry  # ACT-S8-4
 
 # Governance schemas
 from research_pipeline.schemas.governance import SelfAuditPacket
@@ -130,6 +132,10 @@ class PipelineEngine:
         self.performance_tracker = PerformanceTracker(storage_dir=settings.storage_dir)
         self.monitoring_engine = MonitoringEngine()
         self.rebalancing_engine = RebalancingEngine()
+        self.live_return_store = LiveReturnStore()  # ACT-S8-1
+        self.prompt_registry = PromptRegistry(  # ACT-S8-4
+            storage_dir=settings.storage_dir / "prompt_registry"
+        )
         self.cache = CacheLayer(cache_dir=settings.storage_dir / "cache")
         self.quota_manager = QuotaManager(quotas={"fmp_api": 250, "finnhub_api": 250, "llm_tokens": 500_000})
 
@@ -348,10 +354,54 @@ class PipelineEngine:
                 len(packet.agents_succeeded),
                 packet.total_pipeline_duration_s,
             )
+            # ACT-S8-4: prompt drift scan
+            self._scan_prompt_registry(packet)
             return packet
         except Exception as exc:
             logger.warning("SelfAuditPacket build failed (non-blocking): %s", exc)
             return None
+
+    def _scan_prompt_registry(self, packet: "SelfAuditPacket") -> None:  # ACT-S8-4
+        """Register current agent prompt hashes and detect drift from previous runs.
+
+        Populates ``packet.prompt_drift_reports`` with one entry per agent.
+        Changed prompts are logged as warnings.
+        """
+        agents = [
+            self.orchestrator_agent, self.evidence_agent,
+            self.compute_analyst, self.power_analyst, self.infra_analyst,
+            self.valuation_agent, self.macro_agent, self.political_agent,
+            self.red_team_agent, self.reviewer_agent, self.pm_agent,
+            self.quant_analyst_agent, self.fixed_income_agent, self.esg_analyst_agent,
+        ]
+        drift_reports: list[dict] = []
+        for agent in agents:
+            try:
+                prompt_id = getattr(agent, "name", agent.__class__.__name__)
+                prompt_hash = getattr(agent, "prompt_hash", "")
+                if not prompt_hash:
+                    continue
+                # Use hash as a stable content stub — avoids storing raw prompt text
+                stub = f"__HASH__{prompt_hash}"
+                self.prompt_registry.register_prompt(
+                    prompt_id=prompt_id,
+                    prompt_text=stub,
+                    metadata={
+                        "agent_class": agent.__class__.__name__,
+                        "version_tag": getattr(agent, "version_tag", ""),
+                    },
+                )
+                report = self.prompt_registry.check_drift(prompt_id, stub)
+                drift_reports.append(report.model_dump())
+            except Exception as exc:
+                logger.debug("Prompt registry scan skipped for %s: %s", type(agent).__name__, exc)
+
+        packet.prompt_drift_reports = drift_reports
+        changed = sum(1 for r in drift_reports if r.get("changed", False))
+        if changed:
+            logger.warning("Prompt drift scan: %d agent prompt(s) changed", changed)
+        else:
+            logger.info("Prompt drift scan: %d agents checked, 0 changed", len(drift_reports))
 
     async def _timed_stage(self, stage_num: int, coro) -> bool:  # ACT-S7-3
         """Await a stage coroutine and record its wall-clock duration."""
@@ -397,6 +447,33 @@ class PipelineEngine:
             rets = rng.normal(mu_daily, sigma_daily, n_days).tolist()
             result[ticker] = rets
         return result
+
+    def _get_returns(
+        self,
+        tickers: list[str],
+        n_days: int = 252,
+        seed_offset: int = 0,
+    ) -> dict[str, list[float]]:
+        """Get daily returns — live data (yfinance) preferred, synthetic fallback.
+
+        ACT-S8-1: Tries ``LiveReturnStore`` first.  If every requested ticker
+        succeeds, the live series is returned (variable length per ticker).
+        If any ticker fails to fetch, falls back to the deterministic synthetic
+        series so the optimiser / BHB attribution always have a complete set.
+        """
+        try:
+            live = self.live_return_store.fetch(tickers)
+            if live and len(live) == len(tickers):
+                logger.info("_get_returns: using live yfinance data for %d tickers", len(tickers))
+                return live
+            if live:
+                logger.info(
+                    "_get_returns: partial live data (%d/%d) — falling back to synthetic",
+                    len(live), len(tickers),
+                )
+        except Exception as exc:
+            logger.debug("_get_returns: live fetch error — %s", exc)
+        return self._generate_synthetic_returns(tickers, n_days=n_days, seed_offset=seed_offset)
 
     def _save_stage_output(self, stage: int, data: Any) -> None:
         """Persist stage output to disk."""
@@ -956,7 +1033,7 @@ class PipelineEngine:
         # ACT-S7-4: Portfolio optimisation — risk parity and min-variance
         optimisation_results: dict[str, Any] = {}
         try:
-            synth_returns = self._generate_synthetic_returns(esg_clean_universe)
+            synth_returns = self._get_returns(esg_clean_universe)  # ACT-S8-1
             risk_parity = self.portfolio_optimisation.compute_risk_parity(
                 esg_clean_universe, synth_returns
             )
@@ -993,6 +1070,26 @@ class PipelineEngine:
             )
         except Exception as _exc:
             logger.warning("Portfolio optimisation failed (non-blocking): %s", _exc)
+
+        # ACT-S8-2: Rebalancing signals — compare risk-parity target vs equal-weight baseline
+        rebalance_proposal: Optional[dict] = None
+        try:
+            if optimisation_results.get("risk_parity"):
+                rp_weights = optimisation_results["risk_parity"]["weights"]
+                proposal = self.rebalancing_engine.generate_rebalance(
+                    run_id=self.run_record.run_id,
+                    target_weights=rp_weights,
+                    current_weights=baseline_weights,
+                    trigger="optimiser",
+                )
+                rebalance_proposal = proposal.model_dump()
+                logger.info(
+                    "Rebalance proposal: %d trades, turnover=%.1f%%",
+                    proposal.trade_count,
+                    proposal.total_turnover_pct,
+                )
+        except Exception as _exc:
+            logger.warning("Rebalance proposal failed (non-blocking): %s", _exc)
 
         # Mandate compliance check on baseline weights
         mandate_check = self.mandate_engine.check_compliance(
@@ -1060,6 +1157,7 @@ class PipelineEngine:
             "mandate_compliance": mandate_check.model_dump(),
             "baseline_weights": baseline_weights,
             "optimisation_results": optimisation_results,  # ACT-S7-4
+            "rebalance_proposal": rebalance_proposal,  # ACT-S8-2
             "ic_record": ic_record.model_dump(),
             "ic_approved": ic_record.is_approved,
             "audit_trail": audit_trail.model_dump(),
@@ -1180,9 +1278,9 @@ class PipelineEngine:
 
                 tickers = list(baseline_weights.keys())
                 # Synthetic returns for portfolio tickers and benchmark proxy
-                synth_returns = self._generate_synthetic_returns(tickers, seed_offset=1)
+                synth_returns = self._get_returns(tickers, seed_offset=1)  # ACT-S8-1
                 bench_tickers = list(BENCHMARK_CONSTITUENTS.get("SPY", {}).keys())
-                bench_returns = self._generate_synthetic_returns(bench_tickers, seed_offset=2)
+                bench_returns = self._get_returns(bench_tickers, seed_offset=2)  # ACT-S8-1
 
                 # Normalised benchmark weights (SPY proxy)
                 raw_bench_w = BENCHMARK_CONSTITUENTS.get("SPY", {})
