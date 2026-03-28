@@ -120,10 +120,13 @@ class LiveReturnStore:
                     threads=True,
                 )
                 if data is None or data.empty:
-                    return {}
+                    # ACT-S9-4: batch failed — retry each ticker individually
+                    result.update(self._download_individual(yf, tickers, period))
+                    return result
                 closes = data.get("Close")
                 if closes is None:
-                    return {}
+                    result.update(self._download_individual(yf, tickers, period))
+                    return result
                 # Multi-ticker download has MultiIndex columns or flat columns
                 for ticker in tickers:
                     try:
@@ -134,6 +137,10 @@ class LiveReturnStore:
                         result[ticker] = [round(float(v), 6) for v in pct.dropna().tolist()]
                     except Exception as exc:
                         logger.debug("Could not extract returns for %s: %s", ticker, exc)
+                # ACT-S9-4: retry any tickers the batch missed
+                still_missing = [t for t in tickers if t not in result]
+                if still_missing:
+                    result.update(self._download_individual(yf, still_missing, period))
         except Exception as exc:
             logger.warning("yfinance download failed: %s", exc)
 
@@ -143,4 +150,33 @@ class LiveReturnStore:
             logger.info("LiveReturnStore fetched %d tickers: %s", len(success), success)
         if failed:
             logger.warning("LiveReturnStore failed for %d tickers: %s", len(failed), failed)
+        return result
+
+    def _download_individual(
+        self, yf, tickers: list[str], period: str
+    ) -> dict[str, list[float]]:
+        """ACT-S9-4: Ticker-by-ticker fallback when batch download fails partially.
+
+        Attempts a separate yfinance download for each ticker so that a
+        delisted or invalid symbol does not block valid ones.
+        """
+        result: dict[str, list[float]] = {}
+        for ticker in tickers:
+            try:
+                data = yf.download(
+                    ticker,
+                    period=period,
+                    auto_adjust=True,
+                    progress=False,
+                    threads=False,
+                )
+                closes = data.get("Close") if data is not None and not data.empty else None
+                if closes is not None and len(closes) >= 2:
+                    pct = closes.pct_change().dropna() * 100
+                    result[ticker] = [round(float(v), 6) for v in pct.tolist()]
+                    logger.debug("Individual fetch succeeded for %s", ticker)
+                else:
+                    logger.debug("Individual fetch returned no data for %s", ticker)
+            except Exception as exc:
+                logger.debug("Individual fetch failed for %s: %s", ticker, exc)
         return result

@@ -346,6 +346,20 @@ class PipelineEngine:
                 (audit_dir / "self_audit_packet.json").write_text(
                     packet.model_dump_json(indent=2)
                 )
+            # ACT-S9-3: populate rebalancing_summary from stage 12 output
+            try:
+                rp = self.stage_outputs.get(12, {}).get("rebalance_proposal") or {}
+                if rp:
+                    packet.rebalancing_summary = {
+                        "trade_count": len(rp.get("trades", [])),
+                        "total_turnover_pct": rp.get("total_turnover_pct", 0.0),
+                        "estimated_total_impact_bps": rp.get("estimated_total_impact_bps", 0.0),
+                        "trigger": rp.get("trigger", ""),
+                        "summary": rp.get("summary", ""),
+                    }
+            except Exception:
+                pass
+
             logger.info(
                 "SelfAuditPacket — quality=%.1f gates_passed=%d agents_ok=%d "
                 "duration=%.2fs",
@@ -464,13 +478,23 @@ class PipelineEngine:
         try:
             live = self.live_return_store.fetch(tickers)
             if live and len(live) == len(tickers):
-                logger.info("_get_returns: using live yfinance data for %d tickers", len(tickers))
+                logger.info(
+                    "_get_returns: live yfinance data for all %d tickers", len(tickers)
+                )
                 return live
             if live:
-                logger.info(
-                    "_get_returns: partial live data (%d/%d) — falling back to synthetic",
-                    len(live), len(tickers),
+                # ACT-S9-4: ticker-level fallback — blend live data with synthetic for missing
+                missing = [t for t in tickers if t not in live]
+                synth = self._generate_synthetic_returns(
+                    missing, n_days=n_days, seed_offset=seed_offset
                 )
+                merged = {**synth, **live}  # live data overrides synthetic where available
+                logger.info(
+                    "_get_returns: blended %d live + %d synthetic (ticker-level fallback)",
+                    len(live),
+                    len(missing),
+                )
+                return merged
         except Exception as exc:
             logger.debug("_get_returns: live fetch error — %s", exc)
         return self._generate_synthetic_returns(tickers, n_days=n_days, seed_offset=seed_offset)

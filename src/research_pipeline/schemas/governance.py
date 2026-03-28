@@ -219,6 +219,9 @@ class SelfAuditPacket(BaseModel):
     # Prompt versioning (ACT-S8-4)
     prompt_drift_reports: list[dict] = Field(default_factory=list)  # PromptDriftReport dicts
 
+    # Rebalancing snapshot (ACT-S9-3)
+    rebalancing_summary: dict = Field(default_factory=dict)  # turnover, trade count, impact
+
     # Summary verdict
     publication_quality_score: float = 0.0  # 0-10 derived metric
     blockers: list[str] = []

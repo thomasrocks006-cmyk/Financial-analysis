@@ -1199,6 +1199,19 @@ with tab_report:
                     if _dur:
                         st.metric("Total pipeline duration", f"{_dur:.1f} s")
 
+                # ACT-S9-3: Rebalancing summary from SelfAuditPacket
+                _rs = _ap.get("rebalancing_summary", {})
+                if _rs:
+                    st.markdown("---")
+                    st.markdown("**Rebalancing snapshot (Audit Packet)**")
+                    rs_cols = st.columns(4)
+                    rs_cols[0].metric("Trades", _rs.get("trade_count", 0))
+                    rs_cols[1].metric("Turnover", f"{_rs.get('total_turnover_pct', 0):.1f}%")
+                    rs_cols[2].metric("Est. Impact", f"{_rs.get('estimated_total_impact_bps', 0):.1f} bps")
+                    rs_cols[3].metric("Trigger", _rs.get("trigger", "—") or "—")
+                    if _rs.get("summary"):
+                        st.caption(_rs["summary"])
+
         # Token/cost breakdown expander
         if token_log_src:
             with st.expander("💰  Token & Cost Breakdown", expanded=False):
@@ -1594,7 +1607,7 @@ with tab_report:
                                 })
                             if rows:
                                 st.dataframe(pd.DataFrame(rows).set_index("Sector"), use_container_width=True)
-                    st.caption("Attribution uses synthetic return data — for structural illustration only until a live price feed is connected.")
+                    st.caption("Attribution uses live price data where available (yfinance), falling back to synthetic returns for tickers that cannot be fetched.")
 
 
 # ═════════════════════════════════════════════════════════════════════════
