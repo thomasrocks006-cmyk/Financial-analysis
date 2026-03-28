@@ -13,6 +13,10 @@ class RedTeamAnalystAgent(BaseAgent):
     Minimum 3 falsification paths per top idea.
     """
 
+    # ISS-9: red team is critical — missing top-level assessments block must be fatal
+    _REQUIRED_OUTPUT_KEYS: list[str] = ["assessments"]
+    _VALIDATION_FATAL: bool = True
+
     def __init__(self, **kwargs):
         super().__init__(name="red_team_analyst", **kwargs)
 

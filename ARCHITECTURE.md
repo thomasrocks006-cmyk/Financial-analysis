@@ -1154,4 +1154,317 @@ The following items were identified in a systematic gap analysis vs a real JPAM 
 
 ---
 
-*Document updated: March 28, 2026 — session 10 complete (607 tests), full gap analysis and brainstorm added §13. Sessions 11–14 planned. Market scope defined. Architecture repair items ARC-1 through ARC-10 documented.*
+### 13.10 External PR Review — Core system improvements (#1)
+
+The Cursor-generated PR #1 contains ideas aligned with our roadmap, but it should **not** be merged as-is.
+
+**Observed result from isolated review branch:** `14 failed, 18 errors, 575 passed`.
+
+Primary hard failures:
+
+| Finding | Why it blocks merge |
+|---|---|
+| `_route_sector_tickers()` referenced but not implemented | Stage 6 crashes immediately |
+| `_build_metric_snapshot()` referenced but not implemented | Stage 14 crashes on failed or completed runs |
+| Large mixed-scope bundle | ARC fixes, Session 12/14 features, HTML reporting, tax overlays, fallback chains, and trend logic all land together without a clean sequencing strategy |
+| Several changes depend on unspecified adapters/schemas | Confirmed by `PROJECT_ISSUES_ASSESSMENT.md` ISS-1, ISS-3, ISS-4, ISS-12, ISS-16 |
+
+**Architecture decision:** use PR #1 as a concept/reference branch only. Rebuild any valuable pieces on `main` in small session-sized increments with tests.
+
+Reusable concepts worth salvaging later:
+- `EconomyAnalystAgent`
+- LLM provider/model telemetry on `AgentResult`
+- `MarketConfig` / `LLMConfig` direction
+- `ReportHtmlService`
+- AU client overlays (`AustralianTaxService`, `SuperannuationMandateService`)
+- Cross-run research trend alerts
+
+---
+
+### 13.11 Residual Issues After Current Plan (from `PROJECT_ISSUES_ASSESSMENT.md`)
+
+PR #2 introduced a useful audit document identifying **41 additional residual issues** that still remain even if Sessions 11–14 and E-1–E-10 are completed exactly as currently written.
+
+| Severity | Count |
+|---|---|
+| Critical | 1 |
+| High | 15 |
+| Medium | 19 |
+| Low | 6 |
+
+Most important additions to the architecture plan:
+
+| ID | Architectural implication | Required response |
+|---|---|---|
+| ISS-1 | `_get_macro_context()` must validate against a typed `MacroContextPacket` | Add schema contract in Session 11 before ARC-1 is considered done |
+| ISS-3 | Config-driven routing alone is insufficient | Add `GenericSectorAnalystAgent` or equivalent fallback in Session 11 |
+| ISS-4 | Report assembly needs typed mapping, not raw dict reuse | Add `ValuationCard` → `StockCard` adapter in Session 11 |
+| ISS-9 | `_REQUIRED_OUTPUT_KEYS` warnings are too weak | Convert critical agent quality failures into retry / gate failures |
+| ISS-10 | Gemini fallback path is structurally mismatched to installed package | Fix before E-8 multi-provider fallback is trusted |
+| ISS-12 | Stage 8 remains untyped even after adding `EconomyAnalystAgent` | Define a unified Stage 8 packet with required keys |
+| ISS-13 | AU market support is not only data/config — prompt layer also needs localisation | Extend Session 12/13 prompt work to ASX-specific analysis |
+| ISS-16 | Benchmark module still needs real benchmark series, not just benchmark weights | Strengthen E-4 scope |
+| ISS-20 | Streamlit stage/output state has a known bug | Add to Session 11 quick wins |
+| ISS-27 | No live full-pipeline API integration test exists | Add to Session 13 production-hardening scope |
+| ISS-34 | Flat-file persistence becomes a platform ceiling | Plan Session 15+ database migration |
+| ISS-36 / ISS-37 / ISS-38 | Production telemetry, caching, and cancellation are still incomplete | Add to future Ops hardening roadmap |
+
+This means the roadmap is directionally correct, but **not yet sufficient for full polish**. Session definitions should now be interpreted as:
+
+- **Session 11:** ARC-1–10 **plus** ISS-1, ISS-3, ISS-4, ISS-9, ISS-10, ISS-20
+- **Session 12:** macro build-out **plus** ISS-12, ISS-13, ISS-14, ISS-22
+- **Session 13:** depth/quality **plus** ISS-16, ISS-23, ISS-27, ISS-28
+- **Session 14+:** AU client context **plus** ISS-29, ISS-30, and future ops/persistence items
+
+---
+
+## 14. Frontend Architecture Migration — Streamlit → Next.js + FastAPI
+
+### 14.1 Why the migration is necessary
+
+An independent assessment of the current Streamlit frontend (March 28, 2026) identified fundamental structural limits that cap the product quality ceiling regardless of how many incremental fixes are applied.
+
+**Assessment score breakdown:**
+
+| Capability | Score |
+|---|---|
+| Overall | 6.5/10 |
+| Backend fidelity | 5.5/10 |
+| Real-time observability | 4.5/10 |
+| Drill-down depth | 7/10 |
+| Navigation | 6/10 |
+| Visual polish | 7.5/10 |
+| Analytical richness | 7.5/10 |
+| Explainability | 6/10 |
+
+**Short version:** The app looks like a premium, deeply-observable research platform. In practice, some of that depth is real and some is presentation ahead of plumbing.
+
+The five highest-impact structural gaps (ordered by user impact):
+
+1. **Report tab can be blank** — `pipeline_adapter.py:202-205` reads `report_markdown` / `report` keys; the engine only produces `report_path`. Successful runs produce no visible report.
+2. **Transparency panels are dormant** — `token_log` is never populated by the adapter (`pipeline_adapter.py:209-219`); cost/audit/timing sections appear but show nothing.
+3. **Controls imply more than they do** — `temperature` and `stage_models` collected in the UI (`app.py:707-742`) but not passed to the engine; `ClientProfile` captured but `run_full_pipeline()` does not accept it.
+4. **Live activity is post-hoc** — the progress callback only fires on stage completion and always with `"done"` (`pipeline_adapter.py:166-175`); there is no start, running, or substage signal.
+5. **Storage is split** — backend artifacts land under `PIPELINE_STORAGE_DIR` while frontend saved runs are written to `reports/` (`storage.py:28-35`); run reload is inconsistent.
+
+**Streamlit improvement ceiling estimate:** 7.0–7.5/10 after all iterative fixes.
+**Next.js + FastAPI target:** 9.0–9.3/10 after all phases.
+
+For an internal operator tool: Streamlit at 7.5 is acceptable. For an institutional product-grade frontend: migration is required.
+
+---
+
+### 14.2 Target Architecture
+
+The migration introduces a new layer without replacing the Python research pipeline.
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│                     Premium Product UI                         │
+│          Next.js 14 (App Router) + React 18                    │
+│  TailwindCSS + shadcn/ui  │  Recharts  │  AG Grid Community    │
+│  TanStack Query + Zustand                                      │
+└─────────────────────┬──────────────────────────────────────────┘
+                      │  HTTP / SSE / WebSocket
+┌─────────────────────▼──────────────────────────────────────────┐
+│                    FastAPI — src/api/                           │
+│  POST /runs               GET /runs/{id}/events (SSE)          │
+│  GET  /runs/{id}/result   GET /runs/{id}/stages/{n}            │
+│  GET  /runs/{id}/report   GET /runs/{id}/artifacts             │
+│  GET  /runs               DELETE /runs/{id}                    │
+│  WS   /runs/{id}/live                                          │
+└─────────────────────┬──────────────────────────────────────────┘
+                      │  Python call
+┌─────────────────────▼──────────────────────────────────────────┐
+│               Research Pipeline — src/research_pipeline/        │
+│  PipelineEngine  │  15 Agents  │  Services  │  Schemas          │
+│  (unchanged core; gains event callbacks and RunRequest schema)  │
+└────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────┐
+│       Internal Operator Console — src/frontend/app.py          │
+│  Streamlit (remains; also benefits from Phase 1–3 fixes)       │
+└────────────────────────────────────────────────────────────────┘
+```
+
+**What stays unchanged:**
+- `src/research_pipeline/` — pipeline engine, agents, services, schemas, config, tests
+- `src/frontend/app.py` — kept as the internal operator/debug console
+
+**What is added:**
+- `src/api/` — FastAPI application (new)
+- `frontend/` — Next.js application (new)
+- `src/research_pipeline/schemas/run_request.py` — `RunRequest` schema (Phase 3)
+
+---
+
+### 14.3 Engine Changes Required (Phase 2 and Phase 3)
+
+These are backend changes that support both the Streamlit fixes and the new frontend. They should be completed before the FastAPI layer is built.
+
+#### Event callback contract (Phase 2)
+
+Add an optional `event_callback: Callable[[PipelineEvent], None] | None = None` parameter to `run_full_pipeline()`. Events:
+
+| Event | Payload |
+|---|---|
+| `stage_started` | `stage_num`, `stage_name`, `timestamp` |
+| `stage_completed` | `stage_num`, `duration_ms`, `output_summary` |
+| `stage_failed` | `stage_num`, `error_type`, `error_message` |
+| `agent_started` | `stage_num`, `agent_name`, `model` |
+| `agent_completed` | `stage_num`, `agent_name`, `tokens_in`, `tokens_out` |
+| `artifact_written` | `stage_num`, `artifact_path`, `artifact_type` |
+| `llm_call_started` | `stage_num`, `provider`, `model` |
+| `llm_call_completed` | `stage_num`, `tokens_in`, `tokens_out`, `cost_usd` |
+
+This contract must include `artifact_path` in `artifact_written` — required by Phase 7 traceability.
+
+#### `RunRequest` schema (Phase 3)
+
+```python
+class RunRequest(BaseModel):
+    universe: list[str]
+    client_profile: ClientProfile | None = None
+    mandate_constraints: MandateConstraints | None = None
+    benchmark: str | None = None
+    llm_provider: str = "anthropic"
+    llm_model: str = "claude-opus-4-5"
+    llm_temperature: float = 0.3
+    stage_model_overrides: dict[int, str] | None = None
+    report_format: Literal["markdown", "html", "pdf"] = "markdown"
+    storage_dir: str | None = None
+    run_id: str | None = None
+```
+
+Change engine entry point from `run_full_pipeline(universe: list[str])` to `run_full_pipeline(request: RunRequest)`. Thread `client_profile` and `mandate_constraints` into Stages 9, 12, 13.
+
+---
+
+### 14.4 FastAPI Layer Design (Phase 4 — Session 15)
+
+**New directory:** `src/api/`
+
+```
+src/api/
+  main.py            — FastAPI app, CORS, auth, lifespan
+  routes/
+    runs.py          — POST /runs, GET /runs, DELETE /runs/{id}
+    events.py        — GET /runs/{id}/events (SSE), WS /runs/{id}/live
+    artifacts.py     — GET /runs/{id}/stages/{n}, /report, /artifacts
+  models/
+    api_schemas.py   — RunCreateRequest, RunStatus, StageResult, EventPayload
+  services/
+    run_manager.py   — run lifecycle management, event broadcasting
+    artifact_store.py — unified artifact read service
+  auth.py            — API key middleware
+```
+
+SSE event streaming pattern: when `POST /runs` is called, the server launches the pipeline in a background thread. As the engine fires event callbacks, these are pushed onto a per-run `asyncio.Queue`. `GET /runs/{id}/events` drains that queue and forwards each event as an SSE `data:` frame. The Next.js frontend subscribes to this stream using `EventSource`.
+
+---
+
+### 14.5 Next.js UI — Page Architecture (Phase 5 — Session 16)
+
+**New directory:** `frontend/` (Next.js App Router project)
+
+```
+frontend/
+  app/
+    page.tsx                    — Dashboard (recent runs, quick-start)
+    runs/
+      new/page.tsx              — Configure + launch new run
+      [id]/
+        page.tsx                — Live run view (tracker + event feed)
+        report/page.tsx         — Report viewer with TOC and provenance
+        stages/[n]/page.tsx     — Per-stage artifact drilldown
+        quant/page.tsx          — Quant analytics (VaR, factor, attribution)
+        artifacts/page.tsx      — Raw artifact browser
+    runs/page.tsx               — Saved runs list + compare selector
+    compare/page.tsx            — Side-by-side run comparison
+    settings/page.tsx           — API keys, model defaults, preferences
+  components/
+    pipeline/
+      PipelineTracker.tsx       — 15-stage progress with per-stage states + timers
+      LiveEventFeed.tsx         — Streaming event log (agent, token, artifact rows)
+      StageDetail.tsx           — Drawer: inputs, outputs, gate result, assumptions
+    report/
+      ReportViewer.tsx          — Report + floating TOC + section jump links
+      ProvenanceBadge.tsx       — Source stage attribution chip on each section
+    analytics/
+      QuantPanel.tsx            — Tabbed analytics container
+      VaRChart.tsx              — VaR / CVaR / drawdown chart
+      FactorRadar.tsx           — Factor exposure radar + bar
+      AttributionWaterfall.tsx  — Attribution by security
+      ETFOverlapHeatmap.tsx     — ETF overlap heatmap
+      ESGHeatmap.tsx            — ESG score by sector
+    shared/
+      TokenCostPanel.tsx        — Cost breakdown by stage/provider
+      ArtifactBrowser.tsx       — Tree view: open / download per artifact
+      CompareView.tsx           — Diff two runs by portfolio / risk / stage
+  lib/
+    api.ts                      — Typed API client (fetch wrappers)
+    events.ts                   — SSE EventSource listener + Zustand integration
+    store.ts                    — Zustand global state
+  hooks/
+    useRunEvents.ts             — Subscribe to live run event stream
+    useRunResult.ts             — Fetch + cache run result (TanStack Query)
+```
+
+---
+
+### 14.6 Visual Analytics to Build (Phase 6 — Session 16)
+
+Each chart replaces a table or text block. All data comes from existing backend outputs; no new data models required.
+
+| Chart | Source data | Library |
+|---|---|---|
+| Stage duration bar | `audit_packet.stage_timings` | Recharts BarChart |
+| Run event timeline | SSE event log | Custom Gantt (SVG) |
+| Portfolio allocation | Stage 12 weights | Recharts PieChart / Treemap |
+| Factor exposure radar | Stage 9 factor loadings | Recharts RadarChart |
+| Drawdown line | Stage 9 / 13 returns | Recharts AreaChart |
+| Attribution waterfall | Stage 13 attribution | Recharts ComposedChart |
+| ETF overlap heatmap | Stage 6 ETF overlap data | Custom SVG heatmap |
+| Scenario outcome | Stage 9 scenario table | Recharts BarChart |
+| ESG sector heatmap | ESG service output | Custom SVG heatmap |
+| Token usage stacked | `token_log` by stage | Recharts StackedBarChart |
+
+---
+
+### 14.7 Traceability and Explainability Plan (Phase 7 — Session 17)
+
+For each major report section, surface:
+- **Source stage badge** — which stage produced this content
+- **Artifact origin link** — link to the raw artifact in the artifact browser
+- **Confidence indicator** — pass/warn/fail gate result for the producing stage
+- **Downstream impact** — list of downstream stages that consumed this output
+
+For each stage in the `<StageDetail />` panel:
+- Inputs received (which prior stages contributed)
+- Outputs produced (artifact paths + types)
+- Gate result (pass / warn / fail + message)
+- Key assumptions made by the agent
+- Which downstream stages depend on this output
+
+For failed runs:
+- Exact failing stage and substage highlighted in the tracker
+- Last successful stage shown
+- Probable cause extracted from exception type
+- Suggested recovery action
+
+---
+
+### 14.8 Session Assignments
+
+| Session | Frontend migration work |
+|---|---|
+| Session 11 | Phase 1: adapter fixes (report_path → markdown, token_log, audit_packet, temperature, ISS-20) |
+| Session 12 | Phase 2: engine event callback contract; Phase 3A: `RunRequest` schema |
+| Session 13 | Phase 3B: unified storage + `ClientProfile` wiring + mandate threading |
+| Session 14 | Phase 3C: report verifies mandate constraints; E-item report HTML close-out |
+| Session 15 | Phase 4: FastAPI `src/api/` layer (new) |
+| Session 16 | Phases 5 + 6: Next.js UI + visual analytics (new) |
+| Session 17 | Phase 7: traceability + explainability + audit trail (new) |
+
+---
+
+*Document updated: March 28, 2026 — session 10 complete (607 tests), full gap analysis and brainstorm added §13. Sessions 11–14 planned. Market scope defined. Architecture repair items ARC-1 through ARC-10 documented. PR #1 reviewed and rejected as not merge-ready. PR #2 assessment merged and folded into the architecture §13.10–§13.11. Frontend architecture migration planned §14 — decision to move from Streamlit to Next.js + FastAPI for the premium product surface.**Document updated: March 28, 2026 — session 10 complete (607 tests), full gap analysis and brainstorm added §13. Sessions 11–14 planned. Market scope defined. Architecture repair items ARC-1 through ARC-10 documented. PR #1 reviewed and rejected as not merge-ready. PR #2 assessment merged and folded into the architecture plan.*

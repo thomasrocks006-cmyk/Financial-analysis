@@ -14,6 +14,10 @@ class AssociateReviewerAgent(BaseAgent):
     PASS_WITH_DISCLOSURE is NOT a valid outcome — there is no soft pass.
     """
 
+    # ISS-9: reviewer gate is critical — publication_status field must be present
+    _REQUIRED_OUTPUT_KEYS: list[str] = ["publication_status"]
+    _VALIDATION_FATAL: bool = True
+
     def __init__(self, **kwargs):
         super().__init__(name="associate_reviewer", **kwargs)
 

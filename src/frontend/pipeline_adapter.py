@@ -96,6 +96,7 @@ class RunResult:
     success: bool = False
     publication_status: str = "PASS"
     token_log: list[dict] = field(default_factory=list)
+    audit_packet: dict = field(default_factory=dict)
 
 
 ProgressCallback = Callable[[int, str, str, dict], None]
@@ -128,11 +129,15 @@ class PipelineEngineAdapter:
         self.stage_models = stage_models or {}
         self.client_profile = client_profile
 
-        # Inject keys into environment (preserves legacy pipeline_runner behaviour)
+        # Inject keys into environment (fixes: all three providers consistently)
         if ak := provider_keys.get("anthropic"):
             os.environ["ANTHROPIC_API_KEY"] = ak
+        if ok := provider_keys.get("openai"):
+            os.environ["OPENAI_API_KEY"] = ok
+        if gk := provider_keys.get("google"):
+            os.environ["GOOGLE_API_KEY"] = gk
 
-        # Build Settings from provider_keys
+        # Build Settings from provider_keys (fix: wire temperature)
         storage_base = Path(os.environ.get("PIPELINE_STORAGE_DIR", "/tmp/pipeline_runs"))
         self._settings = Settings(
             project_root=Path(__file__).resolve().parents[2],
@@ -140,10 +145,13 @@ class PipelineEngineAdapter:
             reports_dir=storage_base / "reports",
             prompts_dir=storage_base / "prompts",
             llm_model=model,
+            llm_temperature=temperature,
             api_keys=APIKeys(
                 fmp_api_key=provider_keys.get("fmp", os.environ.get("FMP_API_KEY", "")),
                 finnhub_api_key=provider_keys.get("finnhub", os.environ.get("FINNHUB_API_KEY", "")),
                 anthropic_api_key=provider_keys.get("anthropic", os.environ.get("ANTHROPIC_API_KEY", "")),
+                openai_api_key=provider_keys.get("openai", os.environ.get("OPENAI_API_KEY", "")),
+                google_api_key=provider_keys.get("google", os.environ.get("GOOGLE_API_KEY", "")),
             ),
         )
         self._config = PipelineConfig()
@@ -199,12 +207,55 @@ class PipelineEngineAdapter:
                 output=output if isinstance(output, dict) else {"data": output},
             ))
 
+        # Fix: Load report markdown from report_path if inline markdown absent
         report_md: str = ""
         report_output = engine.stage_outputs.get(13, {})
         if isinstance(report_output, dict):
+            # Try inline markdown first
             report_md = report_output.get("report_markdown", report_output.get("report", ""))
+            # If missing, try loading from report_path
+            if not report_md and "report_path" in report_output:
+                report_path = Path(report_output["report_path"])
+                if report_path.exists():
+                    try:
+                        report_md = report_path.read_text(encoding="utf-8")
+                        logger.info(f"Loaded report markdown from {report_path}")
+                    except Exception as e:
+                        logger.warning(f"Failed to load report from {report_path}: {e}")
 
         run_id = engine.run_record.run_id if engine.run_record else f"run-{uuid.uuid4().hex[:8]}"
+
+        # Fix: Populate token_log and audit_packet from engine telemetry
+        token_log: list[dict] = []
+        audit_packet_dict: dict[str, Any] = {}
+        stage_timings_dict: dict[str, float] = {}
+        
+        if engine.run_record:
+            # Extract audit packet if available
+            if hasattr(engine.run_record, "audit_packet") and engine.run_record.audit_packet:
+                audit_packet = engine.run_record.audit_packet
+                if hasattr(audit_packet, "model_dump"):
+                    audit_packet_dict = audit_packet.model_dump()
+                elif isinstance(audit_packet, dict):
+                    audit_packet_dict = audit_packet
+                
+                # Extract stage timings from audit packet
+                if "stage_latencies_ms" in audit_packet_dict:
+                    stage_timings_dict = audit_packet_dict["stage_latencies_ms"]
+            
+            # Build token_log from stage outputs (approximate until engine emits real events)
+            # This is a placeholder until Phase 2 implements full telemetry
+            for num, name in STAGES:
+                output = engine.stage_outputs.get(num, {})
+                if isinstance(output, dict) and "agent_name" in output:
+                    token_log.append({
+                        "stage": num,
+                        "agent": output.get("agent_name", "unknown"),
+                        "model": self.model,
+                        "tokens_in": 0,  # Placeholder until Phase 2
+                        "tokens_out": 0,
+                        "cost_usd": 0.0,
+                    })
 
         return RunResult(
             run_id=run_id,
@@ -216,6 +267,8 @@ class PipelineEngineAdapter:
             final_report_md=report_md,
             success=succeeded,
             publication_status=pub_status,
+            token_log=token_log,
+            audit_packet=audit_packet_dict,
         )
 
 

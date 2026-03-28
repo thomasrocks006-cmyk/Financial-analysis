@@ -83,6 +83,12 @@ from research_pipeline.agents.portfolio_manager import PortfolioManagerAgent
 from research_pipeline.agents.quant_research_analyst import QuantResearchAnalystAgent
 from research_pipeline.agents.fixed_income_analyst import FixedIncomeAnalystAgent
 from research_pipeline.agents.esg_analyst import EsgAnalystAgent
+from research_pipeline.agents.generic_sector_analyst import GenericSectorAnalystAgent
+
+# ARC-1: Macro context packet for cross-stage wiring
+from research_pipeline.schemas.macro import MacroContextPacket
+# ARC-5: Externalised sector routing
+from research_pipeline.config.loader import SECTOR_ROUTING
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +162,7 @@ class PipelineEngine:
         self.compute_analyst = SectorAnalystCompute(**agent_kwargs)
         self.power_analyst = SectorAnalystPowerEnergy(**agent_kwargs)
         self.infra_analyst = SectorAnalystInfrastructure(**agent_kwargs)
+        self.generic_analyst = GenericSectorAnalystAgent(**agent_kwargs)  # ARC-5: fallback for unmapped tickers
         self.valuation_agent = ValuationAnalystAgent(**agent_kwargs)
         self.macro_agent = MacroStrategistAgent(**agent_kwargs)
         self.political_agent = PoliticalRiskAnalystAgent(**agent_kwargs)
@@ -326,6 +333,24 @@ class PipelineEngine:
         if isinstance(raw, list):
             return raw
         return []
+
+    def _get_macro_context(self) -> MacroContextPacket:
+        """ARC-1: Return typed MacroContextPacket from Stage 8 output.
+
+        Returns an empty packet (default values) if Stage 8 has not yet run or
+        failed.  Callers should check ``packet.regime_classification`` before
+        relying on the content.
+        """
+        run_id = self.run_record.run_id if self.run_record else "unknown"
+        stage8 = self.stage_outputs.get(8)
+        if not stage8:
+            return MacroContextPacket(run_id=run_id)
+        # stage_8 stores {"macro": AgentResult.model_dump(), "political": ...}
+        macro_agent_output = stage8.get("macro", {})
+        parsed = macro_agent_output.get("parsed_output") or {}
+        if not parsed:
+            return MacroContextPacket(run_id=run_id)
+        return MacroContextPacket.from_stage_8_output(parsed, run_id)
 
     def _emit_audit_packet(self, universe: list[str]) -> "Optional[SelfAuditPacket]":
         """Build, persist and attach the SelfAuditPacket for every pipeline exit.
@@ -720,14 +745,19 @@ class PipelineEngine:
         """Stage 6: Three sector analysts run in parallel."""
         logger.info("═══ STAGE 6: Sector Analysis (parallel) ═══")
 
-        # Route tickers to analysts; skip agents whose subtheme has no tickers in this universe
-        compute_tickers = [t for t in universe if t in {"NVDA", "AVGO", "TSM", "AMD", "ANET"}]
-        power_tickers = [t for t in universe if t in {"CEG", "VST", "GEV", "NLR"}]
-        infra_tickers = [t for t in universe if t in {"PWR", "ETN", "HUBB", "APH", "FIX", "FCX", "BHP", "NXT"}]
+        # ARC-5: Route tickers using config-externalised SECTOR_ROUTING (instead of hardcoded sets)
+        routing = self.config.sector_routing if hasattr(self.config, "sector_routing") else SECTOR_ROUTING
+        compute_tickers    = [t for t in universe if t in routing.get("compute", [])]
+        power_tickers      = [t for t in universe if t in routing.get("power_energy", [])]
+        infra_tickers      = [t for t in universe if t in routing.get("infrastructure", [])]
+        # Any ticker not in any bucket goes to the GenericSectorAnalystAgent
+        all_routed = set(compute_tickers) | set(power_tickers) | set(infra_tickers)
+        generic_tickers = [t for t in universe if t not in all_routed]
 
         agent_calls = []
         expected_count = 0
         mkt_data = self.stage_outputs.get(2, [])
+        macro_ctx = self._get_macro_context()  # may be empty if stage 8 hasn't run yet
         for agent, tickers in [
             (self.compute_analyst, compute_tickers),
             (self.power_analyst, power_tickers),
@@ -738,6 +768,19 @@ class PipelineEngine:
                 expected_count += 1
             else:
                 logger.info("Skipping %s — no tickers in universe", agent.name)
+
+        # ARC-5: run GenericSectorAnalystAgent for any tickers not in the routing table
+        if generic_tickers:
+            logger.info("Routing %d unmapped tickers to GenericSectorAnalystAgent: %s", len(generic_tickers), generic_tickers)
+            agent_calls.append(self.generic_analyst.run(
+                self.run_record.run_id,
+                {
+                    "tickers": generic_tickers,
+                    "market_data": mkt_data,
+                    "macro_context_summary": macro_ctx.summary_text(),
+                },
+            ))
+            expected_count += 1
 
         results = await asyncio.gather(*agent_calls)
 
@@ -783,12 +826,15 @@ class PipelineEngine:
     async def stage_7_valuation(self, universe: list[str]) -> bool:
         """Stage 7: Valuation & Modelling."""
         logger.info("═══ STAGE 7: Valuation & Modelling ═══")
+        # ARC-4: Stage 8 now runs before Stage 7, so macro context is available here
+        macro_ctx = self._get_macro_context()
         result = await self.valuation_agent.run(
             self.run_record.run_id,
             {
                 "tickers": universe,
                 "sector_outputs": self._get_sector_outputs(),
                 "market_data": self.stage_outputs.get(2, []),
+                "macro_context": macro_ctx.model_dump(mode="json"),
             },
         )
         self._save_stage_output(7, result.model_dump())
@@ -801,8 +847,16 @@ class PipelineEngine:
     async def stage_8_macro(self, universe: list[str]) -> bool:
         """Stage 8: Macro & Political Overlay."""
         logger.info("═══ STAGE 8: Macro & Political Overlay ═══")
+        # ARC-9: Enrich macro agent with reconciled market data (stage 2) and
+        # reconciliation flags (stage 3) so it can reference actual market conditions.
+        ingested_data = self.stage_outputs.get(2, [])
+        reconciliation_report = self.stage_outputs.get(3, {})
         macro_result, political_result = await asyncio.gather(
-            self.macro_agent.run(self.run_record.run_id, {"universe": universe}),
+            self.macro_agent.run(self.run_record.run_id, {
+                "universe": universe,
+                "market_data": ingested_data,
+                "reconciliation_summary": reconciliation_report,
+            }),
             self.political_agent.run(self.run_record.run_id, {"tickers": universe}),
         )
         self._save_stage_output(8, {
@@ -848,21 +902,29 @@ class PipelineEngine:
         if weights:
             portfolio_factor_exp = self.factor_engine.portfolio_factor_exposure(factor_exposures, weights)
 
-        # VaR analysis (using synthetic returns if no market data available)
+        # VaR analysis — ARC-3: use aggregate live_factor_returns instead of np.random.normal
         var_result = None
         drawdown_result = None
         try:
             import numpy as np
-            np.random.seed(42)
-            # Generate synthetic returns based on factor betas for demonstration
-            synthetic_returns = np.random.normal(0.001, 0.02, 252).tolist()
+            # ARC-3: aggregate the per-ticker live returns into a single daily portfolio series
+            if live_factor_returns:
+                all_series = list(live_factor_returns.values())
+                min_len = min(len(s) for s in all_series)
+                portfolio_returns = np.mean(
+                    [s[:min_len] for s in all_series], axis=0
+                ).tolist()
+            else:
+                # No live data available — fall back to factor-proxy series
+                np.random.seed(42)
+                portfolio_returns = np.random.normal(0.001, 0.02, 252).tolist()
             var_result = self.var_engine.parametric_var(
                 run_id=self.run_record.run_id,
-                portfolio_returns=synthetic_returns,
+                portfolio_returns=portfolio_returns,
                 confidence_level=0.95,
             )
             drawdown_result = self.var_engine.compute_drawdown_analysis(
-                self.run_record.run_id, synthetic_returns
+                self.run_record.run_id, portfolio_returns
             )
         except Exception as exc:
             logger.warning("VaR computation failed: %s", exc)
@@ -927,15 +989,24 @@ class PipelineEngine:
 
         # P-7: Fixed Income Analyst — macro rate/credit context for equity thesis
         try:
+            # ARC-10: use real Stage 8 macro output instead of hardcoded stub
+            macro_ctx_fi = self._get_macro_context()
+            macro_context_for_fi = {
+                "regime_classification": macro_ctx_fi.regime_classification,
+                "rate_sensitivity": macro_ctx_fi.rate_sensitivity,
+                "key_macro_variables": macro_ctx_fi.key_macro_variables,
+                "regime_winners": macro_ctx_fi.regime_winners,
+                "regime_losers": macro_ctx_fi.regime_losers,
+            } if macro_ctx_fi.regime_classification else {
+                "note": (
+                    "Macro stage output not yet available. "
+                    "Interpret using internal heuristics."
+                ),
+            }
             # Assemble fixed-income context packet
             fi_inputs = {
                 "universe": universe,
-                "macro_context": {
-                    "note": (
-                        "Live yield/spread data not available in this run. "
-                        "Interpret using internal heuristics."
-                    ),
-                },
+                "macro_context": macro_context_for_fi,
                 "leverage_data": {
                     # Pull ND/EBITDA from DCF assumptions where available
                     t: self.stage_outputs.get(7, {}).get(t, {}).get("net_debt")
@@ -978,12 +1049,16 @@ class PipelineEngine:
     async def stage_10_red_team(self, universe: list[str]) -> bool:
         """Stage 10: Red Team."""
         logger.info("═══ STAGE 10: Red Team ═══")
+        # ARC-6: Wire macro context and risk outputs to the red team agent
+        macro_ctx = self._get_macro_context()
         result = await self.red_team_agent.run(
             self.run_record.run_id,
             {
                 "tickers": universe,
                 "sector_outputs": self._get_sector_outputs(),
                 "valuation_outputs": self.stage_outputs.get(7, {}),
+                "macro_context": macro_ctx.model_dump(mode="json"),
+                "risk_outputs": self.stage_outputs.get(9, {}),
             },
         )
         self._save_stage_output(10, result.model_dump())
@@ -996,6 +1071,8 @@ class PipelineEngine:
     async def stage_11_review(self) -> bool:
         """Stage 11: Associate Review / Publish Gate."""
         logger.info("═══ STAGE 11: Associate Review / Publish Gate ═══")
+        # ARC-7: Wire macro context and risk outputs to the reviewer
+        macro_ctx = self._get_macro_context()
         result = await self.reviewer_agent.run(
             self.run_record.run_id,
             {
@@ -1003,6 +1080,8 @@ class PipelineEngine:
                 "evidence_ledger": self.stage_outputs.get(5, {}),
                 "valuation_outputs": self.stage_outputs.get(7, {}),
                 "red_team_outputs": self.stage_outputs.get(10, {}),
+                "macro_context": macro_ctx.model_dump(mode="json"),
+                "risk_outputs": self.stage_outputs.get(9, {}),
             },
         )
         self._save_stage_output(11, result.model_dump())
@@ -1140,7 +1219,8 @@ class PipelineEngine:
         if not mandate_check.is_compliant:
             logger.warning("Mandate violations on baseline: %s", [v.description for v in mandate_check.violations])
 
-        # Run PM agent for variant construction
+        # ARC-8: Wire macro context into PM agent so it can factor regime into allocations
+        macro_ctx_pm = self._get_macro_context()
         result = await self.pm_agent.run(
             self.run_record.run_id,
             {
@@ -1153,6 +1233,7 @@ class PipelineEngine:
                 "esg_result": esg_result,
                 "mandate_check": mandate_check.model_dump(),
                 "baseline_weights": baseline_weights,
+                "macro_context": macro_ctx_pm.model_dump(mode="json"),
             },
         )
 
@@ -1228,6 +1309,39 @@ class PipelineEngine:
         # Build self-audit
         audit = self.registry.build_self_audit(self.run_record.run_id, ClaimLedger(run_id=self.run_record.run_id))
 
+        # ARC-2: Build real StockCard objects from accumulated stage outputs
+        from research_pipeline.schemas.reports import build_stock_card_from_pipeline_outputs
+        universe_for_report = self.stage_outputs.get(1, {}).get("universe", [])
+        valuation_output = self.stage_outputs.get(7, {})
+        valuation_parsed = valuation_output.get("parsed_output") or {}
+        redteam_output = self.stage_outputs.get(10, {})
+        redteam_parsed = redteam_output.get("parsed_output") or {}
+        portfolio_weights = self.stage_outputs.get(12, {}).get("baseline_weights", {})
+        # Build a ticker→four_box lookup from sector outputs
+        sector_by_ticker: dict[str, dict] = {}
+        for sector_res in self._get_sector_outputs():
+            if isinstance(sector_res, dict):
+                parsed_s = sector_res.get("parsed_output") or {}
+                for box in parsed_s.get("sector_outputs", []):
+                    if isinstance(box, dict) and "ticker" in box:
+                        sector_by_ticker[box["ticker"]] = box
+        stock_cards = []
+        for ticker in universe_for_report:
+            try:
+                card = build_stock_card_from_pipeline_outputs(
+                    ticker=ticker,
+                    valuation_card=valuation_parsed.get(ticker) or valuation_parsed,
+                    four_box=sector_by_ticker.get(ticker),
+                    red_team=redteam_parsed.get(ticker) or (
+                        next((r for r in (redteam_parsed.get("assessments") or [])
+                              if isinstance(r, dict) and r.get("ticker") == ticker), None)
+                    ),
+                    weight_in_balanced=portfolio_weights.get(ticker),
+                )
+                stock_cards.append(card)
+            except Exception as _exc:
+                logger.warning("StockCard build failed for %s (non-blocking): %s", ticker, _exc)
+
         report = self.report_assembly.assemble_report(
             run_id=self.run_record.run_id,
             review_result=review_result,
@@ -1235,7 +1349,7 @@ class PipelineEngine:
                 "executive_summary": "AI Infrastructure Investment Research — Executive Summary",
                 "methodology": "Public-source institutional-style research methodology.",
             },
-            stock_cards=[],
+            stock_cards=stock_cards,
             self_audit_text=json.dumps(audit.model_dump(), indent=2, default=str),
         )
 
@@ -1455,17 +1569,17 @@ class PipelineEngine:
             _ap = self._emit_audit_packet(universe)
             return {"status": "failed", "blocked_at": 6, "run_id": self.run_record.run_id, "audit_packet": _ap.model_dump(mode="json") if _ap else None}
 
-        # Stage 7: Valuation
-        if not await self._timed_stage(7, self.stage_7_valuation(universe)):
-            await self._timed_stage(14, self.stage_14_monitoring())
-            _ap = self._emit_audit_packet(universe)
-            return {"status": "failed", "blocked_at": 7, "run_id": self.run_record.run_id, "audit_packet": _ap.model_dump(mode="json") if _ap else None}
-
-        # Stage 8: Macro & Political
+        # Stage 8: Macro & Political (ARC-4: runs BEFORE Valuation so macro feeds valuation agent)
         if not await self._timed_stage(8, self.stage_8_macro(universe)):
             await self._timed_stage(14, self.stage_14_monitoring())
             _ap = self._emit_audit_packet(universe)
             return {"status": "failed", "blocked_at": 8, "run_id": self.run_record.run_id, "audit_packet": _ap.model_dump(mode="json") if _ap else None}
+
+        # Stage 7: Valuation (now has access to Stage 8 macro context)
+        if not await self._timed_stage(7, self.stage_7_valuation(universe)):
+            await self._timed_stage(14, self.stage_14_monitoring())
+            _ap = self._emit_audit_packet(universe)
+            return {"status": "failed", "blocked_at": 7, "run_id": self.run_record.run_id, "audit_packet": _ap.model_dump(mode="json") if _ap else None}
 
         # Stage 9: Risk & Scenarios
         if not await self._timed_stage(9, self.stage_9_risk(universe)):

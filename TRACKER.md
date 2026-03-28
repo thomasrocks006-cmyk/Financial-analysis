@@ -25,6 +25,16 @@
 | **Session 12 — Macro Economy & Australia/US Markets** | 🔲 **TODO** |
 | **Session 13 — Depth & Quality** | 🔲 **TODO** |
 | **Session 14 — Superannuation & AU Client Context** | 🔲 **PLANNED** |
+| **PROJECT_ISSUES_ASSESSMENT.md (PR #2)** | ✅ **MERGED — March 28, 2026** |
+| **Residual issues (ISS-1 through ISS-41)** | 🔲 **TODO — fold into Sessions 11+** |
+| **PR #1 Core system improvements** | ⛔ **Do not merge as-is** |
+| **Frontend migration decision (Streamlit → Next.js + FastAPI)** | ✅ **DECIDED — March 28, 2026** |
+| **Phase 1 — adapter truthfulness** | 🔲 **TODO — Session 11** |
+| **Phase 2 — engine event stream** | 🔲 **TODO — Session 12** |
+| **Phase 3 — unified storage + RunRequest** | 🔲 **TODO — Sessions 12–13** |
+| **Phase 4 — FastAPI layer (Session 15)** | 🔲 **PLANNED** |
+| **Phase 5 + 6 — Next.js UI + charts (Session 16)** | 🔲 **PLANNED** |
+| **Phase 7 — traceability (Session 17)** | 🔲 **PLANNED** |
 
 ---
 
@@ -474,3 +484,176 @@ Items identified during Session 11 planning audit. Not yet scheduled.
 - Prompt versioning with semantic diff alerts
 - Full observability dashboard — Grafana/Prometheus metrics export
 - Blue/green pipeline deployment with canary run comparison
+
+---
+
+## 13. External PR Review — Core system improvements (#1)
+
+**Verdict:** useful ideas, **not mergeable as-is**. Build the work on `main` ourselves and selectively port concepts only.
+
+### Why PR #1 should not be merged directly
+
+| Evidence | Finding |
+|---|---|
+| PR branch test run | **14 failed, 18 errors, 575 passed** |
+| Runtime failure 1 | `PipelineEngine` missing `_route_sector_tickers()` — breaks Stage 6 immediately |
+| Runtime failure 2 | `PipelineEngine` missing `_build_metric_snapshot()` — breaks Stage 14 monitoring |
+| Delivery risk | Large feature bundle mixes ARC fixes, Session 12/14 work, HTML reports, tax overlays, fallback chains, and trend logic in one untested PR |
+| Architectural quality | Several changes introduce useful ideas but without the missing adapters, schemas, or test coverage identified in `PROJECT_ISSUES_ASSESSMENT.md` |
+
+### Reusable ideas worth salvaging later
+
+- `EconomyAnalystAgent` as a dedicated AU/US macro agent
+- LLM fallback telemetry fields on `AgentResult`
+- `MarketConfig`, `LLMConfig`, and AU client config model direction
+- `ReportHtmlService` concept for interactive reports
+- `AustralianTaxService` and `SuperannuationMandateService` as future deterministic overlays
+- `ResearchTrend` / cross-run change alert concept
+
+**Decision:** keep PR #1 open only as a reference branch; do not squash or merge it.
+
+---
+
+## 14. Residual Issues from PROJECT_ISSUES_ASSESSMENT.md
+
+`PROJECT_ISSUES_ASSESSMENT.md` was merged from PR #2 and adds **41 residual issues** not yet covered by the existing roadmap.
+
+### Severity summary
+
+| Severity | Count |
+|---|---|
+| Critical | 1 |
+| High | 15 |
+| Medium | 19 |
+| Low | 6 |
+
+### Highest-priority residual issues to fold into upcoming work
+
+| ID | Issue | Why it matters | Fold into |
+|---|---|---|---|
+| ISS-1 | `MacroContextPacket` schema contract missing | ARC-1 is unsafe without typed macro packet validation | Session 11 |
+| ISS-3 | No `GenericSectorAnalystAgent` fallback | ARC-5 incomplete without coverage for unmapped tickers | Session 11 |
+| ISS-4 | `ValuationCard` → `StockCard` mapping unspecified | ARC-2 report fix can still produce malformed report cards | Session 11 |
+| ISS-9 | Agent output quality validation is non-fatal | Missing required keys still propagate through the pipeline | Session 11 |
+| ISS-10 | Gemini SDK import mismatch | Planned fallback chain can be broken on day one | Session 11 |
+| ISS-12 | Macro agents lack required key contracts | Stage 8 remains structurally weak even after Session 12 | Session 12 |
+| ISS-13 | No ASX-specific prompts | Australian market support will remain shallow | Session 12–13 |
+| ISS-16 | BHB benchmark still synthetic | Performance Attribution target can still be overstated | E-4 / Session 13 |
+| ISS-20 | Streamlit session key bug (`result` vs `run_result`) | Observability UI can break despite backend success | Session 11 |
+| ISS-27 | No live API full-pipeline integration test | Production-readiness remains unverified | Session 13 |
+| ISS-34 | No database persistence | Run history and observability remain flat-file only | Future Session 15+ |
+| ISS-36 | `llm_cost_usd` never populated | Ops / governance cost tracking remains incomplete | Future Session 15+ |
+
+### Watch-outs for every implementation session
+
+- Keep `PROJECT_ISSUES_ASSESSMENT.md` open while building Sessions 11–14.
+- Treat ISS-1, ISS-3, ISS-4, ISS-9, ISS-10, and ISS-20 as **preconditions**, not optional polish.
+- Do not merge large Cursor-generated feature bundles without running the full suite first.
+- Any new macro/reporting/ops work should be checked against ISS-12 through ISS-41 before commit.
+
+---
+
+## 15. Frontend Architecture Migration Plan
+
+**Decision (March 28, 2026):** Move from Streamlit to a custom Next.js + FastAPI frontend for the premium product surface. Keep Streamlit as the internal operator console only.
+
+### Frontend assessment verdict
+
+An independent review of the current Streamlit frontend scored:
+
+| Dimension | Score |
+|---|---|
+| Overall | 6.5/10 |
+| Backend fidelity | 5.5/10 |
+| Real-time observability | 4.5/10 |
+| Navigation | 6/10 |
+| Visual polish | 7.5/10 |
+| Analytical richness | 7.5/10 |
+
+**Core finding:** the frontend implies capabilities that are only partially wired. It looks like a premium deeply-observable research platform; in practice, some of that depth is real and some is presentation ahead of plumbing.
+
+### Why Streamlit is the ceiling
+
+| Capability | Streamlit limit | Next.js + FastAPI solution |
+|---|---|---|
+| Real-time stage/substage events | Simulated; no true streaming | WebSocket / SSE from FastAPI |
+| Navigation depth | Scripted vertical scroll | Full App Router with pages + deep-links |
+| Custom interaction | Constrained widget set | Full React component freedom |
+| Compare-runs mode | Very hard | Standard multi-view routing |
+| Traceability / provenance | Very hard without re-architecting | First-class React components |
+| Visual analytics | Limited chart options | Recharts, D3, AG Grid available |
+| Product polish trajectory | 7–7.5/10 ceiling | 9.0–9.3/10 target |
+
+### Target tech stack
+
+| Layer | Tool |
+|---|---|
+| Premium frontend | Next.js 14 (App Router) + React 18 |
+| Design system | TailwindCSS + shadcn/ui |
+| Charts | Recharts / Tremor |
+| Data tables | AG Grid Community |
+| State management | TanStack Query (server) + Zustand (client) |
+| Backend API | FastAPI (new `src/api/`) |
+| Real-time events | Server-Sent Events (SSE) or WebSocket |
+| Internal console | Keep `src/frontend/app.py` (Streamlit) |
+
+### New session blocks introduced by this plan
+
+| Session | Scope | Test target |
+|---|---|---|
+| Session 15 | FastAPI event-streaming API layer | API contract tests ~+25 |
+| Session 16 | Next.js premium UI build | Component + integration tests ~+20 |
+| Session 17 | Traceability, provenance, explainability | E2E + traceability tests ~+15 |
+
+### Phase map layered with existing sessions
+
+| Phase | Scope | Layered into |
+|---|---|---|
+| Phase 1 | Adapter truthfulness fixes (report_path → markdown, token_log, audit_packet, temperature, provider keys) | **Session 11** |
+| Phase 2 | Engine event stream contract (stage_started, agent_started, llm_call events) | **Session 12** |
+| Phase 3 | Unified storage + `RunRequest` schema + `ClientProfile` wiring | **Sessions 12–13** |
+| Phase 4 | FastAPI API layer (`POST /runs`, SSE `/runs/{id}/events`, artifact endpoints) | **Session 15** |
+| Phase 5 | Next.js premium UI (all pages, live tracker, report viewer, quant panel) | **Session 16** |
+| Phase 6 | Visual analytics (charts per dimension) | **Session 16** |
+| Phase 7 | Traceability + explainability + audit trail | **Session 17** |
+
+### Score progression expected
+
+| After | Score |
+|---|---|
+| Phase 1 (adapter fixes) | 7.0/10 |
+| Phase 2 (event stream) | 7.5/10 |
+| Phase 3 (storage + RunRequest) | 7.8/10 |
+| Phase 4 (FastAPI) | 8.2/10 |
+| Phase 5 + 6 (Next.js + charts) | 9.0/10 |
+| Phase 7 (traceability) | 9.3/10 |
+
+### New E-items added
+
+| ID | Item | Session |
+|---|---|---|
+| E-11 | FastAPI event-streaming layer | Session 15 |
+| E-12 | Next.js + React premium UI | Session 16 |
+| E-13 | Real-time stage + agent event stream | Session 15–16 |
+| E-14 | Compare-runs mode | Session 16 |
+| E-15 | Report section provenance traces | Session 17 |
+
+### Critical acceptance gates
+
+- Phase 1 must be done before Phase 4 — the API contract should reflect the fixed data model, not the broken one
+- Phase 4 (FastAPI) must be stable before Session 16 commences — Next.js builds against the API contract
+- `src/frontend/app.py` must remain functional throughout migration — it is the operator fallback until Session 16 is complete
+- Do not build visual analytics (Phase 6) on new data models — reuse the same data structures as Streamlit quant panels
+- Traceability (Phase 7) requires artifact paths in the event stream — this contract must be set in Phase 2
+
+### Status
+
+| Phase | Status |
+|---|---|
+| Phase 1 — adapter fixes | 🔲 |
+| Phase 2 — engine event stream | 🔲 |
+| Phase 3 — storage + RunRequest | 🔲 |
+| Phase 4 — FastAPI layer | 🔲 |
+| Phase 5 — Next.js UI | 🔲 |
+| Phase 6 — visual analytics | 🔲 |
+| Phase 7 — traceability | 🔲 |
