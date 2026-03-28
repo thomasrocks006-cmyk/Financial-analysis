@@ -24,7 +24,7 @@ SRC  = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from frontend.mock_data import MARKET_SNAPSHOTS, DEMO_DATE
+from frontend.client_profile import ClientProfile, INVESTMENT_THEMES, RISK_PROFILES
 from frontend.pipeline_runner import STAGES, PipelineRunner, RunResult
 from frontend.cost_estimator import estimate_run_cost, calculate_actual_cost, format_cost
 from frontend.storage import save_run, list_saved_runs, load_run, delete_run, REPORTS_DIR
@@ -50,8 +50,8 @@ _ENV = _read_env()
 
 # ── Page config ───────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="AI Infra Research Pipeline",
-    page_icon="📊",
+    page_title="Institutional Research Platform",
+    page_icon="🏦",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -396,6 +396,10 @@ def _init_state():
         st.session_state.key_oai = _ENV.get("OPENAI_API_KEY", "")
     if "key_gem" not in st.session_state:
         st.session_state.key_gem = _ENV.get("GOOGLE_API_KEY", "")
+    if "key_fmp" not in st.session_state:
+        st.session_state.key_fmp = _ENV.get("FMP_API_KEY", "")
+    if "key_fhub" not in st.session_state:
+        st.session_state.key_fhub = _ENV.get("FINNHUB_API_KEY", "")
 
 _init_state()
 
@@ -443,17 +447,104 @@ with st.sidebar:
     st.markdown("""
 <div style="padding:14px 0 8px">
   <div style="font-size:1.05rem;font-weight:700;color:#e6edf3;letter-spacing:-0.02em">
-    📊 AI Infra Research
+    🏦 JPM Research Platform
   </div>
   <div style="font-size:0.72rem;color:#8b949e;margin-top:2px">
-    Institutional Pipeline · v8.0
+    Institutional Asset Management · v8.0
   </div>
 </div>
 """, unsafe_allow_html=True)
     st.divider()
 
+    # ── Client Profile (Onboarding) ───────────────────────────────────────
+    st.markdown('<div class="section-title">Client Profile</div>', unsafe_allow_html=True)
+    client_name = st.text_input("Client name", value="Client", key="client_name",
+                                label_visibility="collapsed", placeholder="Client name")
+
+    obj_options = ["total_return", "growth", "income", "preservation"]
+    obj_labels_map = {
+        "total_return": "Total Return", "growth": "Capital Growth",
+        "income": "Income Generation", "preservation": "Capital Preservation",
+    }
+    primary_obj = st.selectbox(
+        "Primary Objective", obj_options,
+        format_func=lambda x: obj_labels_map[x],
+        index=0, key="primary_obj", label_visibility="collapsed",
+    )
+
+    risk_tol = st.selectbox(
+        "Risk Tolerance",
+        list(RISK_PROFILES.keys()),
+        format_func=lambda x: RISK_PROFILES[x]["label"],
+        index=1, key="risk_tol", label_visibility="collapsed",
+    )
+    risk_info = RISK_PROFILES[risk_tol]
+    st.caption(f"{risk_info['description']}")
+
+    time_horizon = st.slider("Time horizon (years)", 1, 20, 5, key="time_horizon",
+                             label_visibility="collapsed")
+    st.caption(f"Horizon: {time_horizon} years")
+
+    investment_amt = st.number_input(
+        "Investment amount ($)", min_value=10_000, max_value=100_000_000,
+        value=1_000_000, step=100_000, key="invest_amt",
+        label_visibility="collapsed",
+    )
+
+    st.divider()
+
+    # ── Investment Theme & Universe ───────────────────────────────────────
+    st.markdown('<div class="section-title">Investment Theme</div>', unsafe_allow_html=True)
+    theme_key = st.selectbox(
+        "Theme", list(INVESTMENT_THEMES.keys()),
+        format_func=lambda k: INVESTMENT_THEMES[k]["name"],
+        index=0, key="theme_sel", label_visibility="collapsed",
+    )
+    theme_info = INVESTMENT_THEMES[theme_key]
+    st.caption(theme_info["description"])
+
+    if theme_key == "custom":
+        custom_input = st.text_area(
+            "Enter tickers (comma-separated)",
+            value="NVDA, AAPL, MSFT, AMZN",
+            key="custom_tickers", label_visibility="collapsed",
+            height=68,
+        )
+        selected_tickers: list[str] = [t.strip().upper() for t in custom_input.split(",") if t.strip()]
+    else:
+        default_tickers = theme_info["default_tickers"]
+        selected_tickers = st.multiselect(
+            "Tickers", default_tickers, default=default_tickers,
+            key="theme_tickers", label_visibility="collapsed",
+        )
+
+    if selected_tickers:
+        chip_html = ""
+        for t in selected_tickers:
+            chip_html += f'<span class="ticker-chip">{t}</span>'
+        st.markdown(chip_html, unsafe_allow_html=True)
+
+    st.divider()
+
+    # ── ESG / Mandate Constraints ─────────────────────────────────────────
+    with st.expander("Mandate & Constraints", expanded=False):
+        esg_mandate = st.checkbox("ESG mandate", value=False, key="esg")
+        excl_tobacco = st.checkbox("Exclude tobacco", value=False, key="excl_tobacco")
+        excl_weapons = st.checkbox("Exclude weapons", value=False, key="excl_weapons")
+        excl_fossil = st.checkbox("Exclude fossil fuels", value=False, key="excl_fossil")
+        min_mktcap = st.number_input("Min market cap ($B)", 0.0, 500.0, 5.0, key="min_cap")
+        benchmark = st.selectbox("Benchmark", ["SPY", "QQQ", "IWM", "DIA", "VTI"],
+                                 index=0, key="benchmark")
+        special_instr = st.text_area(
+            "Special instructions", value="", key="special_instr",
+            label_visibility="collapsed", placeholder="e.g. Focus on companies with >20% FCF yield",
+            height=60,
+        )
+
+    st.divider()
+
     # ── API Keys ──────────────────────────────────────────────────────────
-    st.markdown('<div class="section-title">API Keys</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-title">LLM API Keys</div>', unsafe_allow_html=True)
     anthropic_key = st.text_input(
         "Anthropic", type="password", key="key_ant",
         placeholder="sk-ant-…",
@@ -470,16 +561,31 @@ with st.sidebar:
         label_visibility="collapsed",
     )
 
+    st.markdown('<div class="section-title" style="margin-top:8px">Data API Keys</div>', unsafe_allow_html=True)
+    fmp_key = st.text_input(
+        "FMP", type="password", key="key_fmp",
+        placeholder="FMP API key",
+        label_visibility="collapsed",
+    )
+    finnhub_key = st.text_input(
+        "Finnhub", type="password", key="key_fhub",
+        placeholder="Finnhub API key",
+        label_visibility="collapsed",
+    )
+
     provider_keys: dict[str, str] = {k: v for k, v in {
         "anthropic": anthropic_key, "openai": openai_key, "gemini": gemini_key,
+        "fmp": fmp_key, "finnhub": finnhub_key,
     }.items() if v}
-    any_key = bool(provider_keys)
+    any_key = bool({k: v for k, v in provider_keys.items() if k in ("anthropic", "openai", "gemini")})
 
     if any_key:
         badges = []
         if anthropic_key: badges.append("🟢 Anthropic")
         if openai_key:    badges.append("🟢 OpenAI")
         if gemini_key:    badges.append("🟢 Google")
+        if fmp_key:       badges.append("🟢 FMP")
+        if finnhub_key:   badges.append("🟢 Finnhub")
         st.caption("  ".join(badges))
         if _ENV:
             st.caption("🔑 Auto-loaded from `.env`")
@@ -529,35 +635,6 @@ with st.sidebar:
 
     st.divider()
 
-    # ── Universe ──────────────────────────────────────────────────────────
-    st.markdown('<div class="section-title">Universe</div>', unsafe_allow_html=True)
-    mode = st.radio(
-        "Mode", ["Quick — 3 stocks", "Full — 12 stocks", "Custom"],
-        index=0, key="universe_mode", label_visibility="collapsed",
-    )
-
-    if mode == "Quick — 3 stocks":
-        selected_tickers: list[str] = ["NVDA", "CEG", "PWR"]
-    elif mode == "Full — 12 stocks":
-        selected_tickers = list(MARKET_SNAPSHOTS.keys())
-    else:
-        all_tickers = list(MARKET_SNAPSHOTS.keys())
-        selected_tickers = st.multiselect(
-            "Tickers", all_tickers, default=["NVDA", "AVGO", "CEG", "PWR"],
-            format_func=lambda t: f"{t} — {MARKET_SNAPSHOTS[t].get('company_name', t)}",
-            label_visibility="collapsed",
-        )
-
-    if selected_tickers:
-        chip_html = ""
-        for t in selected_tickers:
-            sub = MARKET_SNAPSHOTS.get(t, {}).get("subtheme", "")
-            css = {"compute": "compute", "power": "power", "infrastructure": "infra"}.get(sub, "")
-            chip_html += f'<span class="ticker-chip {css}">{t}</span>'
-        st.markdown(chip_html, unsafe_allow_html=True)
-
-    st.divider()
-
     # ── Cost Estimate ─────────────────────────────────────────────────────
     st.markdown('<div class="section-title">Run Cost Estimate</div>', unsafe_allow_html=True)
     if selected_tickers and stage_models:
@@ -576,8 +653,25 @@ with st.sidebar:
             st.caption("Cost estimate unavailable")
 
     st.divider()
-    st.caption(f"📅 {DEMO_DATE} · Demo mode")
     st.caption(f"💾 `reports/` — survives restarts")
+
+# ── Build client profile from sidebar inputs ──────────────────────────────
+client_profile = ClientProfile(
+    name=client_name,
+    primary_objective=primary_obj,
+    investment_theme=theme_key,
+    time_horizon_years=time_horizon,
+    risk_tolerance=risk_tol,
+    tickers=selected_tickers,
+    esg_mandate=esg_mandate,
+    exclude_tobacco=excl_tobacco,
+    exclude_weapons=excl_weapons,
+    exclude_fossil_fuel=excl_fossil,
+    min_market_cap_bn=min_mktcap,
+    benchmark=benchmark,
+    investment_amount_usd=float(investment_amt),
+    special_instructions=special_instr,
+)
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -586,10 +680,10 @@ with st.sidebar:
 st.markdown("""
 <div style="padding:8px 0 18px">
   <div style="font-size:1.6rem;font-weight:800;color:#e6edf3;letter-spacing:-0.03em">
-    AI Infrastructure Research Pipeline
+    Institutional Research Platform
   </div>
   <div style="font-size:0.82rem;color:#8b949e;margin-top:4px">
-    Institutional-grade equity research · 15-stage multi-agent pipeline · v8.0
+    JPM-style asset management · 15-stage multi-agent pipeline · Live data (FMP + Finnhub)
   </div>
 </div>
 """, unsafe_allow_html=True)
@@ -703,6 +797,7 @@ with tab_pipeline:
             tickers=selected_tickers,
             temperature=temperature,
             stage_models=stage_models,
+            client_profile=client_profile,
         )
 
         total_stages = len(STAGES)
@@ -837,24 +932,9 @@ with tab_report:
         if selected_tickers:
             st.markdown("---")
             st.markdown('<div class="section-title">Universe Preview</div>', unsafe_allow_html=True)
-            cols = st.columns(min(len(selected_tickers), 4))
-            for i, ticker in enumerate(selected_tickers):
-                snap   = MARKET_SNAPSHOTS.get(ticker, {})
-                price  = snap.get("price", 0)
-                target = snap.get("consensus_target_12m", price)
-                upside = (target - price) / price * 100 if price else 0
-                color  = "#3fb950" if upside >= 0 else "#f85149"
-                sign   = "+" if upside >= 0 else ""
-                with cols[i % 4]:
-                    st.markdown(f"""
-<div class="uni-card">
-  <div class="symbol">{ticker}</div>
-  <div class="name">{snap.get('company_name', '')[:22]}</div>
-  <div class="price">${price:.2f}</div>
-  <div style="font-size:0.72rem;color:{color};margin-top:2px">{sign}{upside:.1f}% vs cons.</div>
-  <div style="font-size:0.70rem;color:#8b949e;margin-top:2px">P/E {snap.get('forward_pe',0):.1f}×</div>
-</div>
-""", unsafe_allow_html=True)
+            st.caption(f"{len(selected_tickers)} tickers · {INVESTMENT_THEMES.get(theme_key, {}).get('name', 'Custom')}")
+            chip_html = " ".join(f'<span class="ticker-chip">{t}</span>' for t in selected_tickers)
+            st.markdown(chip_html, unsafe_allow_html=True)
     else:
         # ── Display report ────────────────────────────────────────────────
         if loaded:
@@ -930,7 +1010,7 @@ with tab_report:
             st.download_button(
                 "⬇️  Download .md",
                 data=report_md,
-                file_name=f"AI_Infra_{run_id}_{DEMO_DATE}.md",
+                file_name=f"Research_{run_id}.md",
                 mime="text/markdown",
                 type="primary",
                 use_container_width=True,
@@ -947,7 +1027,7 @@ with tab_report:
             st.download_button(
                 "⬇️  Download .json",
                 data=json_payload,
-                file_name=f"AI_Infra_{run_id}_{DEMO_DATE}.json",
+                file_name=f"Research_{run_id}.json",
                 mime="application/json",
                 use_container_width=True,
             )
@@ -1093,12 +1173,12 @@ with tab_saved:
 with tab_about:
     st.markdown("""
 <div class="card">
-  <h3 style="margin:0 0 6px;color:#58a6ff">AI Infrastructure Research Pipeline v8</h3>
+  <h3 style="margin:0 0 6px;color:#58a6ff">Institutional Research Platform v8</h3>
   <p style="margin:0;font-size:0.86rem;color:#8b949e;line-height:1.6">
-    Institutional-grade equity research platform. 15-stage multi-agent pipeline covering
-    AI infrastructure equities across compute, power, and infrastructure sub-themes.
-    Combines deterministic financial services with specialised LLM reasoning agents and
-    a full governance layer.
+    Emulates JPMorgan Asset Management's institutional research workflow.
+    15-stage multi-agent pipeline with client profiling, live market data
+    (FMP + Finnhub + yfinance), and tailored portfolio construction for
+    high-net-worth individuals.
   </p>
 </div>
 """, unsafe_allow_html=True)
@@ -1109,8 +1189,10 @@ with tab_about:
         st.markdown("""
 | Layer | Components |
 |---|---|
-| **Deterministic** | Data ingestion, reconciliation, QA, DCF engine, risk math, scenario engine, run registry |
-| **LLM Agents** | Evidence librarian, 3× sector analysts, valuation, red team, associate reviewer, PM, macro |
+| **Client Onboarding** | Risk profiling, investment objectives, mandate constraints, ESG screening |
+| **Live Data** | FMP (primary) + Finnhub (secondary) + yfinance (fallback), cross-validation |
+| **Deterministic** | Data ingestion, reconciliation, QA, DCF engine, risk math, scenario engine |
+| **LLM Agents** | Evidence librarian, sector analysts, valuation, red team, reviewer, PM, macro |
 | **Governance** | Prompt versioning, golden tests, self-audit, human override log |
 """)
         st.markdown("#### Supported Providers")
@@ -1120,6 +1202,12 @@ with tab_about:
 | **Anthropic** | Opus 4.6, Sonnet 4.6, Haiku 4.5 |
 | **OpenAI** | GPT-5.4, GPT-5.4 mini, GPT-5.4 nano |
 | **Google** | Gemini 3.1 Pro, 2.5 Pro, 2.5 Flash, Flash-Lite |
+
+| Data Source | Coverage |
+|---|---|
+| **FMP** | Quotes, financials, key metrics, price targets, income/cashflow statements |
+| **Finnhub** | Analyst recs, fundamental metrics, company news (qualitative), cross-validation |
+| **yfinance** | Fallback prices and fundamentals if both APIs fail |
 """)
 
     with col_b:
@@ -1128,19 +1216,16 @@ with tab_about:
             tag = "🤖" if num in {5, 6, 7, 8, 9, 10, 11, 12} else "⚙️"
             st.markdown(f"`{tag} S{num:02d}` {name}")
 
-    st.divider()
-    st.markdown("#### Coverage Universe")
-    st.markdown("""
-| Sub-theme | Tickers | Focus |
-|---|---|---|
-| Compute & Silicon | NVDA · AVGO · TSM | GPU monopoly, custom ASICs, foundry |
-| Power & Energy | CEG · VST · GEV | Nuclear, merchant gen, grid services |
-| Infrastructure | PWR · ETN · APH · FIX · FCX · NXT | Grid buildout, cooling, copper, solar |
-""")
+        st.markdown("#### Investment Themes")
+        for key, info in INVESTMENT_THEMES.items():
+            if key != "custom":
+                st.markdown(f"**{info['name']}**: {info['description']}")
+
     st.divider()
     st.caption(
-        "> **Disclaimer**: Demo mode uses illustrative data only. "
-        "All [HOUSE VIEW] content reflects analytical opinion. Not investment advice."
+        "> **Disclaimer**: This platform uses live market data from FMP, Finnhub, and Yahoo Finance APIs. "
+        "All [HOUSE VIEW] content reflects analytical opinion. Not investment advice. "
+        "AI-generated research for analytical purposes only."
     )
     st.caption(
         f"Pipeline v8.0 · Python 3.12 · Streamlit · "

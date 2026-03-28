@@ -1,7 +1,8 @@
 """Pipeline runner for the Streamlit frontend.
 
-Drives all 14 stages using demo or live data and the LLM agents.
-Designed to be called from the Streamlit app with progress callbacks.
+Drives the full 15-stage institutional research pipeline.
+Uses FMP + Finnhub for live market data, yfinance as fallback.
+Injects client investment profile context into every LLM agent.
 """
 
 from __future__ import annotations
@@ -78,19 +79,27 @@ class PipelineRunner:
         tickers: Optional[list[str]] = None,
         temperature: float = 0.3,
         stage_models: Optional[dict[int, str]] = None,
+        client_profile: Optional[Any] = None,
     ):
-        self.provider_keys = provider_keys  # {"anthropic": key, "openai": key, "gemini": key}
+        self.provider_keys = provider_keys  # {"anthropic": key, "openai": key, "gemini": key, "fmp": key, "finnhub": key}
         self.model = model          # default / display model
         self.temperature = temperature
         self.max_retries = 3
         self.tickers = tickers or ["NVDA", "CEG", "PWR"]
         self.stage_models = stage_models or {}  # {stage_num: model_id}
+        self.client_profile = client_profile  # ClientProfile or None
 
         # Backward compat: inject Anthropic key if present
         if ak := provider_keys.get("anthropic"):
             os.environ["ANTHROPIC_API_KEY"] = ak
         self.token_log: list[dict] = []  # token usage accumulated across all LLM calls
         self._activity_cb: Optional[ActivityCallback] = None  # set in run()
+
+    def _client_context(self) -> str:
+        """Return client profile context for LLM prompts, or fallback."""
+        if self.client_profile and hasattr(self.client_profile, 'to_prompt_context'):
+            return self.client_profile.to_prompt_context()
+        return "\n═══ CLIENT: Default institutional analysis (no specific client profile) ═══\n"
 
     async def run(
         self,
@@ -99,7 +108,7 @@ class PipelineRunner:
     ) -> RunResult:
         """Execute the full pipeline and return a RunResult."""
         self._activity_cb = activity_callback
-        run_id = f"DEMO-{uuid.uuid4().hex[:8].upper()}"
+        run_id = f"RUN-{uuid.uuid4().hex[:8].upper()}"
         started_at = datetime.now(timezone.utc).isoformat()
 
         result = RunResult(
@@ -113,23 +122,35 @@ class PipelineRunner:
             if progress_callback:
                 progress_callback(stage_num, stage_name, status, output)
 
-        # ── Load market data (live via yfinance, fallback to static) ────────
-        from frontend.mock_data import get_macro_context, get_claim_ledger
+        # ── Load market data (FMP + Finnhub, yfinance fallback) ─────────
+        fmp_key = self.provider_keys.get("fmp", os.environ.get("FMP_API_KEY", ""))
+        finnhub_key = self.provider_keys.get("finnhub", os.environ.get("FINNHUB_API_KEY", ""))
+
+        from frontend.market_data import fetch_universe, fetch_macro_context
         try:
-            from frontend.live_data import get_live_sector_snapshot
-            market_data = get_live_sector_snapshot(self.tickers)
+            market_data = await fetch_universe(
+                self.tickers,
+                fmp_key=fmp_key,
+                finnhub_key=finnhub_key,
+                activity_cb=self._activity_cb,
+            )
             logger.info(
-                "Live market data loaded: %d/%d tickers live",
+                "Live market data loaded: %d/%d tickers",
                 market_data.get("live_count", 0), len(self.tickers),
             )
         except Exception as _live_exc:
-            logger.warning(
-                "Live data fetch failed (%s) — falling back to static data", _live_exc
-            )
-            from frontend.mock_data import get_sector_snapshot
-            market_data = get_sector_snapshot("all", self.tickers)
-        macro_data = get_macro_context()
-        claims = get_claim_ledger(self.tickers)
+            logger.warning("Live data fetch failed (%s) — falling back", _live_exc)
+            market_data = {
+                "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                "data_source": "Fallback — no live data",
+                "live_count": 0,
+                "stocks": {t: {"ticker": t, "company_name": t, "_live": False} for t in self.tickers},
+            }
+
+        try:
+            macro_data = await fetch_macro_context(finnhub_key=finnhub_key)
+        except Exception:
+            macro_data = {"date": datetime.now(timezone.utc).strftime("%Y-%m-%d"), "source": "unavailable"}
 
         # ── Stage 0: Bootstrap ────────────────────────────────────────────
         s0 = await self._run_stage(0, "Bootstrap & Configuration", _cb, self._stage_bootstrap, run_id, market_data)
@@ -150,12 +171,12 @@ class PipelineRunner:
         result.stages.append(s4)
 
         # ── Stage 5: Evidence Librarian (LLM) ────────────────────────────
-        s5 = await self._run_stage(5, "Evidence Librarian / Claim Ledger", _cb, self._stage_evidence, market_data, claims)
+        s5 = await self._run_stage(5, "Evidence Librarian / Claim Ledger", _cb, self._stage_evidence, market_data)
         result.stages.append(s5)
         claim_ledger_text = s5.raw_text
 
         # ── Stage 6: Sector Analysis (LLM) ───────────────────────────────
-        s6 = await self._run_stage(6, "Sector Analysis", _cb, self._stage_sector, market_data, claims)
+        s6 = await self._run_stage(6, "Sector Analysis", _cb, self._stage_sector, market_data)
         result.stages.append(s6)
         sector_outputs = s6.raw_text
 
@@ -351,119 +372,177 @@ class PipelineRunner:
             "run_id": run_id,
             "model": self.model,
             "tickers": self.tickers,
-            "data_source": "Demo mode — illustrative data",
+            "data_source": market_data.get("data_source", "Live multi-source"),
+            "live_count": market_data.get("live_count", 0),
+            "total_tickers": len(self.tickers),
             "config_valid": True,
             "timestamp": datetime.now(timezone.utc).isoformat(),
+            "client_profile": self.client_profile.name if self.client_profile else "Default",
+            "risk_tolerance": self.client_profile.risk_tolerance if self.client_profile else "moderate",
         }
 
     async def _stage_universe(self, tickers: list[str]) -> dict:
-        from frontend.mock_data import MARKET_SNAPSHOTS, FULL_UNIVERSE
         universe = []
         for ticker in tickers:
-            snap = MARKET_SNAPSHOTS.get(ticker, {})
             universe.append({
                 "ticker": ticker,
-                "company": snap.get("company_name", ticker),
-                "subtheme": snap.get("subtheme", "unknown"),
                 "approved": True,
             })
         return {"universe": universe, "total": len(universe)}
 
     async def _stage_data_ingestion(self, market_data: dict) -> dict:
+        stocks = market_data.get("stocks", {})
+        live_tickers = [t for t, s in stocks.items() if s.get("_live")]
         return {
             "status": "complete",
-            "tickers_loaded": len(market_data.get("stocks", {})),
+            "tickers_loaded": len(stocks),
+            "live_tickers": live_tickers,
             "data_source": market_data.get("data_source"),
             "date": market_data.get("date"),
-            "note": "Demo mode: using illustrative market snapshots (not live FMP/Finnhub data)",
+            "errors": market_data.get("errors", []),
         }
 
     async def _stage_reconciliation(self, market_data: dict) -> dict:
         results = {}
         for ticker, snap in market_data.get("stocks", {}).items():
+            cross_checks = snap.get("cross_validation", [])
+            red_count = sum(1 for c in cross_checks if c.get("status") == "RED")
+            amber_count = sum(1 for c in cross_checks if c.get("status") == "AMBER")
+            green_count = sum(1 for c in cross_checks if c.get("status") == "GREEN")
+            status = "RED" if red_count > 0 else "AMBER" if amber_count > 0 else "GREEN"
             results[ticker] = {
                 "price": snap.get("price"),
                 "forward_pe": snap.get("forward_pe"),
-                "reconciliation_status": "GREEN",
-                "notes": "Single source (demo) — no cross-source reconciliation needed",
+                "reconciliation_status": status,
+                "cross_checks": cross_checks,
+                "notes": f"FMP+Finnhub cross-validated" if cross_checks else "Single source",
             }
-        return {"reconciliation": results, "red_fields": 0, "amber_fields": 0, "green_fields": len(results)}
+        red_total = sum(1 for r in results.values() if r["reconciliation_status"] == "RED")
+        amber_total = sum(1 for r in results.values() if r["reconciliation_status"] == "AMBER")
+        green_total = sum(1 for r in results.values() if r["reconciliation_status"] == "GREEN")
+        return {"reconciliation": results, "red_fields": red_total, "amber_fields": amber_total, "green_fields": green_total}
 
     async def _stage_qa(self, market_data: dict) -> dict:
+        stocks = market_data.get("stocks", {})
+        live_count = sum(1 for s in stocks.values() if s.get("_live"))
+        has_cross_val = sum(1 for s in stocks.values() if s.get("cross_validation"))
+        score = 9.0 if live_count == len(stocks) else 7.0 if live_count > 0 else 4.0
+        tier = "Tier 1/2 — dual-source verified" if has_cross_val else "Tier 2 — single live source" if live_count else "Tier 3 — no live data"
         return {
             "schema_valid": True,
             "timestamps_valid": True,
             "duplicates_found": 0,
-            "lineage_complete": True,
-            "data_quality_score": 7.5,
-            "notes": "Demo data: no lineage chain — treating as Tier 3. Live mode would require FMP/Finnhub source tags.",
+            "lineage_complete": live_count > 0,
+            "data_quality_score": score,
+            "live_tickers": live_count,
+            "total_tickers": len(stocks),
+            "data_tier": tier,
         }
 
-    async def _stage_evidence(self, market_data: dict, claims: list[dict]) -> str:
+    async def _stage_evidence(self, market_data: dict) -> str:
         stocks_summary = []
         for ticker, snap in market_data.get("stocks", {}).items():
-            stocks_summary.append(
-                f"**{ticker} ({snap['company_name']})**: price ${snap['price']}, "
-                f"mkt cap ${snap['market_cap_bn']}B, fwd P/E {snap['forward_pe']}x, "
-                f"consensus target ${snap['consensus_target_12m']}. "
-                f"Recent catalysts: {'; '.join(snap.get('recent_catalysts', [])[:3])}"
-            )
+            parts = [f"**{ticker} ({snap.get('company_name', ticker)})**:"]
+            if snap.get("price"): parts.append(f"price ${snap['price']}")
+            if snap.get("market_cap_bn"): parts.append(f"mkt cap ${snap['market_cap_bn']}B")
+            if snap.get("forward_pe"): parts.append(f"fwd P/E {snap['forward_pe']}x")
+            if snap.get("trailing_pe"): parts.append(f"trailing P/E {snap['trailing_pe']}x")
+            if snap.get("consensus_target_12m"): parts.append(f"consensus target ${snap['consensus_target_12m']}")
+            if snap.get("revenue_ttm_bn"): parts.append(f"revenue ${snap['revenue_ttm_bn']}B")
+            if snap.get("gross_margin_pct"): parts.append(f"gross margin {snap['gross_margin_pct']}%")
+            if snap.get("free_cash_flow_ttm_bn"): parts.append(f"FCF ${snap['free_cash_flow_ttm_bn']}B")
+            if snap.get("ev_ebitda"): parts.append(f"EV/EBITDA {snap['ev_ebitda']}x")
+            if snap.get("debt_to_equity"): parts.append(f"D/E {snap['debt_to_equity']}")
+            if snap.get("roe"): parts.append(f"ROE {snap['roe']:.1%}" if isinstance(snap['roe'], float) and snap['roe'] < 1 else f"ROE {snap['roe']}")
+            # News headlines
+            news = snap.get("recent_news", [])
+            if news:
+                headlines = [n.get("headline", "") for n in news[:5] if n.get("headline")]
+                if headlines:
+                    parts.append(f"Recent news: {'; '.join(headlines[:3])}")
+            stocks_summary.append(", ".join(parts))
 
-        system = textwrap.dedent("""
-            You are the Evidence Librarian for an institutional AI infrastructure research platform.
-            Your role is to review incoming market data and build a structured claim ledger.
+        system = textwrap.dedent(f"""
+            You are the Evidence Librarian for an institutional research platform.
+
+            {self._client_context()}
+
+            You have been provided with LIVE market data from FMP and Finnhub APIs plus
+            recent news headlines. These are real, current data points.
+
             For each company:
-            1. List 4-6 primary verified facts (Tier 1/2: earnings reported, filed guidance, exchange data)
-            2. List 3-5 management guidance items (Tier 2: stated on earnings calls, investor days)
-            3. Identify 2-3 evidence gaps (data not yet confirmed from primary sources)
-            4. Rate overall evidence quality (HIGH/MEDIUM/LOW) with reasoning
+            1. List 4-6 primary verified facts from the live data feed.
+               Tag source: [FMP], [FHB], or [YF] for provider. Rate tier: [T1] or [T2].
+            2. List 3-5 items from news/market signals (recent headlines). Tag [NEWS].
+            3. Identify 3-4 evidence gaps — material questions the API data cannot answer
+               (e.g., management commentary, capex guidance, contract wins, regulatory status).
+            4. Rate overall evidence quality (HIGH/MEDIUM/LOW) with reasoning.
 
-            Format as clean, readable markdown with headers per company.
-            Be precise — flag anything that could be sell-side estimate vs hard data.
-            Use [T1], [T2], [T3] tags for evidence tiers.
+            Format as clean readable markdown with headers per company.
         """).strip()
 
         user_content = f"""
 Date: {market_data.get('date')}
 Universe: {', '.join(self.tickers)}
-Data source note: {market_data.get('data_source')}
+Data source: {market_data.get('data_source')}
 
-MARKET DATA PACKAGE:
+LIVE DATA PACKAGE:
 {chr(10).join(stocks_summary)}
-
-PRELIMINARY CLAIMS FROM DATA SYSTEM ({len(claims)} claims):
-{json.dumps(claims[:15], indent=2)}
 
 Please build the Evidence Library and Claim Ledger for this universe.
         """.strip()
 
         return await self._call_llm(system, user_content, stage_num=5)
 
-    async def _stage_sector(self, market_data: dict, claims: list[dict]) -> str:
-        stocks_by_sector: dict[str, list] = {"compute": [], "power": [], "infrastructure": []}
+    async def _stage_sector(self, market_data: dict) -> str:
+        # Build comprehensive per-stock data for the LLM
+        stocks_data = {}
         for ticker, snap in market_data.get("stocks", {}).items():
-            sector = snap.get("subtheme", "infrastructure")
-            stocks_by_sector.get(sector, stocks_by_sector["infrastructure"]).append(snap)
+            entry: dict[str, Any] = {
+                "ticker": ticker,
+                "company": snap.get("company_name", ticker),
+                "sector": snap.get("sector", ""),
+                "industry": snap.get("industry", ""),
+            }
+            # Add available quantitative fields
+            for field in ["price", "market_cap_bn", "forward_pe", "trailing_pe",
+                          "ev_ebitda", "ev_to_sales", "consensus_target_12m",
+                          "upside_to_consensus_pct", "revenue_ttm_bn",
+                          "gross_margin_pct", "operating_margin_pct", "net_margin_pct",
+                          "free_cash_flow_ttm_bn", "eps", "eps_growth_yoy",
+                          "roe", "roic", "debt_to_equity", "beta",
+                          "week52_high", "week52_low"]:
+                val = snap.get(field)
+                if val is not None:
+                    entry[field] = val
+            # Add news headlines
+            news = snap.get("recent_news", [])
+            if news:
+                entry["recent_headlines"] = [n.get("headline", "") for n in news[:5]]
+            # Analyst ratings
+            ratings = snap.get("analyst_ratings", {})
+            if ratings:
+                entry["analyst_ratings"] = ratings
+            stocks_data[ticker] = entry
 
-        system = textwrap.dedent("""
-            You are a team of three Sector Analysts for an institutional AI infrastructure research platform:
-            — **Compute & Silicon Analyst** covers NVDA, AVGO, TSM and semiconductor/foundry names
-            — **Power & Energy Analyst** covers CEG, VST, GEV and utility/generation names
-            — **Infrastructure Analyst** covers PWR, ETN, APH, FIX, FCX, NXT and materials/construction names
+        system = textwrap.dedent(f"""
+            You are a team of Sector Analysts for an institutional research platform.
+
+            {self._client_context()}
 
             For EACH stock in the universe, produce a **Four-Box analysis**:
 
             ### Box 1 — Verified Facts
-            Only Tier 1/2 confirmed data. Tag each claim [T1] or [T2]. No guidance or estimates here.
+            Only confirmed data from the live feed. Tag source: [FMP], [FHB]. No estimates.
 
-            ### Box 2 — Management Guidance
-            Forward-looking statements from management. Tag [GUIDANCE] with source/date. Be explicit about limitations.
+            ### Box 2 — Recent Developments & News
+            Recent headlines and market signals. Tag [NEWS]. Note limitations.
 
             ### Box 3 — Consensus & Market View
-            Tier 3 consensus estimates and sell-side views. State data limitations clearly.
+            Consensus estimates, analyst targets, and sell-side views from the data.
 
             ### Box 4 — Analyst Judgment [HOUSE VIEW]
-            Your differentiated view vs consensus. What does the market miss? What's priced in?
+            Your differentiated view vs consensus. What does the market miss?
             Bull/bear arguments from the same factual base.
             Conviction level: HIGH / MEDIUM / LOW with explicit rationale.
 
@@ -471,29 +550,16 @@ Please build the Evidence Library and Claim Ledger for this universe.
             - Every numerical claim must reference source data provided
             - Flag evidence gaps explicitly
             - No price targets (valuation analyst's job only)
-            - Separate what is fact from what is your view
-            - Consider AI efficiency shock (DeepSeek-style) as a mandatory bear scenario
+            - Separate fact from opinion
+            - Tailor analysis to the client's investment objectives and risk tolerance
         """).strip()
-
-        sector_data_str = json.dumps(
-            {s: [{"ticker": x["ticker"], "company": x["company_name"],
-                  "price": x["price"], "fwd_pe": x["forward_pe"],
-                  "catalysts": x["recent_catalysts"], "risks": x["key_risks"],
-                  "consensus_target": x["consensus_target_12m"]}
-                 for x in stocks]
-             for s, stocks in stocks_by_sector.items()},
-            indent=2
-        )
 
         user_content = f"""
 Date: {market_data.get('date')}
 Universe: {', '.join(self.tickers)}
 
-SECTOR DATA:
-{sector_data_str}
-
-CLAIM LEDGER SAMPLE:
-{json.dumps(claims[:10], indent=2)}
+STOCK DATA (live from FMP + Finnhub):
+{json.dumps(stocks_data, indent=2, default=str)}
 
 Please produce the full Four-Box sector analysis for each stock.
 Use headers: ## [TICKER] — [Company Name] then the four boxes.
@@ -502,26 +568,28 @@ Use headers: ## [TICKER] — [Company Name] then the four boxes.
         return await self._call_llm(system, user_content, stage_num=6)
 
     async def _stage_valuation(self, market_data: dict, sector_outputs: str) -> str:
-        stocks_str = json.dumps(
-            {t: {
-                "price": s["price"],
-                "mkt_cap_bn": s["market_cap_bn"],
-                "forward_pe": s["forward_pe"],
-                "ev_ebitda": s["ev_ebitda"],
-                "rev_next_yr_bn": s["revenue_next_yr_consensus_bn"],
-                "rev_ttm_bn": s["revenue_ttm_bn"],
-                "fcf_ttm_bn": s["free_cash_flow_ttm_bn"],
-                "consensus_target": s["consensus_target_12m"],
-                "ratings": s["analyst_ratings"],
-                "gross_margin_pct": s["gross_margin_pct"],
-            }
-             for t, s in market_data.get("stocks", {}).items()},
-            indent=2
-        )
+        stocks_dict = {}
+        for t, s in market_data.get("stocks", {}).items():
+            entry: dict[str, Any] = {"ticker": t, "company": s.get("company_name", t)}
+            for field in ["price", "market_cap_bn", "forward_pe", "trailing_pe",
+                          "ev_ebitda", "ev_to_sales", "revenue_ttm_bn",
+                          "free_cash_flow_ttm_bn", "consensus_target_12m",
+                          "upside_to_consensus_pct", "analyst_ratings",
+                          "gross_margin_pct", "operating_margin_pct", "net_margin_pct",
+                          "eps", "eps_growth_yoy", "roe", "roic", "debt_to_equity",
+                          "fcf_yield", "dividend_yield", "beta",
+                          "week52_high", "week52_low"]:
+                val = s.get(field)
+                if val is not None:
+                    entry[field] = val
+            stocks_dict[t] = entry
+        stocks_str = json.dumps(stocks_dict, indent=2, default=str)
 
-        system = textwrap.dedent("""
-            You are the Valuation Analyst for an institutional AI infrastructure research platform.
+        system = textwrap.dedent(f"""
+            You are the Valuation Analyst for an institutional research platform.
             You are the ONLY team member who sets return scenarios and price context.
+
+            {self._client_context()}
 
             For each stock produce:
 
@@ -554,13 +622,14 @@ Use headers: ## [TICKER] — [Company Name] then the four boxes.
             - If current price is above consensus target, flag explicitly
             - No single-point fair values — always provide scenario ranges
             - Be explicit about what assumptions are embedded in current price
+            - Tailor valuation framework to the client's return objectives and risk tolerance
         """).strip()
 
         user_content = f"""
 Date: {market_data.get('date')}
 Universe: {', '.join(self.tickers)}
 
-MARKET DATA:
+MARKET DATA (live from FMP + Finnhub):
 {stocks_str}
 
 SECTOR ANALYSIS OUTPUT (for context):
@@ -572,9 +641,11 @@ Please produce the full valuation analysis for each stock.
         return await self._call_llm(system, user_content, stage_num=7)
 
     async def _stage_macro(self, macro_data: dict, sector_outputs: str = "") -> str:
-        system = textwrap.dedent("""
+        system = textwrap.dedent(f"""
             You are the Macro & Regime Strategist and Political Risk Analyst for an institutional
-            AI infrastructure research platform.
+            research platform.
+
+            {self._client_context()}
 
             Produce two sections:
 
@@ -623,19 +694,27 @@ Please produce the macro and political risk analysis.
         # Build risk metrics from market snapshot data
         risk_metrics = {}
         for ticker, snap in stocks.items():
-            pe = snap.get("forward_pe", 25)
-            price = snap.get("price", 100)
-            target = snap.get("consensus_target_12m", price)
+            pe = snap.get("forward_pe") or 25
+            price = snap.get("price") or 100
+            target = snap.get("consensus_target_12m") or price
             upside = (target - price) / price * 100 if price else 0
+            beta = snap.get("beta", 1.2)
             risk_metrics[ticker] = {
+                "company": snap.get("company_name", ticker),
+                "sector": snap.get("sector", ""),
                 "implied_upside_pct": round(upside, 1),
+                "forward_pe": pe,
                 "multiple_percentile_estimate": "High" if pe > 35 else "Medium" if pe > 20 else "Low",
-                "concentration_flag": "YES" if ticker in ["NVDA", "TSM"] else "NO",
-                "beta_estimate": 1.8 if snap.get("subtheme") == "compute" else 1.1,
+                "beta": beta,
+                "market_cap_bn": snap.get("market_cap_bn"),
+                "debt_to_equity": snap.get("debt_to_equity"),
             }
 
-        system = textwrap.dedent("""
-            You are the Risk Manager for an institutional AI infrastructure research platform.
+        system = textwrap.dedent(f"""
+            You are the Risk Manager for an institutional research platform.
+
+            {self._client_context()}
+
             Review the provided risk metrics, sector analysis, valuation scenarios, and macro overlay,
             then produce:
 
@@ -677,8 +756,10 @@ Please produce the risk and scenario analysis.
         return await self._call_llm(system, user_content, stage_num=9)
 
     async def _stage_red_team(self, sector_outputs: str, valuation_outputs: str) -> str:
-        system = textwrap.dedent("""
-            You are the Red Team Analyst for an institutional AI infrastructure research platform.
+        system = textwrap.dedent(f"""
+            You are the Red Team Analyst for an institutional research platform.
+
+            {self._client_context()}
             Your sole job is to try to BREAK every investment thesis before publication.
             The team has built a bull case for AI infrastructure. Your job is adversarial.
 
@@ -723,8 +804,10 @@ Please conduct the full Red Team analysis for each stock.
         return await self._call_llm(system, user_content, stage_num=10)
 
     async def _stage_review(self, sector_outputs: str, valuation_outputs: str, red_team_outputs: str) -> str:
-        system = textwrap.dedent("""
-            You are the Associate Reviewer for an institutional AI infrastructure research platform.
+        system = textwrap.dedent(f"""
+            You are the Associate Reviewer for an institutional research platform.
+
+            {self._client_context()}
             You are the final quality gate before publication.
 
             Review the research package and produce:
@@ -772,15 +855,29 @@ Please conduct the full associate review and produce the self-audit scorecard.
         return await self._call_llm(system, user_content, stage_num=11)
 
     async def _stage_portfolio(self, sector_outputs: str, valuation_outputs: str, risk_outputs: str, review_output: str = "") -> str:
-        system = textwrap.dedent("""
-            You are the Portfolio Manager for an institutional AI infrastructure research platform.
+        # Build constraints from client profile
+        if self.client_profile and hasattr(self.client_profile, 'get_portfolio_constraints'):
+            constraints = self.client_profile.get_portfolio_constraints()
+            max_single = constraints.get('max_single_position_pct', 15)
+            max_sector = constraints.get('max_sector_pct', 50)
+            amount = getattr(self.client_profile, 'investment_amount_usd', None)
+            amount_str = f"\n            - **Investment amount**: ${amount:,.0f}" if amount else ""
+        else:
+            max_single = 15
+            max_sector = 50
+            amount_str = ""
+
+        system = textwrap.dedent(f"""
+            You are the Portfolio Manager for an institutional research platform.
+
+            {self._client_context()}
+
             Using the research from the team, construct THREE portfolio variants.
 
             ## Portfolio Variant Construction Rules
-            - **Max single stock weight**: 15%
-            - **Subtheme requirements**: Each variant must hold at least one compute, one power/energy, one infrastructure name
-            - **Sector limits**: No sector > 50% by weight
-            - **Universe restriction**: Only names from the approved research universe
+            - **Max single stock weight**: {max_single}%
+            - **Sector limits**: No sector > {max_sector}% by weight
+            - **Universe restriction**: Only names from the approved research universe{amount_str}
 
             ## Three Variants Required
 
@@ -867,51 +964,88 @@ Please construct the three portfolio variants.
         portfolio_output: str,
     ) -> str:
         """Assemble the final report markdown."""
-        from frontend.mock_data import DEMO_DATE
-
+        report_date = market_data.get("date", datetime.now(timezone.utc).strftime("%Y-%m-%d"))
         tickers_list = ", ".join(self.tickers)
         stocks = market_data.get("stocks", {})
+        data_source = market_data.get("data_source", "Unknown")
+        live_count = market_data.get("live_count", 0)
 
-        # Build a brief snapshot table
+        # Client profile header
+        if self.client_profile:
+            cp = self.client_profile
+            client_header = (
+                f"**Client:** {getattr(cp, 'name', 'Institutional')}\n"
+                f"**Objective:** {getattr(cp, 'primary_objective', 'growth').replace('_', ' ').title()}\n"
+                f"**Risk Tolerance:** {getattr(cp, 'risk_tolerance', 'moderate').title()}\n"
+                f"**Time Horizon:** {getattr(cp, 'time_horizon_years', 'N/A')} years\n"
+                f"**Investment Theme:** {getattr(cp, 'investment_theme', 'custom').replace('_', ' ').title()}"
+            )
+            if getattr(cp, 'investment_amount_usd', None):
+                client_header += f"\n**Investment Amount:** ${cp.investment_amount_usd:,.0f}"
+        else:
+            client_header = "**Client:** Default institutional analysis"
+
+        # Build snapshot table from live data
         snapshot_rows = []
         for t, s in stocks.items():
-            upside = (s["consensus_target_12m"] - s["price"]) / s["price"] * 100
+            company = s.get("company_name", t)
+            sector = s.get("sector", "").replace("_", " ").title() if s.get("sector") else "—"
+            price = s.get("price")
+            fwd_pe = s.get("forward_pe")
+            target = s.get("consensus_target_12m")
+            mkt_cap = s.get("market_cap_bn")
+
+            price_str = f"${price:,.2f}" if price else "—"
+            pe_str = f"{fwd_pe:.1f}x" if fwd_pe else "—"
+            target_str = f"${target:,.2f}" if target else "—"
+            cap_str = f"${mkt_cap:,.1f}B" if mkt_cap else "—"
+
+            if price and target:
+                upside = (target - price) / price * 100
+                upside_str = f"{upside:+.1f}%"
+            else:
+                upside_str = "—"
+
             snapshot_rows.append(
-                f"| {t} | {s['company_name']} | {s['subtheme'].replace('_', ' ').title()} "
-                f"| ${s['price']:.2f} | {s['forward_pe']:.1f}x | ${s['consensus_target_12m']:.2f} | {upside:+.1f}% |"
+                f"| {t} | {company} | {sector} | {price_str} | {cap_str} | {pe_str} | {target_str} | {upside_str} |"
             )
         snapshot_table = "\n".join(snapshot_rows)
 
-        report = f"""# AI Infrastructure Research Report
-## Institutional-Grade Equity Research — AI Infrastructure Theme
+        report = f"""# Institutional Equity Research Report
 
-**Date:** {DEMO_DATE}
+**Date:** {report_date}
 **Run ID:** {run_id}
 **Model:** {self._model_display()}
-**Universe:** {tickers_list}
-**Publication Status:** PASS (demo run)
+**Universe:** {tickers_list} ({len(self.tickers)} names)
+**Data Source:** {data_source} ({live_count}/{len(self.tickers)} tickers live)
+
+---
+
+### Client Profile
+{client_header}
+
+---
 
 > **IMPORTANT DISCLAIMERS**
-> This report uses illustrative demo data only. All prices, targets, and figures are
-> estimates for demonstration purposes. This is NOT live market data.
+> This report uses live market data from FMP, Finnhub, and yfinance APIs.
+> All prices and metrics reflect data as of the date shown above.
 > All multi-year return scenarios are labelled [HOUSE VIEW] and represent analytical
 > estimates, not recommendations. Past performance is no guide to future returns.
-> Not investment advice.
+> Not investment advice. This is an AI-generated research report for analytical purposes.
 
 ---
 
 ## Executive Summary
 
-This report covers {len(self.tickers)} names across three AI infrastructure sub-themes:
-**Compute & Silicon**, **Power & Energy**, and **Infrastructure & Materials**.
+This report covers {len(self.tickers)} names across the client's selected investment universe.
 
 ### Universe Snapshot
 
-| Ticker | Company | Sub-theme | Price | Fwd P/E | Consensus 12M Target | Implied Upside |
-|--------|---------|-----------|-------|---------|---------------------|----------------|
+| Ticker | Company | Sector | Price | Mkt Cap | Fwd P/E | Consensus Target | Upside |
+|--------|---------|--------|-------|---------|---------|-----------------|--------|
 {snapshot_table}
 
-*Source: Illustrative demo data — not live prices*
+*Source: {data_source} — as of {report_date}*
 
 ---
 
@@ -968,16 +1102,17 @@ This report covers {len(self.tickers)} names across three AI infrastructure sub-
 | Field | Value |
 |-------|-------|
 | Run ID | {run_id} |
-| Date | {DEMO_DATE} |
+| Date | {report_date} |
 | Model | {self._model_display()} |
 | Universe size | {len(self.tickers)} stocks |
-| Data source | Demo/illustrative |
-| Pipeline version | v8.0 |
+| Live data tickers | {live_count} |
+| Data source | {data_source} |
+| Pipeline version | v8.0 — JPM Asset Management |
 
 ---
 
-*AI Infrastructure Research Pipeline v8 — Demo Run*
+*AI-Powered Institutional Research Pipeline v8*
 *All [HOUSE VIEW] content is analytical opinion, not investment advice.*
-*Data limitations: illustrative only. Live production requires FMP + Finnhub API keys.*
+*Live data sourced from FMP, Finnhub, and yfinance APIs.*
 """
         return report
