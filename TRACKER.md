@@ -304,3 +304,173 @@ Live code issues that remain from the architecture review.
 | BHB benchmark module | `src/research_pipeline/services/benchmark_module.py` |
 | Run registry | `src/research_pipeline/services/run_registry.py` |
 | CI weekly live-data | `.github/workflows/weekly_live_data.yml` |
+
+---
+
+## 7. Architecture Repair Backlog (ARC-1 through ARC-10)
+
+All bugs located in `src/research_pipeline/pipeline/engine.py`. Scheduled for **Session 11**.
+
+| ID | Bug | Impact | File / Location | Status |
+|---|---|---|---|---|
+| ARC-1 | Stage 8 macro outputs (`stage_outputs[8]`) never read by Stages 9, 10, 11, or 12 — macro context silently discarded | **Very High** | `engine.py` stages 9–12 `format_input` calls | 🔲 |
+| ARC-2 | Stage 13 final report is a stub — `stock_cards=[]`, section text hardcoded strings; PM agent `investor_document` and valuation cards never flow into the report | **High** | `engine.py` ~L1231–1248 | 🔲 |
+| ARC-3 | VaR uses `np.random.normal(0.001, 0.02, 252)` despite `live_factor_returns` (dict[str, list[float]]) already computed in same stage | **Medium** | `engine.py` ~L856 | 🔲 |
+| ARC-4 | Execution order wrong — Stage 7 (Valuation) runs **before** Stage 8 (Macro); valuation models lack macro regime context | **Medium** | `engine.py` `run_full_pipeline()` ~L1462–1468 | 🔲 |
+| ARC-5 | Sector routing hardcoded to 17 specific tickers — any ticker outside `{NVDA, AVGO, TSM, AMD, ANET, CEG, VST, GEV, NLR, PWR, ETN, HUBB, APH, FIX, FCX, BHP, NXT}` gets zero sector analysis | **Medium** | `engine.py` ~L724–726 | 🔲 |
+| ARC-6 | Red Team Agent (Stage 10) receives no macro or risk-scenario inputs — cannot challenge macro assumptions | **High** | `engine.py` ~L980–990 | 🔲 |
+| ARC-7 | Reviewer Agent (Stage 11) receives no macro or risk inputs — review quality degraded | **High** | `engine.py` ~L1000–1010 | 🔲 |
+| ARC-8 | PM Agent (Stage 12) receives no macro regime context — portfolio construction ignores rate/inflation environment | **High** | `engine.py` ~L1144–1165 | 🔲 |
+| ARC-9 | Macro Agent (Stage 8) receives only `{"universe": [...]}` — no market data from Stage 2 ingestion or Stage 3 reconciliation | **Medium** | `engine.py` ~L805 | 🔲 |
+| ARC-10 | Fixed Income Agent (Stage 9) receives hardcoded stub `"note": "Live yield/spread data not available..."` instead of Stage 8 macro output | **High** | `engine.py` ~L930–937 | 🔲 |
+
+---
+
+## 8. Session 11 — Architecture Repair (Next to Execute)
+
+**Goal:** Fix all 10 ARC bugs; bring pipline data-flow integrity to production standard.  
+**Target test count:** 607 → ~639 (+32 new tests in `test_session11.py`)  
+**Commit tag:** `session-11`
+
+| Step | ID | Task | Effort |
+|---|---|---|---|
+| 1 | ARC-4 | Swap Stage 7 and Stage 8 execution order in `run_full_pipeline()` — 2-line change | Trivial |
+| 2 | ARC-1 | Add `_get_macro_context()` helper; thread `stage_outputs[8]` into Stages 9, 10, 11, 12 | Low |
+| 3 | ARC-10 | Replace hardcoded FI stub with `stage_outputs[8]["macro"]` | Trivial |
+| 4 | ARC-6 | Add macro + risk context to Red Team Agent inputs | Low |
+| 5 | ARC-7 | Add macro + risk context to Reviewer Agent inputs | Low |
+| 6 | ARC-8 | Add macro context to PM Agent inputs | Low |
+| 7 | ARC-9 | Pass Stage 2/3 market data into Macro Agent inputs | Low |
+| 8 | ARC-3 | Replace `np.random.normal()` VaR with aggregate of `live_factor_returns` | Low |
+| 9 | ARC-5 | Add `SECTOR_ROUTING` config dict to `config/loader.py`; replace hardcoded ticker sets | Medium |
+| 10 | ARC-2 | Build `stock_cards` from `stage_outputs[7]`; use PM `investor_document` for report sections | Medium |
+| 11 | — | Write `tests/test_session11.py` — 32 tests covering all 10 ARC fixes | Medium |
+| 12 | — | Run full test suite; target 639+/639 passing | Low |
+| 13 | — | Update TRACKER.md + ARCHITECTURE.md; git commit | Trivial |
+
+---
+
+## 9. Session 12 — Macro Economy & Australia / US Markets
+
+**Goal:** Build real macroeconomic analysis capability — rates, inflation, housing, COGS, AU/US market divergence.  
+This fills the current **2/10 macro economy gap** (see ARCHITECTURE.md §13.2).
+
+### New Services
+
+| Service | Data Sources | Purpose |
+|---|---|---|
+| `EconomicIndicatorService` | FRED API, RBA Statistical Tables, ABS data | Fetch live rates, CPI, unemployment, housing, yield curves for AU + US |
+| `MacroScenarioService` | Internal + FRED | Generate rate/inflation/growth scenario matrices (base / bull / bear) |
+
+### New / Extended Agents
+
+| Agent | Extension | Outputs |
+|---|---|---|
+| `EconomyAnalystAgent` (new) | Full AU + US macro analysis | RBA cash rate thesis, Fed funds thesis, AU CPI, US CPI, AU housing, S&P 500 vs ASX 200 macro divergence, COGS inflation impact |
+| `MacroStrategistAgent` (extend) | Receives `EconomyAnalystAgent` output | Global regime classification + AU / US specific regime flags |
+
+### Market Scope Configuration (`MarketConfig` in `PipelineConfig`)
+
+| Market | Priority | Key Indices | Data Required |
+|---|---|---|---|
+| US Large Cap / AI Infrastructure | P0 — current | S&P 500, NDX | Already built |
+| ASX (Australian) | P0 — build | ASX 200, ASX 300, XJO | yfinance `^AXJO`; RBA cash rate |
+| US Broad Market | P1 | Russell 2000, S&P 500 EW | FRED + FMP |
+| Global Thematic / Tech | P1 | MSCI World Tech | FRED + FMP |
+| Fixed Income (AU + US) | P1 | AU 10Y, US 10Y, IG spreads | FRED + RBA |
+| Asian Technology | P2 | Nikkei 225, KOSPI, TSMC | yfinance |
+
+### Session 12 Steps
+
+| Step | Task | Effort |
+|---|---|---|
+| 1 | `EconomicIndicatorService` — FRED + RBA + ABS fetch, async, typed Pydantic output | Medium |
+| 2 | `MacroScenarioService` — scenario matrix builder; base/bull/bear for AU + US | Medium |
+| 3 | `EconomyAnalystAgent` — full LLM agent; ~10 output fields AU/US specific | Medium |
+| 4 | `MarketConfig` added to `PipelineConfig`; universe detection logic | Low |
+| 5 | Wire `EconomyAnalystAgent` → `MacroStrategistAgent` | Low |
+| 6 | Wire macro scenarios into VaR stress tests (Stage 9) | Low |
+| 7 | Wire AU/US macro divergence into PM allocation (Stage 12) | Low |
+| 8 | Write `tests/test_session12.py` — ~35 tests | Medium |
+| 9 | Run full suite; target ~674+/674 passing | Low |
+| 10 | Update TRACKER.md + ARCHITECTURE.md; git commit | Trivial |
+
+---
+
+## 10. Session 13 — Depth & Quality Improvements
+
+**Goal:** Elevate output quality from "structurally correct" to "institutionally publishable".
+
+| Step | Task | Division | Effort |
+|---|---|---|---|
+| 1 | Agent prompt upgrades — rate/macro context injected into all 14 agent prompts | Global Research | Medium |
+| 2 | Valuation model depth — DCF sensitivity tables; EV/EBITDA vs P/E cross-validation | Quant Research | Medium |
+| 3 | Factor model live refit — OLS against real FRED factor data (Mkt-RF, SMB, HML) | Quant Research | High |
+| 4 | Report assembly — narrative paragraph generation for each section; no hardcoded strings | Client Solutions | Medium |
+| 5 | Live sector data routing — `SectorDataService`; real earnings/revenue from FMP | Global Research | High |
+| 6 | `tests/test_session13.py` — ~30 tests | Operations | Medium |
+| 7 | Full suite + commit | Operations | Low |
+
+---
+
+## 11. Session 14 — Superannuation & Australian Client Context
+
+**Goal:** Model the JP Morgan Australia client base — superannuation funds, SMSF, retail AU investors.
+
+| Step | Task | Division | Effort |
+|---|---|---|---|
+| 1 | `SuperannuationMandateService` — AU super fund mandate types (growth, balanced, conservative, lifecycle) | Portfolio Management | Medium |
+| 2 | `AustralianTaxService` — CGT discount, franking credits, div withholding for foreign equities | Client Solutions | Medium |
+| 3 | `ClientProfileSchema` — client type (super fund / SMSF / HNW / institutional), AU residency flag, AUS/US allocation target | Client Solutions | Low |
+| 4 | Mandate checking (Stage 3) extended — AU super mandates checked against universe + weights | Investment Governance | Medium |
+| 5 | Report assembly — AU-format disclosures, FSG reference, ASIC compliance notices | Client Solutions | Medium |
+| 6 | `tests/test_session14.py` — ~30 tests | Operations | Medium |
+| 7 | Full suite + commit | Operations | Low |
+
+---
+
+## 12. Brainstorm Backlog (Future Sessions 15+)
+
+Items identified during Session 11 planning audit. Not yet scheduled.
+
+### Global Research Division
+- Live news ingestion — Reuters / Bloomberg headline sentiment per ticker (currently no real-time news)
+- Earnings transcript parsing — NLP over SEC 8-K / ASX announcements
+- Analyst consensus integration — FactSet / LSEG consensus EPS + price targets
+- Sector deep-dive agents for AU-listed companies (banks, miners, REITs, energy)
+
+### Quantitative Research Division
+- Black-Litterman portfolio construction from analyst views
+- GARCH-based volatility forecasting (replace constant σ in VaR)
+- Regime detection model — HMM over factor data for bull/bear/sideways
+- Fama-French 5-factor model extension (adding RMW + CMA)
+
+### Portfolio Management Division
+- Multi-asset allocation — AU equities + US equities + fixed income + cash
+- SMSF tax-aware rebalancing (CGT trigger minimisation)
+- Drawdown recovery scenarios — time-to-recovery estimates per portfolio type
+- Execution integration — order generation API stub
+
+### Performance Attribution Division
+- Real benchmark data — ASX 200 TR (^AXJO) + S&P 500 TR daily returns from yfinance
+- Sector contribution to active return (GICS-level BHB)
+- Currency attribution — AUD/USD hedging impact on US equity returns
+- Rolling 1Y / 3Y / 5Y attribution periods
+
+### ESG / Sustainable Investing Division
+- MSCI ESG dataset integration (licensed or approximated)
+- AU ESG regulatory requirements — APRA SPS 530, TCFD alignment
+- Greenwashing red-flag detection in agent prompts
+- Portfolio carbon intensity score (Scope 1+2 per $M revenue)
+
+### Client Solutions / Reporting Division
+- Interactive HTML report with Plotly charts (replace static PDF)
+- Client portal — per-client report generation with mandate-specific commentary
+- ASIC-compliant Financial Services Guide (FSG) generation
+- Regulatory filing extracts — APRA, ASIC format outputs
+
+### Operations Division
+- Multi-provider LLM fallback — Anthropic → OpenAI → Azure OpenAI
+- Prompt versioning with semantic diff alerts
+- Full observability dashboard — Grafana/Prometheus metrics export
+- Blue/green pipeline deployment with canary run comparison
