@@ -8,7 +8,7 @@ from typing import Optional
 
 import numpy as np
 
-from research_pipeline.schemas.performance import BenchmarkComparison
+from research_pipeline.schemas.performance import BenchmarkComparison, CurrencyAttributionResult
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +58,12 @@ class BenchmarkModule:
             bw = bench.get(ticker, 0.0)
             active[ticker] = round(pw - bw, 4)
         return active
+
+    def get_benchmark_weights(self, benchmark_name: str = "SPY") -> dict[str, float]:
+        """Return normalised benchmark constituent weights."""
+        raw = BENCHMARK_CONSTITUENTS.get(benchmark_name, {})
+        total = sum(raw.values()) or 100.0
+        return {ticker: round(weight / total * 100, 4) for ticker, weight in raw.items()}
 
     def compute_tracking_error(
         self,
@@ -165,4 +171,34 @@ class BenchmarkModule:
             max_drawdown_portfolio_pct=port_dd,
             max_drawdown_benchmark_pct=bench_dd,
             correlation=corr,
+        )
+
+    def compute_currency_attribution(
+        self,
+        local_returns: list[float],
+        fx_returns: list[float],
+        base_currency: str = "AUD",
+        foreign_currency: str = "USD",
+    ) -> CurrencyAttributionResult:
+        """Decompose unhedged foreign returns into local, FX, and interaction terms."""
+        n = min(len(local_returns), len(fx_returns))
+        if n == 0:
+            return CurrencyAttributionResult(
+                base_currency=base_currency,
+                foreign_currency=foreign_currency,
+            )
+
+        local_arr = np.array(local_returns[:n]) / 100
+        fx_arr = np.array(fx_returns[:n]) / 100
+        interaction = local_arr * fx_arr
+        total_unhedged = (1 + local_arr) * (1 + fx_arr) - 1
+
+        return CurrencyAttributionResult(
+            base_currency=base_currency,
+            foreign_currency=foreign_currency,
+            local_return_pct=round(float(np.sum(local_arr)) * 100, 4),
+            currency_return_pct=round(float(np.sum(fx_arr)) * 100, 4),
+            interaction_return_pct=round(float(np.sum(interaction)) * 100, 4),
+            total_unhedged_return_pct=round(float(np.sum(total_unhedged)) * 100, 4),
+            total_hedged_return_pct=round(float(np.sum(local_arr)) * 100, 4),
         )

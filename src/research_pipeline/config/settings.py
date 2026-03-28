@@ -15,6 +15,9 @@ class APIKeys:
     finnhub_api_key: str = ""
     anthropic_api_key: str = ""
     openai_api_key: str = ""  # optional — only needed if using OpenAI models
+    google_api_key: str = ""
+    azure_openai_api_key: str = ""
+    fred_api_key: str = ""
 
     @classmethod
     def from_env(cls) -> "APIKeys":
@@ -23,12 +26,15 @@ class APIKeys:
             finnhub_api_key=os.getenv("FINNHUB_API_KEY", ""),
             anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
             openai_api_key=os.getenv("OPENAI_API_KEY", ""),
+            google_api_key=os.getenv("GOOGLE_API_KEY", ""),
+            azure_openai_api_key=os.getenv("AZURE_OPENAI_API_KEY", ""),
+            fred_api_key=os.getenv("FRED_API_KEY", ""),
         )
 
     def validate(self) -> list[str]:
         """Return list of missing required keys.
 
-        Anthropic OR OpenAI key is required (at least one LLM must be available).
+        Anthropic OR OpenAI OR Google OR Azure key is required (at least one LLM must be available).
         FMP and Finnhub are required for data ingestion.
         """
         missing = []
@@ -36,8 +42,16 @@ class APIKeys:
             missing.append("FMP_API_KEY")
         if not self.finnhub_api_key:
             missing.append("FINNHUB_API_KEY")
-        if not self.anthropic_api_key and not self.openai_api_key:
-            missing.append("ANTHROPIC_API_KEY or OPENAI_API_KEY (at least one LLM key required)")
+        if (
+            not self.anthropic_api_key
+            and not self.openai_api_key
+            and not self.google_api_key
+            and not self.azure_openai_api_key
+        ):
+            missing.append(
+                "ANTHROPIC_API_KEY or OPENAI_API_KEY or GOOGLE_API_KEY or "
+                "AZURE_OPENAI_API_KEY (at least one LLM key required)"
+            )
         return missing
 
 

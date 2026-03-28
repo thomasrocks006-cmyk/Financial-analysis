@@ -9,6 +9,26 @@ import yaml
 from pydantic import BaseModel, Field
 
 
+DEFAULT_SECTOR_ROUTING: dict[str, list[str]] = {
+    "compute": ["NVDA", "AVGO", "TSM", "AMD", "ANET", "MRVL", "QCOM", "INTC"],
+    "power": ["CEG", "VST", "GEV", "NLR"],
+    "infrastructure": [
+        "PWR",
+        "ETN",
+        "HUBB",
+        "APH",
+        "FIX",
+        "FCX",
+        "BHP",
+        "BHP.AX",
+        "NXT",
+        "NXT.AX",
+        "CBA.AX",
+        "CSL.AX",
+    ],
+}
+
+
 # ── Threshold sub-models ────────────────────────────────────────────────────
 class ReconciliationThresholds(BaseModel):
     price_drift_amber_pct: float = 0.5
@@ -35,28 +55,63 @@ class DataQualityThresholds(BaseModel):
 
 
 class Thresholds(BaseModel):
-    reconciliation: ReconciliationThresholds = ReconciliationThresholds()
-    publish_gate: PublishGateThresholds = PublishGateThresholds()
-    data_quality: DataQualityThresholds = DataQualityThresholds()
+    reconciliation: ReconciliationThresholds = Field(default_factory=ReconciliationThresholds)
+    publish_gate: PublishGateThresholds = Field(default_factory=PublishGateThresholds)
+    data_quality: DataQualityThresholds = Field(default_factory=DataQualityThresholds)
+
+
+class MarketConfig(BaseModel):
+    primary_market: str = "US"
+    supported_markets: list[str] = Field(default_factory=lambda: ["US", "AU"])
+    benchmark: str = "SPY"
+    benchmark_fallback: str = "^AXJO"
+    aud_usd_symbol: str = "AUDUSD=X"
+    asx_suffix: str = ".AX"
+
+
+class LLMConfig(BaseModel):
+    preferred_provider: str = "anthropic"
+    fallback_chain: list[str] = Field(
+        default_factory=lambda: ["anthropic", "openai", "azure_openai", "gemini", "local_stub"]
+    )
+    azure_deployment: str = ""
+    local_stub_enabled: bool = True
+
+
+class AUClientConfig(BaseModel):
+    client_type: str = "institutional"
+    residency: str = "AU"
+    super_mandate_type: str = "growth"
+    include_afsl_disclosure: bool = True
+    include_fsg_notice: bool = True
+    include_asic_notice: bool = True
+    smsf_tax_rate: float = 0.15
+    cgt_discount_pct: float = 50.0
 
 
 # ── Stage definition ────────────────────────────────────────────────────────
 class StageConfig(BaseModel):
     name: str
-    owners: list[str] = []
+    owners: list[str] = Field(default_factory=list)
 
 
 # ── Top-level pipeline config ──────────────────────────────────────────────
 class PipelineConfig(BaseModel):
     version: str = "v8"
     project_name: str = "ai_infrastructure_research_platform"
-    thresholds: Thresholds = Thresholds()
-    stages: dict[int, StageConfig] = {}
+    thresholds: Thresholds = Field(default_factory=Thresholds)
+    stages: dict[int, StageConfig] = Field(default_factory=dict)
+    sector_routing: dict[str, list[str]] = Field(
+        default_factory=lambda: {k: list(v) for k, v in DEFAULT_SECTOR_ROUTING.items()}
+    )
+    market: MarketConfig = Field(default_factory=MarketConfig)
+    llm: LLMConfig = Field(default_factory=LLMConfig)
+    au_client: AUClientConfig = Field(default_factory=AUClientConfig)
     portfolio_variants: list[str] = Field(
-        default=["balanced", "higher_return", "lower_volatility"]
+        default_factory=lambda: ["balanced", "higher_return", "lower_volatility"]
     )
     report_sections: list[str] = Field(
-        default=[
+        default_factory=lambda: [
             "executive_summary",
             "methodology",
             "stock_cards",
@@ -64,10 +119,11 @@ class PipelineConfig(BaseModel):
             "risk_appendix",
             "self_audit_appendix",
             "claim_register_appendix",
+            "disclosures",
         ]
     )
     test_categories: list[str] = Field(
-        default=[
+        default_factory=lambda: [
             "claim_classification",
             "reconciliation",
             "gating",
@@ -86,10 +142,9 @@ def load_pipeline_config(config_path: Path | str | None = None) -> PipelineConfi
     if not path.exists():
         raise FileNotFoundError(f"Config not found: {path}")
 
-    with open(path, "r") as f:
+    with open(path, "r", encoding="utf-8") as f:
         raw: dict[str, Any] = yaml.safe_load(f) or {}
 
-    # Parse thresholds
     thresholds_raw = raw.get("thresholds", {})
     thresholds = Thresholds(
         reconciliation=ReconciliationThresholds(**thresholds_raw.get("reconciliation", {})),
@@ -97,12 +152,10 @@ def load_pipeline_config(config_path: Path | str | None = None) -> PipelineConfi
         data_quality=DataQualityThresholds(**thresholds_raw.get("data_quality", {})),
     )
 
-    # Parse stages
-    stages = {}
+    stages: dict[int, StageConfig] = {}
     for k, v in raw.get("stages", {}).items():
         stages[int(k)] = StageConfig(**v)
 
-    # Parse outputs
     portfolio_raw = raw.get("portfolio_outputs", {})
     report_raw = raw.get("report_outputs", {})
 
@@ -111,7 +164,23 @@ def load_pipeline_config(config_path: Path | str | None = None) -> PipelineConfi
         project_name=raw.get("project_name", "ai_infrastructure_research_platform"),
         thresholds=thresholds,
         stages=stages,
-        portfolio_variants=portfolio_raw.get("required_variants", PipelineConfig.model_fields["portfolio_variants"].default),
-        report_sections=report_raw.get("required_sections", PipelineConfig.model_fields["report_sections"].default),
-        test_categories=raw.get("testing", {}).get("categories", PipelineConfig.model_fields["test_categories"].default),
+        sector_routing=raw.get("sector_routing", DEFAULT_SECTOR_ROUTING),
+        market=MarketConfig(**raw.get("market", {})),
+        llm=LLMConfig(**raw.get("llm", {})),
+        au_client=AUClientConfig(**raw.get("au_client", {})),
+        portfolio_variants=portfolio_raw.get(
+            "required_variants",
+            PipelineConfig.model_fields["portfolio_variants"].default_factory(),
+        ),
+        report_sections=report_raw.get(
+            "required_sections",
+            PipelineConfig.model_fields["report_sections"].default_factory(),
+        ),
+        test_categories=raw.get(
+            "testing",
+            {},
+        ).get(
+            "categories",
+            PipelineConfig.model_fields["test_categories"].default_factory(),
+        ),
     )
