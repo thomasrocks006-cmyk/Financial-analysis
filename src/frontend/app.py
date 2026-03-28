@@ -1079,6 +1079,217 @@ with tab_report:
                     f"({c.total_input_tokens + c.total_output_tokens:,} tokens)"
                 )
 
+        # ── P-4: Quant Analytics panel ────────────────────────────────────
+        # Displays ETF overlap, VaR/drawdown, factor exposures, and IC vote
+        # from Stage 9 and Stage 12 outputs (available for both live and loaded runs).
+        def _stage_out(n: int) -> dict:
+            """Extract stage output dict from loaded run or live session state."""
+            if loaded:
+                for s in loaded.get("stages", []):
+                    if isinstance(s, dict) and s.get("stage_num") == n:
+                        out = s.get("output")
+                        if isinstance(out, dict):
+                            return out
+                return {}
+            return st.session_state.stage_outputs.get(n, {})
+
+        risk_out     = _stage_out(9)
+        portfolio_out = _stage_out(12)
+
+        if risk_out or portfolio_out:
+            with st.expander("📊  Quant Analytics", expanded=False):
+
+                # ── Market Risk Metrics ───────────────────────────────────
+                var_d = risk_out.get("var_analysis") or risk_out.get("var_95") or {}
+                dd_d  = risk_out.get("drawdown_analysis") or {}
+                if var_d or dd_d:
+                    st.markdown("#### 📈 Market Risk Metrics")
+                    rm1, rm2, rm3, rm4 = st.columns(4)
+                    rm1.metric("VaR 95% (1-day)",  f"{var_d.get('var_pct', 0):.2f}%")
+                    rm2.metric("CVaR 95% (1-day)", f"{var_d.get('cvar_pct', 0):.2f}%")
+                    dd_pct = dd_d.get("max_drawdown_pct") or risk_out.get("max_drawdown", 0)
+                    rm3.metric("Max Drawdown",       f"{dd_pct:.2f}%")
+                    port_vol = risk_out.get("portfolio_volatility") or 0
+                    rm4.metric("Portfolio Volatility", f"{port_vol * 100:.2f}%")
+                    var_method = risk_out.get("var_method", "")
+                    conf_level = risk_out.get("confidence_level", 0.95) or 0.95
+                    if var_method:
+                        st.caption(
+                            f"VaR method: **{var_method}** · "
+                            f"confidence level: **{conf_level * 100:.0f}%**"
+                        )
+
+                # ── ETF Overlap ───────────────────────────────────────────
+                etf_data   = risk_out.get("etf_overlap", {})
+                diff_score = risk_out.get("etf_differentiation_score")
+                if etf_data or diff_score is not None:
+                    st.markdown("---")
+                    st.markdown("#### 🔄 ETF Overlap & Differentiation")
+                    if diff_score is not None:
+                        score_colour = (
+                            "#2ea043" if diff_score >= 70
+                            else "#f0a500" if diff_score >= 40
+                            else "#f85149"
+                        )
+                        st.markdown(
+                            f"**Differentiation Score:** "
+                            f"<span style='color:{score_colour};font-size:1.15rem;"
+                            f"font-weight:700'>{diff_score:.1f} / 100</span>",
+                            unsafe_allow_html=True,
+                        )
+                        if diff_score < 40:
+                            st.warning(
+                                "⚠️ Portfolio closely replicates a passive ETF "
+                                "— active share is low."
+                            )
+                        elif diff_score >= 70:
+                            st.success(
+                                "✅ Portfolio is well-differentiated from common "
+                                "ETF benchmarks."
+                            )
+
+                    if isinstance(etf_data, dict):
+                        # Support both {"overlaps": {ETF: pct}} and
+                        # {"etf_overlaps": {ETF: pct}} key variants
+                        overlaps = (
+                            etf_data.get("overlaps")
+                            or etf_data.get("etf_overlaps")
+                            or {}
+                        )
+                        if isinstance(overlaps, dict) and overlaps:
+                            etf_rows = [
+                                {"ETF": etf,
+                                 "Overlap %": (
+                                     f"{pct:.1f}%"
+                                     if isinstance(pct, (int, float))
+                                     else str(pct)
+                                 )}
+                                for etf, pct in overlaps.items()
+                            ]
+                            st.table(etf_rows)
+
+                # ── Factor Exposures ──────────────────────────────────────
+                factor_data = risk_out.get("factor_exposures", [])
+                if factor_data:
+                    st.markdown("---")
+                    st.markdown("#### 🎯 Factor Exposures")
+                    fe_rows = []
+                    for fe in factor_data:
+                        if isinstance(fe, dict):
+                            fe_rows.append({
+                                "Ticker":     fe.get("ticker", ""),
+                                "β Market":   f"{fe.get('market_beta', 0):.2f}",
+                                "β Size":     f"{fe.get('size_loading', 0):.2f}",
+                                "β Value":    f"{fe.get('value_loading', 0):.2f}",
+                                "β Momentum": f"{fe.get('momentum_loading', 0):.2f}",
+                                "β Quality":  f"{fe.get('quality_loading', 0):.2f}",
+                            })
+                    if fe_rows:
+                        st.table(fe_rows)
+                    pf_exp = risk_out.get("portfolio_factor_exposure")
+                    if isinstance(pf_exp, dict):
+                        st.caption(
+                            f"Portfolio composite — "
+                            f"β(market)={pf_exp.get('market_beta', 0):.2f}  "
+                            f"β(size)={pf_exp.get('size_loading', 0):.2f}  "
+                            f"β(momentum)={pf_exp.get('momentum_loading', 0):.2f}"
+                        )
+
+                # ── Investment Committee ──────────────────────────────────
+                ic_record = portfolio_out.get("ic_record", {})
+                if ic_record:
+                    st.markdown("---")
+                    st.markdown("#### 🏛️ Investment Committee")
+                    ic_approved = ic_record.get("is_approved", False)
+                    ic_c1, ic_c2 = st.columns([2, 3])
+                    with ic_c1:
+                        if ic_approved:
+                            st.success("✅ IC Approved")
+                        else:
+                            st.error("❌ IC Not Approved")
+                        votes = ic_record.get("votes", {})
+                        if isinstance(votes, dict):
+                            for member, vote in votes.items():
+                                v_str = str(vote).lower()
+                                icon = (
+                                    "✅" if v_str in ("approve", "yes", "pass")
+                                    else "❌"
+                                )
+                                st.caption(f"{icon} {member}: {vote}")
+                    with ic_c2:
+                        rationale = (
+                            ic_record.get("rationale")
+                            or ic_record.get("decision_rationale", "")
+                        )
+                        if rationale:
+                            st.markdown(f"*{rationale[:400]}*")
+                        flags = ic_record.get("condition_flags", [])
+                        if flags:
+                            st.caption(f"Condition flags: {', '.join(str(f) for f in flags)}")
+
+                # ── Mandate Compliance ────────────────────────────────────
+                mandate = portfolio_out.get("mandate_compliance", {})
+                if mandate:
+                    st.markdown("---")
+                    st.markdown("#### 📋 Mandate Compliance")
+                    is_compliant = mandate.get("is_compliant", True)
+                    if is_compliant:
+                        st.success("✅ Portfolio passed all mandate constraints")
+                    else:
+                        st.warning("⚠️ Mandate violations detected")
+                        for v in mandate.get("violations", []):
+                            desc = (
+                                v.get("description", str(v))
+                                if isinstance(v, dict) else str(v)
+                            )
+                            st.caption(f"• {desc}")
+
+                # ── Fixed-Income Context (P-7) ───────────────────────────
+                fi_ctx = risk_out.get("fixed_income_context", {})
+                if fi_ctx:
+                    st.markdown("---")
+                    st.markdown("#### 🏦 Fixed-Income Macro Context")
+                    fc1, fc2, fc3 = st.columns(3)
+                    fc1.metric(
+                        "Rate Sensitivity",
+                        f"{fi_ctx.get('rate_sensitivity_score', '—')} / 10",
+                    )
+                    fc2.metric(
+                        "Yield Curve",
+                        str(fi_ctx.get("yield_curve_regime", "—")).capitalize(),
+                    )
+                    fc3.metric(
+                        "Cost of Capital",
+                        str(fi_ctx.get("cost_of_capital_trend", "—")).capitalize(),
+                    )
+                    if fi_ctx.get("sector_rotation_read"):
+                        st.caption(fi_ctx["sector_rotation_read"])
+                    key_risks = fi_ctx.get("key_risks", [])
+                    if key_risks:
+                        with st.expander("Key Rate / Credit Risks", expanded=False):
+                            for r in key_risks:
+                                st.markdown(f"• {r}")
+                    offsets = fi_ctx.get("offsetting_factors", [])
+                    if offsets:
+                        with st.expander("Mitigating Factors", expanded=False):
+                            for o in offsets:
+                                st.markdown(f"• {o}")
+                    if fi_ctx.get("methodology_note"):
+                        st.caption(
+                            f"📝 {fi_ctx['methodology_note']}"
+                        )
+
+                # ── Baseline Weights ──────────────────────────────────────
+                baseline_w = portfolio_out.get("baseline_weights", {})
+                if isinstance(baseline_w, dict) and baseline_w:
+                    st.markdown("---")
+                    st.markdown("#### ⚖️ Portfolio Weights (Baseline)")
+                    w_cols = st.columns(min(len(baseline_w), 6))
+                    for i, (ticker, wt) in enumerate(
+                        sorted(baseline_w.items(), key=lambda x: -x[1])
+                    ):
+                        w_cols[i % len(w_cols)].metric(ticker, f"{wt * 100:.1f}%")
+
 
 # ═════════════════════════════════════════════════════════════════════════
 # TAB 3 — SAVED RUNS

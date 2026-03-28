@@ -75,6 +75,7 @@ from research_pipeline.agents.red_team_analyst import RedTeamAnalystAgent
 from research_pipeline.agents.associate_reviewer import AssociateReviewerAgent
 from research_pipeline.agents.portfolio_manager import PortfolioManagerAgent
 from research_pipeline.agents.quant_research_analyst import QuantResearchAnalystAgent
+from research_pipeline.agents.fixed_income_analyst import FixedIncomeAnalystAgent
 
 logger = logging.getLogger(__name__)
 
@@ -151,6 +152,7 @@ class PipelineEngine:
         self.reviewer_agent = AssociateReviewerAgent(**agent_kwargs)
         self.pm_agent = PortfolioManagerAgent(**agent_kwargs)
         self.quant_analyst_agent = QuantResearchAnalystAgent(**agent_kwargs)
+        self.fixed_income_agent = FixedIncomeAnalystAgent(**agent_kwargs)
 
         # Run state
         self.run_record: Optional[RunRecord] = None
@@ -534,6 +536,44 @@ class PipelineEngine:
                 logger.warning("Quant Research Analyst agent did not produce output — continuing")
         except Exception as exc:
             logger.warning("Quant Research Analyst agent failed: %s", exc)
+
+        # P-7: Fixed Income Analyst — macro rate/credit context for equity thesis
+        try:
+            # Assemble fixed-income context packet
+            fi_inputs = {
+                "universe": universe,
+                "macro_context": {
+                    "note": (
+                        "Live yield/spread data not available in this run. "
+                        "Interpret using internal heuristics."
+                    ),
+                },
+                "leverage_data": {
+                    # Pull ND/EBITDA from DCF assumptions where available
+                    t: self.stage_outputs.get(7, {}).get(t, {}).get("net_debt")
+                    for t in universe
+                },
+                "var_metrics": risk_output.get("var_95", {}),
+                "scenario_results": [
+                    (s.model_dump() if hasattr(s, "model_dump") else s)
+                    for s in scenario_results
+                ],
+            }
+            fi_result = await self.fixed_income_agent.run(
+                self.run_record.run_id, fi_inputs
+            )
+            if fi_result.success and fi_result.parsed_output:
+                risk_output["fixed_income_context"] = fi_result.parsed_output
+                logger.info(
+                    "Fixed Income Analyst: rate_sensitivity_score=%.1f  "
+                    "yield_curve_regime=%s",
+                    fi_result.parsed_output.get("rate_sensitivity_score", 0),
+                    fi_result.parsed_output.get("yield_curve_regime", "?"),
+                )
+            else:
+                logger.warning("Fixed Income Analyst agent did not produce output — continuing")
+        except Exception as exc:
+            logger.warning("Fixed Income Analyst agent failed: %s", exc)
 
         self._save_stage_output(9, risk_output)
         gate = self.gates.gate_9_risk(

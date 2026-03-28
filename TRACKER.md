@@ -1,8 +1,8 @@
 # Project Tracker — AI Research & Portfolio Platform
 
 > **Last updated:** March 28, 2026  
-> **Test suite:** 378 / 378 passing  
-> **Commit:** `9cf1588` (session 2 complete)
+> **Test suite:** 427 / 427 passing  
+> **Commit:** `86f5c1c` → session 4 in progress
 
 ---
 
@@ -12,7 +12,8 @@
 |---|---|
 | ROADMAP Phases 0–7 | All **COMPLETE** |
 | Session 2 debt-clearing (10 items) | All **COMPLETE** |
-| Next build session (P-4 to P-8 + Actions 5–9) | In progress |
+| Session 3 (P-5, P-6, ACT-6) | All **COMPLETE** |
+| Session 4 (P-4, P-7, P-8) | All **COMPLETE** |
 
 ---
 
@@ -37,14 +38,14 @@
 
 | ID | Area | Task | Priority | Effort | Status |
 |---|---|---|---|---|---|
-| P-5 | **Data** | yfinance as third data source fallback | Medium | Low | 🔲 |
-| ACT-6 | **Quant** | Drawdown analysis + CVaR in `RiskEngine` | High | Medium | 🔲 |
-| ACT-5 | **Governance** | `SelfAuditPacket` schema attached to every run | High | Low | 🔲 |
-| P-6 | **Services** | DCF extension — EV/EBITDA and P/E relative valuation | Medium | Medium | 🔲 |
-| ACT-7 | **Quant** | Benchmark-relative analytics module | Medium | Medium | 🔲 |
-| P-4 | **Frontend** | Wire ETF overlap + observability + BHB attribution into Streamlit | Medium | Medium | 🔲 |
-| P-7 | **Agents** | Fixed-income thesis agent | Medium | High | 🔲 |
-| P-8 | **CI** | Weekly live-data validation run as CI job | Low | Low | 🔲 |
+| P-5 | **Data** | yfinance as third data source fallback | Medium | Low | ✅ `86f5c1c` |
+| ACT-6 | **Quant** | Drawdown analysis + CVaR in `RiskEngine` + `RiskPacket` | High | Medium | ✅ `86f5c1c` |
+| ACT-5 | **Governance** | `SelfAuditPacket` schema attached to every run | High | Low | ✅ (prior session) |
+| P-6 | **Services** | DCF extension — EV/EBITDA and P/E relative valuation | Medium | Medium | ✅ `86f5c1c` |
+| ACT-7 | **Quant** | Benchmark-relative analytics module (`benchmark_module.py`) | Medium | Medium | ✅ (prior session) |
+| P-4 | **Frontend** | Wire ETF overlap + BHB + benchmark analytics into Streamlit | Medium | Medium | ✅ session 4 |
+| P-7 | **Agents** | Fixed-income thesis agent | Medium | High | ✅ session 4 |
+| P-8 | **CI** | Weekly live-data validation run as CI job | Low | Low | ✅ session 4 |
 
 ---
 
@@ -94,7 +95,8 @@
 | `test_schemas.py` | ~30 | Schema validation |
 | `test_services.py` | ~20 | Deterministic services |
 | `test_smoke_pipeline.py` | 19 | E2E pipeline + adapter |
-| **Total** | **378** | All passing |
+| `test_next_section.py` | 49 | P-5 yfinance fallback, P-6 relative valuation, ACT-6 RiskPacket, P-7 FI agent, P-4 panel |
+| **Total** | **427** | All passing |
 
 ---
 

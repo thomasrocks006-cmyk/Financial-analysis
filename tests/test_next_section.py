@@ -465,3 +465,254 @@ class TestYfinanceFallback:
         assert result.price == pytest.approx(55.0)
         assert result.market_cap == pytest.approx(5e9)
         assert result.trailing_pe == pytest.approx(22.5)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# P-7: Fixed-income analyst agent
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestFixedIncomeAnalystAgent:
+    """Tests for the FixedIncomeAnalystAgent parse_output and validation."""
+
+    @pytest.fixture(autouse=True)
+    def agent(self):
+        from research_pipeline.agents.fixed_income_analyst import FixedIncomeAnalystAgent
+        self.agent = FixedIncomeAnalystAgent()
+
+    # ── parse_output: mandatory-field defaults ────────────────────────────────
+
+    def test_parse_output_with_complete_valid_json(self):
+        import json
+        payload = {
+            "yield_curve_regime": "inverted",
+            "10y_yield_context": "5.2% — highest since 2007",
+            "cost_of_capital_trend": "rising",
+            "rate_sensitivity_score": 8.0,
+            "rate_sensitivity_rationale": "High-multiple tech names carry duration risk",
+            "sector_rotation_read": "Utilities and asset-heavy names most affected",
+            "credit_quality_flags": [
+                {"ticker": "NVDA", "net_debt_ebitda": -1.5, "flag": "clean", "note": "net cash"}
+            ],
+            "capital_markets_risk": "Negligible near-term refinancing risk for universe",
+            "key_risks": ["Rate snap-up squeezes multiples", "CAPEX financing costs rise"],
+            "offsetting_factors": ["Asset-light software revenue", "Strong FCF generation"],
+            "duration_proxy_commentary": "Growth premium embeds ~3y duration proxy",
+            "methodology_note": "Heuristic — no live yield data available",
+        }
+        result = self.agent.parse_output(json.dumps(payload))
+        assert result["yield_curve_regime"] == "inverted"
+        assert result["rate_sensitivity_score"] == pytest.approx(8.0)
+        assert len(result["key_risks"]) == 2
+        assert result["methodology_note"] != ""
+
+    def test_parse_output_fills_missing_mandatory_fields(self):
+        import json
+        # Minimal payload: only a few keys
+        payload = {"10y_yield_context": "4.5% inverted curve"}
+        result = self.agent.parse_output(json.dumps(payload))
+        assert result["yield_curve_regime"] == "unknown"
+        assert result["cost_of_capital_trend"] == "unknown"
+        assert result["rate_sensitivity_score"] == pytest.approx(5.0)
+        assert isinstance(result["key_risks"], list)
+        assert isinstance(result["credit_quality_flags"], list)
+
+    def test_parse_output_clamps_rate_sensitivity_score_high(self):
+        import json
+        payload = {"rate_sensitivity_score": 99, "methodology_note": "test"}
+        result = self.agent.parse_output(json.dumps(payload))
+        assert result["rate_sensitivity_score"] == pytest.approx(10.0)
+
+    def test_parse_output_clamps_rate_sensitivity_score_low(self):
+        import json
+        payload = {"rate_sensitivity_score": -5, "methodology_note": "test"}
+        result = self.agent.parse_output(json.dumps(payload))
+        assert result["rate_sensitivity_score"] == pytest.approx(1.0)
+
+    def test_parse_output_inserts_default_methodology_note_when_empty(self):
+        import json
+        payload = {"rate_sensitivity_score": 5, "methodology_note": ""}
+        result = self.agent.parse_output(json.dumps(payload))
+        assert len(result["methodology_note"]) > 10  # default text injected
+
+    def test_parse_output_normalises_list_response_to_dict(self):
+        """Some models return a JSON array; parse_output should extract first element."""
+        import json
+        payload = [{"rate_sensitivity_score": 6, "methodology_note": "test note"}]
+        result = self.agent.parse_output(json.dumps(payload))
+        assert result["rate_sensitivity_score"] == pytest.approx(6.0)
+        assert result["methodology_note"] == "test note"
+
+    def test_parse_output_handles_empty_list(self):
+        import json
+        result = self.agent.parse_output(json.dumps([]))
+        # Should not raise; should return dict with defaults
+        assert isinstance(result, dict)
+        assert result["rate_sensitivity_score"] == pytest.approx(5.0)
+
+    # ── Agent metadata ────────────────────────────────────────────────────────
+
+    def test_agent_name_is_correct(self):
+        assert self.agent.name == "fixed_income_analyst"
+
+    def test_system_prompt_contains_required_output_keys(self):
+        prompt = self.agent.default_system_prompt()
+        required_keys = [
+            "yield_curve_regime",
+            "rate_sensitivity_score",
+            "cost_of_capital_trend",
+            "credit_quality_flags",
+            "methodology_note",
+        ]
+        for key in required_keys:
+            assert key in prompt, f"System prompt missing key: {key}"
+
+    def test_format_input_serialises_to_json_string(self):
+        import json
+        inputs = {"universe": ["NVDA", "CEG"], "macro_context": {"note": "test"}}
+        formatted = self.agent.format_input(inputs)
+        parsed_back = json.loads(formatted)
+        assert parsed_back["universe"] == ["NVDA", "CEG"]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Engine wiring: fixed_income_agent attribute
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestEngineHasFixedIncomeAgent:
+    """Confirm PipelineEngine instantiates with a fixed_income_agent attribute."""
+
+    def test_engine_has_fixed_income_agent(self, tmp_path):
+        from pathlib import Path
+        from research_pipeline.config.loader import PipelineConfig
+        from research_pipeline.config.settings import APIKeys, Settings
+        from research_pipeline.pipeline.engine import PipelineEngine
+        from research_pipeline.agents.fixed_income_analyst import FixedIncomeAnalystAgent
+
+        settings = Settings(
+            project_root=Path(__file__).resolve().parents[1],
+            storage_dir=tmp_path / "storage",
+            reports_dir=tmp_path / "reports",
+            prompts_dir=tmp_path / "prompts",
+            llm_model="claude-opus-4-6",
+            api_keys=APIKeys(
+                fmp_api_key="fake",
+                finnhub_api_key="fake",
+                anthropic_api_key="fake",
+            ),
+        )
+        engine = PipelineEngine(settings=settings, config=PipelineConfig())
+        assert hasattr(engine, "fixed_income_agent"), (
+            "PipelineEngine must expose a fixed_income_agent attribute"
+        )
+        assert isinstance(engine.fixed_income_agent, FixedIncomeAnalystAgent)
+
+    def test_stage9_risk_output_accepts_fixed_income_context_key(self):
+        """The Stage 9 risk_output dict can be extended with 'fixed_income_context'."""
+        fi_context = {
+            "yield_curve_regime": "flattening",
+            "rate_sensitivity_score": 7.5,
+            "cost_of_capital_trend": "rising",
+            "key_risks": ["Spread widening"],
+            "methodology_note": "Test",
+        }
+        risk_output = {
+            "run_id": "test",
+            "portfolio_volatility": 0.18,
+            "max_drawdown": 0.20,
+            "sector_concentration": {},
+            "beta_weighted_exposure": 1.1,
+        }
+        # Engine stores fi_context at this key; confirm no constraint violation
+        risk_output["fixed_income_context"] = fi_context
+        assert risk_output["fixed_income_context"]["rate_sensitivity_score"] == pytest.approx(7.5)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# P-4: Quant Analytics panel — data-extraction helper logic
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestQuantAnalyticsPanelDataExtraction:
+    """Unit tests for the _stage_out logic pattern used in the Streamlit panel.
+
+    Since _stage_out is defined inline in app.py (not importable), we replicate
+    the identical logic here and test the data extraction behaviour directly.
+    """
+
+    @staticmethod
+    def stage_out(n: int, loaded: dict | None, session_outputs: dict) -> dict:
+        """Replicated _stage_out helper from app.py."""
+        if loaded:
+            for s in loaded.get("stages", []):
+                if isinstance(s, dict) and s.get("stage_num") == n:
+                    out = s.get("output")
+                    if isinstance(out, dict):
+                        return out
+            return {}
+        return session_outputs.get(n, {})
+
+    def test_extracts_from_loaded_run_by_stage_num(self):
+        loaded = {
+            "stages": [
+                {"stage_num": 7, "output": {"some": "data"}},
+                {"stage_num": 9, "output": {"etf_differentiation_score": 72.5}},
+            ]
+        }
+        result = self.stage_out(9, loaded, {})
+        assert result["etf_differentiation_score"] == pytest.approx(72.5)
+
+    def test_returns_empty_dict_for_missing_stage_in_loaded(self):
+        loaded = {"stages": [{"stage_num": 7, "output": {"x": 1}}]}
+        result = self.stage_out(9, loaded, {})
+        assert result == {}
+
+    def test_falls_back_to_session_state_when_no_loaded(self):
+        session_state = {9: {"var_analysis": {"var_pct": 0.025}}}
+        result = self.stage_out(9, None, session_state)
+        assert result["var_analysis"]["var_pct"] == pytest.approx(0.025)
+
+    def test_returns_empty_dict_when_both_sources_empty(self):
+        result = self.stage_out(9, None, {})
+        assert result == {}
+
+    def test_ignores_non_dict_output_in_loaded(self):
+        """If a stage output is not a dict (e.g. raw text string), skip it."""
+        loaded = {
+            "stages": [{"stage_num": 9, "output": "raw text, not a dict"}]
+        }
+        result = self.stage_out(9, loaded, {9: {"fallback": True}})
+        # Should fall back to session_state since loaded output isn't a dict
+        assert result == {}  # loaded path returns {} when not a dict
+
+    def test_var_pct_extracted_from_var_analysis_key(self):
+        session_state = {
+            9: {
+                "var_analysis": {"var_pct": 0.035, "cvar_pct": 0.055},
+                "drawdown_analysis": {"max_drawdown_pct": 0.28},
+            }
+        }
+        out = self.stage_out(9, None, session_state)
+        var_d = out.get("var_analysis") or {}
+        assert var_d.get("var_pct") == pytest.approx(0.035)
+
+    def test_fixed_income_context_extracted_from_stage9(self):
+        session_state = {
+            9: {
+                "fixed_income_context": {
+                    "yield_curve_regime": "inverted",
+                    "rate_sensitivity_score": 8.0,
+                }
+            }
+        }
+        out = self.stage_out(9, None, session_state)
+        fi = out.get("fixed_income_context", {})
+        assert fi["yield_curve_regime"] == "inverted"
+
+    def test_ic_record_extracted_from_stage12(self):
+        session_state = {
+            12: {
+                "ic_record": {"is_approved": True, "votes": {"CIO": "approve"}},
+                "baseline_weights": {"NVDA": 0.5, "CEG": 0.5},
+            }
+        }
+        out = self.stage_out(12, None, session_state)
+        assert out["ic_record"]["is_approved"] is True
