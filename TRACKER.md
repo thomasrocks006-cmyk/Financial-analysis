@@ -25,6 +25,9 @@
 | **Session 12 — Macro Economy & Australia/US Markets** | 🔲 **TODO** |
 | **Session 13 — Depth & Quality** | 🔲 **TODO** |
 | **Session 14 — Superannuation & AU Client Context** | 🔲 **PLANNED** |
+| **PROJECT_ISSUES_ASSESSMENT.md (PR #2)** | ✅ **MERGED — March 28, 2026** |
+| **Residual issues (ISS-1 through ISS-41)** | 🔲 **TODO — fold into Sessions 11+** |
+| **PR #1 Core system improvements** | ⛔ **Do not merge as-is** |
 
 ---
 
@@ -474,3 +477,69 @@ Items identified during Session 11 planning audit. Not yet scheduled.
 - Prompt versioning with semantic diff alerts
 - Full observability dashboard — Grafana/Prometheus metrics export
 - Blue/green pipeline deployment with canary run comparison
+
+---
+
+## 13. External PR Review — Core system improvements (#1)
+
+**Verdict:** useful ideas, **not mergeable as-is**. Build the work on `main` ourselves and selectively port concepts only.
+
+### Why PR #1 should not be merged directly
+
+| Evidence | Finding |
+|---|---|
+| PR branch test run | **14 failed, 18 errors, 575 passed** |
+| Runtime failure 1 | `PipelineEngine` missing `_route_sector_tickers()` — breaks Stage 6 immediately |
+| Runtime failure 2 | `PipelineEngine` missing `_build_metric_snapshot()` — breaks Stage 14 monitoring |
+| Delivery risk | Large feature bundle mixes ARC fixes, Session 12/14 work, HTML reports, tax overlays, fallback chains, and trend logic in one untested PR |
+| Architectural quality | Several changes introduce useful ideas but without the missing adapters, schemas, or test coverage identified in `PROJECT_ISSUES_ASSESSMENT.md` |
+
+### Reusable ideas worth salvaging later
+
+- `EconomyAnalystAgent` as a dedicated AU/US macro agent
+- LLM fallback telemetry fields on `AgentResult`
+- `MarketConfig`, `LLMConfig`, and AU client config model direction
+- `ReportHtmlService` concept for interactive reports
+- `AustralianTaxService` and `SuperannuationMandateService` as future deterministic overlays
+- `ResearchTrend` / cross-run change alert concept
+
+**Decision:** keep PR #1 open only as a reference branch; do not squash or merge it.
+
+---
+
+## 14. Residual Issues from PROJECT_ISSUES_ASSESSMENT.md
+
+`PROJECT_ISSUES_ASSESSMENT.md` was merged from PR #2 and adds **41 residual issues** not yet covered by the existing roadmap.
+
+### Severity summary
+
+| Severity | Count |
+|---|---|
+| Critical | 1 |
+| High | 15 |
+| Medium | 19 |
+| Low | 6 |
+
+### Highest-priority residual issues to fold into upcoming work
+
+| ID | Issue | Why it matters | Fold into |
+|---|---|---|---|
+| ISS-1 | `MacroContextPacket` schema contract missing | ARC-1 is unsafe without typed macro packet validation | Session 11 |
+| ISS-3 | No `GenericSectorAnalystAgent` fallback | ARC-5 incomplete without coverage for unmapped tickers | Session 11 |
+| ISS-4 | `ValuationCard` → `StockCard` mapping unspecified | ARC-2 report fix can still produce malformed report cards | Session 11 |
+| ISS-9 | Agent output quality validation is non-fatal | Missing required keys still propagate through the pipeline | Session 11 |
+| ISS-10 | Gemini SDK import mismatch | Planned fallback chain can be broken on day one | Session 11 |
+| ISS-12 | Macro agents lack required key contracts | Stage 8 remains structurally weak even after Session 12 | Session 12 |
+| ISS-13 | No ASX-specific prompts | Australian market support will remain shallow | Session 12–13 |
+| ISS-16 | BHB benchmark still synthetic | Performance Attribution target can still be overstated | E-4 / Session 13 |
+| ISS-20 | Streamlit session key bug (`result` vs `run_result`) | Observability UI can break despite backend success | Session 11 |
+| ISS-27 | No live API full-pipeline integration test | Production-readiness remains unverified | Session 13 |
+| ISS-34 | No database persistence | Run history and observability remain flat-file only | Future Session 15+ |
+| ISS-36 | `llm_cost_usd` never populated | Ops / governance cost tracking remains incomplete | Future Session 15+ |
+
+### Watch-outs for every implementation session
+
+- Keep `PROJECT_ISSUES_ASSESSMENT.md` open while building Sessions 11–14.
+- Treat ISS-1, ISS-3, ISS-4, ISS-9, ISS-10, and ISS-20 as **preconditions**, not optional polish.
+- Do not merge large Cursor-generated feature bundles without running the full suite first.
+- Any new macro/reporting/ops work should be checked against ISS-12 through ISS-41 before commit.

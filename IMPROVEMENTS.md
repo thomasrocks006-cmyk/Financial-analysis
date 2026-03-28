@@ -531,12 +531,95 @@ Current weighted scores post-sessions 1–10. Projected scores after each sessio
 | Architecture repair items (ARC) | 10 |
 | Planned session items (S11–S14) | 22 |
 | Net-new additions (E-1–E-10) | 10 |
+| Residual issues from `PROJECT_ISSUES_ASSESSMENT.md` | 41 |
 | Full polish checklist items | 47 |
-| **Total tracked improvements** | **89** |
+| **Total tracked improvements / watch-outs** | **130** |
 
 Current test count: **607**  
 Projected after S11–S14 + E items: **607 + 32 + 35 + 30 + 30 + 50 ≈ 784 tests**
 
 ---
 
-*This document supersedes the brainstorm sections in ARCHITECTURE.md §13.9 and TRACKER.md §12 for the purposes of implementation planning. Those sections remain as quick-reference summaries.*
+## Part I — External PR Intake Decisions (March 28, 2026)
+
+### PR #1 — `Core system improvements`
+
+**Decision:** do **not** merge as-is.
+
+Why:
+
+| Evidence | Result |
+|---|---|
+| Isolated PR branch test run | **14 failed, 18 errors, 575 passed** |
+| Immediate runtime break | `_route_sector_tickers()` missing in `PipelineEngine` |
+| Secondary runtime break | `_build_metric_snapshot()` missing in `PipelineEngine` |
+| Scope quality | Too many unrelated features landed in one PR without clean staging |
+
+**Use it for:** idea harvesting only. Good concepts to salvage later:
+- `EconomyAnalystAgent`
+- AU tax and super overlays
+- LLM provider telemetry
+- HTML report service
+- cross-run research trend alerts
+
+### PR #2 — `PROJECT_ISSUES_ASSESSMENT.md`
+
+**Decision:** merged. The document is useful and has now been accepted into `main`.
+
+What it adds:
+- a post-roadmap audit of **41 residual issues**
+- a severity-ranked list of architectural gaps still not captured in the base roadmap
+- several prerequisite fixes that need to be folded into Sessions 11–13
+
+---
+
+## Part J — Residual Issues Added from `PROJECT_ISSUES_ASSESSMENT.md`
+
+These are issues not previously covered by Parts A–H.
+
+### Severity summary
+
+| Severity | Count |
+|---|---|
+| Critical | 1 |
+| High | 15 |
+| Medium | 19 |
+| Low | 6 |
+
+### New immediate-priority additions
+
+| ID | New issue | Why it changes the plan |
+|---|---|---|
+| ISS-1 | `MacroContextPacket` schema missing | ARC-1 needs typed validation, not raw dict threading |
+| ISS-3 | No `GenericSectorAnalystAgent` fallback | ARC-5 remains incomplete otherwise |
+| ISS-4 | `ValuationCard` → `StockCard` mapper unspecified | ARC-2 can still produce malformed report cards |
+| ISS-9 | Agent quality checks are non-fatal | Missing required keys still pass through the system |
+| ISS-10 | Gemini package/import mismatch | E-8 fallback chain can break on first use |
+| ISS-12 | Macro agents lack required key contracts | Session 12 needs unified Stage 8 packet design |
+| ISS-13 | No ASX prompt coverage | AU market support remains shallow even with AU data |
+| ISS-16 | BHB benchmark still synthetic | E-4 needs deeper scope than currently written |
+| ISS-20 | Streamlit `result` / `run_result` mismatch | Frontend observability can fail despite backend success |
+| ISS-27 | No live API E2E pipeline test | Production-readiness score remains overstated |
+
+### Session remapping after the assessment
+
+| Session | Existing scope | Newly added residual issues |
+|---|---|---|
+| Session 11 | ARC-1 through ARC-10 | ISS-1, ISS-3, ISS-4, ISS-9, ISS-10, ISS-20 |
+| Session 12 | Macro economy + AU/US markets | ISS-12, ISS-13, ISS-14, ISS-22 |
+| Session 13 | Depth & quality | ISS-16, ISS-23, ISS-27, ISS-28 |
+| Session 14 | AU client context | ISS-29, ISS-30 |
+| Future Ops / Session 15+ | Production hardening | ISS-34, ISS-35, ISS-36, ISS-37, ISS-38, ISS-39, ISS-40, ISS-41 |
+
+### Extra watch-outs added to the polish checklist
+
+- Do not mark ARC-1 done until macro payload validation is typed and default-safe.
+- Do not mark ARC-2 done until report cards are produced through an explicit adapter.
+- Do not mark ARC-5 done until unmapped tickers still receive a sector view.
+- Do not count E-8 complete until Gemini import/runtime path is proven in tests.
+- Do not count E-4 complete until benchmark **return series** are real, not just benchmark weights.
+- Do not call the platform production-ready until a live-key full pipeline integration test exists.
+
+---
+
+*This document supersedes the brainstorm sections in ARCHITECTURE.md §13.9 and TRACKER.md §12 for the purposes of implementation planning. Those sections remain as quick-reference summaries. It now also incorporates the merged `PROJECT_ISSUES_ASSESSMENT.md` residual-issue audit and the explicit decision not to merge PR #1 as-is.*

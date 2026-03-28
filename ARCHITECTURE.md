@@ -1154,4 +1154,68 @@ The following items were identified in a systematic gap analysis vs a real JPAM 
 
 ---
 
-*Document updated: March 28, 2026 — session 10 complete (607 tests), full gap analysis and brainstorm added §13. Sessions 11–14 planned. Market scope defined. Architecture repair items ARC-1 through ARC-10 documented.*
+### 13.10 External PR Review — Core system improvements (#1)
+
+The Cursor-generated PR #1 contains ideas aligned with our roadmap, but it should **not** be merged as-is.
+
+**Observed result from isolated review branch:** `14 failed, 18 errors, 575 passed`.
+
+Primary hard failures:
+
+| Finding | Why it blocks merge |
+|---|---|
+| `_route_sector_tickers()` referenced but not implemented | Stage 6 crashes immediately |
+| `_build_metric_snapshot()` referenced but not implemented | Stage 14 crashes on failed or completed runs |
+| Large mixed-scope bundle | ARC fixes, Session 12/14 features, HTML reporting, tax overlays, fallback chains, and trend logic all land together without a clean sequencing strategy |
+| Several changes depend on unspecified adapters/schemas | Confirmed by `PROJECT_ISSUES_ASSESSMENT.md` ISS-1, ISS-3, ISS-4, ISS-12, ISS-16 |
+
+**Architecture decision:** use PR #1 as a concept/reference branch only. Rebuild any valuable pieces on `main` in small session-sized increments with tests.
+
+Reusable concepts worth salvaging later:
+- `EconomyAnalystAgent`
+- LLM provider/model telemetry on `AgentResult`
+- `MarketConfig` / `LLMConfig` direction
+- `ReportHtmlService`
+- AU client overlays (`AustralianTaxService`, `SuperannuationMandateService`)
+- Cross-run research trend alerts
+
+---
+
+### 13.11 Residual Issues After Current Plan (from `PROJECT_ISSUES_ASSESSMENT.md`)
+
+PR #2 introduced a useful audit document identifying **41 additional residual issues** that still remain even if Sessions 11–14 and E-1–E-10 are completed exactly as currently written.
+
+| Severity | Count |
+|---|---|
+| Critical | 1 |
+| High | 15 |
+| Medium | 19 |
+| Low | 6 |
+
+Most important additions to the architecture plan:
+
+| ID | Architectural implication | Required response |
+|---|---|---|
+| ISS-1 | `_get_macro_context()` must validate against a typed `MacroContextPacket` | Add schema contract in Session 11 before ARC-1 is considered done |
+| ISS-3 | Config-driven routing alone is insufficient | Add `GenericSectorAnalystAgent` or equivalent fallback in Session 11 |
+| ISS-4 | Report assembly needs typed mapping, not raw dict reuse | Add `ValuationCard` → `StockCard` adapter in Session 11 |
+| ISS-9 | `_REQUIRED_OUTPUT_KEYS` warnings are too weak | Convert critical agent quality failures into retry / gate failures |
+| ISS-10 | Gemini fallback path is structurally mismatched to installed package | Fix before E-8 multi-provider fallback is trusted |
+| ISS-12 | Stage 8 remains untyped even after adding `EconomyAnalystAgent` | Define a unified Stage 8 packet with required keys |
+| ISS-13 | AU market support is not only data/config — prompt layer also needs localisation | Extend Session 12/13 prompt work to ASX-specific analysis |
+| ISS-16 | Benchmark module still needs real benchmark series, not just benchmark weights | Strengthen E-4 scope |
+| ISS-20 | Streamlit stage/output state has a known bug | Add to Session 11 quick wins |
+| ISS-27 | No live full-pipeline API integration test exists | Add to Session 13 production-hardening scope |
+| ISS-34 | Flat-file persistence becomes a platform ceiling | Plan Session 15+ database migration |
+| ISS-36 / ISS-37 / ISS-38 | Production telemetry, caching, and cancellation are still incomplete | Add to future Ops hardening roadmap |
+
+This means the roadmap is directionally correct, but **not yet sufficient for full polish**. Session definitions should now be interpreted as:
+
+- **Session 11:** ARC-1–10 **plus** ISS-1, ISS-3, ISS-4, ISS-9, ISS-10, ISS-20
+- **Session 12:** macro build-out **plus** ISS-12, ISS-13, ISS-14, ISS-22
+- **Session 13:** depth/quality **plus** ISS-16, ISS-23, ISS-27, ISS-28
+- **Session 14+:** AU client context **plus** ISS-29, ISS-30, and future ops/persistence items
+
+---
+
+*Document updated: March 28, 2026 — session 10 complete (607 tests), full gap analysis and brainstorm added §13. Sessions 11–14 planned. Market scope defined. Architecture repair items ARC-1 through ARC-10 documented. PR #1 reviewed and rejected as not merge-ready. PR #2 assessment merged and folded into the architecture plan.*
