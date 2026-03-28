@@ -22,7 +22,7 @@
 | Session 10 (ACT-S10-1 through ACT-S10-5) | All **COMPLETE** |
 | **Architecture Repair (ARC-1 through ARC-10)** | ✅ **COMPLETE — `2b6a360`** |
 | **Session 11 (revised)** | ✅ **COMPLETE — `2b6a360`** |
-| **Session 12 — Macro Economy & Australia/US Markets** | 🔲 **TODO** |
+| **Session 12 — Macro Economy & Australia/US Markets** | ✅ **COMPLETE — `12c7086`** |
 | **Session 13 — Depth & Quality** | 🔲 **TODO** |
 | **Session 14 — Superannuation & AU Client Context** | 🔲 **PLANNED** |
 | **PROJECT_ISSUES_ASSESSMENT.md (PR #2)** | ✅ **MERGED — March 28, 2026** |
@@ -397,16 +397,16 @@ This fills the current **2/10 macro economy gap** (see ARCHITECTURE.md §13.2).
 
 | Step | Task | Effort |
 |---|---|---|
-| 1 | `EconomicIndicatorService` — FRED + RBA + ABS fetch, async, typed Pydantic output | Medium |
-| 2 | `MacroScenarioService` — scenario matrix builder; base/bull/bear for AU + US | Medium |
-| 3 | `EconomyAnalystAgent` — full LLM agent; ~10 output fields AU/US specific | Medium |
-| 4 | `MarketConfig` added to `PipelineConfig`; universe detection logic | Low |
-| 5 | Wire `EconomyAnalystAgent` → `MacroStrategistAgent` | Low |
-| 6 | Wire macro scenarios into VaR stress tests (Stage 9) | Low |
-| 7 | Wire AU/US macro divergence into PM allocation (Stage 12) | Low |
-| 8 | Write `tests/test_session12.py` — ~35 tests | Medium |
-| 9 | Run full suite; target ~674+/674 passing | Low |
-| 10 | Update TRACKER.md + ARCHITECTURE.md; git commit | Trivial |
+| 1 | `EconomicIndicatorService` — FRED + RBA + ABS fetch, async, typed Pydantic output | Medium | ✅ `12c7086` |
+| 2 | `MacroScenarioService` — scenario matrix builder; base/bull/bear for AU + US | Medium | ✅ `12c7086` |
+| 3 | `EconomyAnalystAgent` — full LLM agent; ~10 output fields AU/US specific | Medium | ✅ `12c7086` |
+| 4 | `MarketConfig` added to `PipelineConfig`; universe detection logic | Low | ✅ `12c7086` |
+| 5 | Wire `EconomyAnalystAgent` → `MacroStrategistAgent` | Low | ✅ `12c7086` |
+| 6 | Wire macro scenarios into VaR stress tests (Stage 9) | Low | ✅ `12c7086` |
+| 7 | Wire AU/US macro divergence into PM allocation (Stage 12) | Low | ✅ `12c7086` |
+| 8 | Write `tests/test_session12.py` — 100 tests (749 passing total) | Medium | ✅ `12c7086` |
+| 9 | Run full suite; 749 passing (18 pre-existing errors in S7/S8 async) | Low | ✅ `12c7086` |
+| 10 | Update TRACKER.md + IMPROVEMENTS.md; git commit | Trivial | ✅ `12c7086` |
 
 ---
 
@@ -539,8 +539,8 @@ Items identified during Session 11 planning audit. Not yet scheduled.
 | ISS-4 | `ValuationCard` → `StockCard` mapping unspecified | ARC-2 report fix can still produce malformed report cards | ✅ `2b6a360` |
 | ISS-9 | Agent output quality validation is non-fatal | Missing required keys still propagate through the pipeline | ✅ `2b6a360` |
 | ISS-10 | Gemini SDK import mismatch | Planned fallback chain can be broken on day one | ✅ `2b6a360` |
-| ISS-12 | Macro agents lack required key contracts | Stage 8 remains structurally weak even after Session 12 | Session 12 |
-| ISS-13 | No ASX-specific prompts | Australian market support will remain shallow | Session 12–13 |
+| ISS-12 | Macro agents lack required key contracts | Stage 8 remains structurally weak even after Session 12 | ✅ `12c7086` |
+| ISS-13 | No ASX-specific prompts | Australian market support will remain shallow | ✅ `12c7086` |
 | ISS-16 | BHB benchmark still synthetic | Performance Attribution target can still be overstated | E-4 / Session 13 |
 | ISS-20 | Streamlit session key bug (`result` vs `run_result`) | Observability UI can break despite backend success | ✅ `2b6a360` |
 | ISS-27 | No live API full-pipeline integration test | Production-readiness remains unverified | Session 13 |

@@ -474,8 +474,8 @@ Below is every polish item that separates "working prototype" from "institutiona
 
 ### Agent Quality
 - [ ] All 14 agent prompts include macro regime context (rates, inflation, AU/US)
-- [ ] `EconomyAnalystAgent` live with 12-field output
-- [ ] `MacroStrategistAgent` extended for AU/US specific regime flags
+- [x] `EconomyAnalystAgent` live with 12-field output
+- [x] `MacroStrategistAgent` extended for AU/US specific regime flags
 - [ ] `EsgAnalystAgent` includes carbon intensity field
 - [ ] `QuantResearchAnalystAgent` uses GARCH volatility in its commentary
 - [ ] Black-Litterman views wired from sector agent outputs to PM optimiser
@@ -588,11 +588,11 @@ Current weighted scores post-sessions 1–10. Projected scores after each sessio
 | 8 | ARC-3 | VaR uses live returns (not random) | ✅ S11 | Low |
 | 9 | ARC-5 | SECTOR_ROUTING config | ✅ S11 | Medium |
 | 10 | ARC-2 | Real report assembly (stock cards + PM doc) | ✅ S11 | Medium |
-| 11 | — | `EconomicIndicatorService` (FRED + RBA) | S12 | Medium |
-| 12 | — | `MacroScenarioService` | S12 | Medium |
-| 13 | — | `EconomyAnalystAgent` (12-field AU/US) | S12 | Medium |
-| 14 | — | `MarketConfig` + ASX universe support | S12 | Low |
-| 15 | — | Wire macro scenarios into VaR stress tests | S12 | Low |
+| 11 | — | `EconomicIndicatorService` (FRED + RBA) | ✅ S12 `12c7086` | Medium |
+| 12 | — | `MacroScenarioService` | ✅ S12 `12c7086` | Medium |
+| 13 | — | `EconomyAnalystAgent` (12-field AU/US) | ✅ S12 `12c7086` | Medium |
+| 14 | — | `MarketConfig` + ASX universe support | ✅ S12 `12c7086` | Low |
+| 15 | — | Wire macro scenarios into VaR stress tests | ✅ S12 `12c7086` | Low |
 | 16 | — | Agent prompt upgrades (macro-aware) | S13 | Medium |
 | 17 | — | DCF sensitivity tables with macro overlay | S13 | Medium |
 | 18 | — | Fama-French 5-factor live refit (FRED) | S13 | High |
@@ -684,8 +684,8 @@ These are issues not previously covered by Parts A–H.
 | ISS-4 | `ValuationCard` → `StockCard` mapper unspecified | ARC-2 can still produce malformed report cards | ✅ `2b6a360` |
 | ISS-9 | Agent quality checks are non-fatal | Missing required keys still pass through the system | ✅ `2b6a360` |
 | ISS-10 | Gemini package/import mismatch | E-8 fallback chain can break on first use | ✅ `2b6a360` |
-| ISS-12 | Macro agents lack required key contracts | Session 12 needs unified Stage 8 packet design | 🔲 S12 |
-| ISS-13 | No ASX prompt coverage | AU market support remains shallow even with AU data | 🔲 S12 |
+| ISS-12 | Macro agents lack required key contracts | Session 12 needs unified Stage 8 packet design | ✅ `12c7086` |
+| ISS-13 | No ASX prompt coverage | AU market support remains shallow even with AU data | ✅ `12c7086` |
 | ISS-16 | BHB benchmark still synthetic | E-4 needs deeper scope than currently written | 🔲 S13 |
 | ISS-20 | Streamlit `result` / `run_result` mismatch | Frontend observability can fail despite backend success | ✅ `2b6a360` |
 | ISS-27 | No live API E2E pipeline test | Production-readiness score remains overstated | 🔲 S13 |
@@ -695,7 +695,7 @@ These are issues not previously covered by Parts A–H.
 | Session | Existing scope | Newly added residual issues |
 |---|---|---|
 | Session 11 | ARC-1 through ARC-10 | ISS-1, ISS-3, ISS-4, ISS-9, ISS-10, ISS-20 — ✅ **`2b6a360` complete** |
-| Session 12 | Macro economy + AU/US markets | ISS-12, ISS-13, ISS-14, ISS-22 |
+| Session 12 | Macro economy + AU/US markets | ISS-12, ISS-13, ISS-14, ISS-22 — ✅ **`12c7086` complete** |
 | Session 13 | Depth & quality | ISS-16, ISS-23, ISS-27, ISS-28 |
 | Session 14 | AU client context | ISS-29, ISS-30 |
 | Future Ops / Session 15+ | Production hardening | ISS-34, ISS-35, ISS-36, ISS-37, ISS-38, ISS-39, ISS-40, ISS-41 |
