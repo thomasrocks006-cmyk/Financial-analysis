@@ -537,13 +537,13 @@ swapping to `pipeline_adapter` is the next convergence step.
 | Core orchestration architecture | 7.0 ↑ | `pipeline_adapter.py` thin shim created; single canonical `PipelineEngine` path documented | `app.py` import swap not yet done; legacy runner still present |
 | Deterministic services | 7.5 | Good modular service set: DCF, reconciliation, QA, risk, scenarios, factor, VaR | Service unit-test coverage could be deeper |
 | Market + qualitative data ingestion | 8.0 ↑ | D-1: `QualitativePackage` typed schemas + async `QualitativeDataService`; 8 sources with Pydantic contracts | Backend ingestion still serial; add `asyncio.gather` with semaphore |
-| LLM agent layer | 7.5 ↑ | All agents enforce `parse_output`; `QuantResearchAnalystAgent` wired into Stage 9 | Political risk and macro agents still have shallow output contracts |
+| LLM agent layer | 7.8 ↑ | All agents enforce `parse_output`; `QuantResearchAnalystAgent` + `FixedIncomeAnalystAgent` wired into Stage 9 | Political risk macro agents still have shallow output contracts; base_agent silent JSON fallback unresolved |
 | Governance / gates / review | 7.5 ↑ | Binary `PASS`/`FAIL` enforced (A-3); IC `_pm_vote` no longer auto-passes (A-4); all gates hardened | Frontend still calls plain `pass_with_disclosure` strings in some legacy code paths |
 | Schema layer / type safety | 7.5 ↑ | New Pydantic v2 qualitative schemas (10 models); `QualitativePackage` coverage metrics | Frontend ad hoc dicts still bypass typed contracts in some flows |
 | Persistence / audit trail | 7.0 ↑ | A-2: `storage.save_run()` now mirrors to `RunRegistryService`; `list_saved_runs()` merges both stores | Frontend-initiated runs that bypass PipelineEngine create partial registry records |
-| Report assembly | 6.0 | Reports can be generated on both backend and frontend paths | Two assembly paths still create drift risk |
-| Testing / QA | 8.5 ↑ | 378 tests (up from 103); E2E smoke tests (19); deferred-item tests (56); all gates and agents covered | Frontend Streamlit components and live API paths not yet covered |
-| Documentation accuracy | 7.5 ↑ | Scores updated to reflect post-Phase-7 reality; TRACKER.md created | Post-roadmap candidates (P-3 to P-8) not yet documented with detailed specs |
+| Report assembly | 7.0 ↑ | Streamlit Quant Analytics panel surfaces VaR/CVaR/drawdown, ETF overlap, factor β, IC vote, Fixed-Income context from Stage 9/12 outputs; works for live and loaded runs | Two assembly paths still create drift risk; no PDF export yet |
+| Testing / QA | 8.5 | 427 tests (up from 378 in session 3); CI weekly live-data workflow (.github/workflows/weekly_live_data.yml) canaries NVDA+MSFT schema + yfinance fallback | Frontend Streamlit components untested; live API path tested only in CI canary |
+| Documentation accuracy | 7.8 ↑ | Scores updated through session 4; TRACKER.md current; ARCHITECTURE.md Next 10 Actions updated | P-5/P-6 specs still informal; ESG and Performance Attribution have no detailed spec |
 
 ### Gap Analysis
 
@@ -826,16 +826,16 @@ These are concrete defects in the current code — not design gaps but bugs or u
 | Division | Analogous in codebase | Current score | JPAM target | Gap |
 |---|---|---|---|---|
 | Global Research | Stages 5–8 + associated agents | 7.5 / 10 ↑ | 9.0 / 10 | 1.5 |
-| Quantitative Research | Risk Engine + Scenario + QuantResearchAnalystAgent | 7.0 / 10 ↑ | 9.0 / 10 | 2.0 |
+| Quantitative Research | Risk Engine + Scenario + QuantResearchAnalystAgent + FixedIncomeAnalystAgent | 7.5 / 10 ↑ | 9.0 / 10 | 1.5 |
 | Portfolio Management | Stage 12 + Portfolio Manager agent | 6.5 / 10 ↑ | 8.5 / 10 | 2.0 |
 | Investment Governance | Gates + Associate Reviewer + binary PASS/FAIL | 7.5 / 10 ↑ | 9.5 / 10 | 2.0 |
 | Performance Attribution | Not built | 0 / 10 | 8.5 / 10 | 8.5 |
 | ESG / Sustainable Investing | Not built | 0 / 10 | 7.5 / 10 | 7.5 |
-| Operations & Technology | Ingestion + Run Registry + pipeline_adapter + 378 tests | 7.5 / 10 ↑ | 9.0 / 10 | 1.5 |
-| Client Solutions / Reporting | Streamlit UI + Report Assembly | 6.5 / 10 | 8.5 / 10 | 2.0 |
+| Operations & Technology | Ingestion + Run Registry + pipeline_adapter + 427 tests + CI weekly workflow | 7.8 / 10 ↑ | 9.0 / 10 | 1.2 |
+| Client Solutions / Reporting | Streamlit UI + Report Assembly + Quant Analytics Panel (VaR, ETF overlap, IC vote, FI context) | 7.5 / 10 ↑ | 8.5 / 10 | 1.0 |
 
-**Weighted platform score vs JPAM standard: 6.5 / 10 ↑** *(updated from 4.4)*  
-*(Weighted by division importance; primary remaining gaps: Performance Attribution not built, ESG/Governance not built, LLM agent output contracts partially shallow)*
+**Weighted platform score vs JPAM standard: 6.8 / 10 ↑** *(updated session 4 from 6.5)*  
+*(Weighted by division importance; primary remaining gaps: Performance Attribution not built, ESG/Governance not built, `engine.py` gate logic placeholder, `base_agent.py` silent JSON fallback)*
 
 ### 12.5 Next 10 Actions (Priority Order)
 
@@ -844,14 +844,26 @@ These are concrete defects in the current code — not design gaps but bugs or u
 3. ~~Reduce `frontend/pipeline_runner.py` to an adapter~~ — **DONE** (`pipeline_adapter.py` created; `PipelineEngineAdapter` is drop-in)
 4. ~~Merge `frontend/storage.py` into `RunRegistryService`~~ — **DONE** (`save_run` mirrors to registry; `list_saved_runs` merges both stores)
 5. Implement `SelfAuditPacket` schema and attach to every run — **governance foundation**
-6. Add drawdown analysis and VaR to `RiskEngine` — **lowest-effort quant uplift**
-7. Add benchmark-relative analytics module — **biggest missing quant signal**
-8. Implement investment committee schema and human override log with identity — **governance hardening**
-9. Begin historical portfolio logging — **attribution data accrual starts now**
+6. ~~Add drawdown analysis and VaR to `RiskEngine`~~ — **DONE** (`RiskPacket` with VaR/CVaR/max-drawdown/portfolio-volatility; ACT-6 session 3)
+7. ~~Add benchmark-relative analytics module~~ — **DONE** (`BenchmarkModule` with BHB factor attribution; already built)
+8. ~~Implement investment committee schema and human override log with identity~~ — **DONE** (`InvestmentCommitteeService` + `HumanOverride` built; IC vote displayed in Streamlit Quant Analytics panel)
+9. ~~Begin historical portfolio logging~~ — **DONE** (`PortfolioSnapshot` / `PerformanceTracker` built and wired)
 10. Add `asyncio.gather` to market data ingestion — **quick operational win**
+
+### 12.6 Session 5 Candidate Actions
+
+1. Fix `engine.py` placeholder gate logic (`stage_gate_met()` always returns True) — blocks real conditional routing
+2. Fix `base_agent.py` silent JSON fallback — strip markdown fences and re-parse before logging as failure
+3. Implement `SelfAuditPacket` schema — capture agent latency, token counts, confidence flags per stage
+4. Add `asyncio.gather` to market data ingestion — parallel ticker fetch, cut Stage 2 latency ≥50%
+5. ESG/Governance analyst agent — dedicated LLM ESG scorer (currently 0/10 coverage)
+6. Performance Attribution (BHB) with real historical data — requires time-series price store
+7. Add Redis-backed run cache — avoid re-fetching market data for same ticker set within 1 h
+8. Export Report-tab data to PDF — `weasyprint` or `pdfkit` rendering of Quant Analytics panel
 
 ---
 
+*Document updated: session 4 — P-4 (Quant Analytics Streamlit panel), P-7 (FixedIncomeAnalystAgent wired into Stage 9), P-8 (GitHub Actions weekly live-data CI workflow). Items 6–9 of Next 10 Actions confirmed done. Test count: 427 passing.*  
 *Document updated: March 28, 2026 — Extended gap analysis and JPAM roadmap goal logged.*  
 *Scores refreshed post-Phase-7 debt-clearing session: governance hardened (A-3/A-4), qualitative pipeline built (D-1), QuantResearchAnalystAgent wired (D-4), E2E smoke tests added (P-2), pipeline_adapter created (A-1), storage unified (A-2). Test count: 378 passing.*  
 *See ROADMAP.md for the complete 7-phase build plan.*
