@@ -223,6 +223,19 @@ def _make_agent_mocks(run_id: str) -> dict[str, AsyncMock]:
                 "data_quality_note": "Synthetic returns used",
             },
         )),
+        "fixed_income": AsyncMock(return_value=_agent_result(
+            "fixed_income_analyst", run_id,
+            {
+                "yield_curve_regime": "normal",
+                "10y_yield_context": "4.3% — neutral for equities",
+                "cost_of_capital_trend": "stable",
+                "rate_sensitivity_score": 5.0,
+                "key_risks": ["rate hike risk"],
+                "offsetting_factors": ["strong earnings growth"],
+                "sector_rotation_read": "neutral",
+                "methodology_note": "Smoke test mock — no live yield data",
+            },
+        )),
     }
 
 
@@ -247,6 +260,24 @@ class TestPipelineEngineSmokeTest:
         engine.reviewer_agent.run = mocks["reviewer"]
         engine.pm_agent.run = mocks["portfolio"]
         engine.quant_analyst_agent.run = mocks["quant"]
+        engine.fixed_income_agent.run = mocks["fixed_income"]
+
+        # Mock mandate engine + IC: the 3-ticker smoke universe violates production
+        # mandates (33% single-name > 15% max, 3/8 min positions).  These services
+        # are deterministic — mock them so smoke tests verify orchestration not rules.
+        from research_pipeline.schemas.governance import (
+            CommitteeRecord, CommitteeVote, MandateCheckResult,
+        )
+        _mandate_ok = MandateCheckResult(
+            run_id="smoke", mandate_id="smoke-mandate", is_compliant=True,
+        )
+        engine.mandate_engine.check_compliance = MagicMock(return_value=_mandate_ok)
+        _ic_approved = CommitteeRecord(
+            record_id="IC-smoke", run_id="smoke",
+            outcome=CommitteeVote.APPROVE, quorum_met=True,
+            minutes="Approved — smoke test mock",
+        )
+        engine.investment_committee.evaluate_and_vote = MagicMock(return_value=_ic_approved)
 
     @pytest.mark.asyncio
     async def test_pipeline_runs_to_completion(self, smoke_settings, smoke_config):
@@ -512,6 +543,22 @@ class TestPipelineAdapter:
         engine_instance.reviewer_agent.run = mocks["reviewer"]
         engine_instance.pm_agent.run = mocks["portfolio"]
         engine_instance.quant_analyst_agent.run = mocks["quant"]
+        engine_instance.fixed_income_agent.run = mocks["fixed_income"]
+
+        # Same mandate + IC mocking as TestPipelineEngineSmokeTest._patch_agents
+        from research_pipeline.schemas.governance import (
+            CommitteeRecord, CommitteeVote, MandateCheckResult,
+        )
+        _mandate_ok = MandateCheckResult(
+            run_id="adapter-smoke", mandate_id="smoke-mandate", is_compliant=True,
+        )
+        engine_instance.mandate_engine.check_compliance = MagicMock(return_value=_mandate_ok)
+        _ic_approved = CommitteeRecord(
+            record_id="IC-adapter-smoke", run_id="adapter-smoke",
+            outcome=CommitteeVote.APPROVE, quorum_met=True,
+            minutes="Approved — adapter smoke test mock",
+        )
+        engine_instance.investment_committee.evaluate_and_vote = MagicMock(return_value=_ic_approved)
 
         # Patch PipelineEngine.__init__ to return our pre-built instance
         with patch("frontend.pipeline_adapter.PipelineEngine", return_value=engine_instance):

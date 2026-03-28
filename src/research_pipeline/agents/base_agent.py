@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from pathlib import Path
@@ -383,21 +384,49 @@ class BaseAgent(ABC):
     def parse_output(self, raw_response: str) -> dict[str, Any]:
         """Parse raw LLM response into structured output.
 
-        Fail closed: malformed JSON raises a StructuredOutputError
-        rather than silently degrading to raw_text.
-        """
-        # Strip markdown code fences if present
-        cleaned = raw_response.strip()
-        if cleaned.startswith("```"):
-            lines = cleaned.split("\n")
-            # Remove first line (```json or ```) and last line (```)
-            lines = [l for l in lines if not l.strip().startswith("```")]
-            cleaned = "\n".join(lines).strip()
+        Fail closed: malformed JSON raises a StructuredOutputError.
 
+        Strategies attempted in order:
+        1. Extract JSON from a markdown ```json ... ``` fence (anywhere in response,
+           handles models that add a preamble before the code block).
+        2. Direct ``json.loads`` on the full response (already bare JSON).
+        3. Locate the first ``{`` or ``[`` and use ``raw_decode`` to skip LLM
+           preamble text.  Raises StructuredOutputError on all failures.
+        """
+        cleaned = raw_response.strip()
+
+        # Strategy 1: markdown code fence (handles preamble + fence)
+        fence_match = re.search(r"```(?:json)?\s*\n?([\s\S]*?)```", cleaned)
+        if fence_match:
+            candidate = fence_match.group(1).strip()
+            try:
+                return json.loads(candidate)
+            except json.JSONDecodeError:
+                pass  # fence present but content malformed — fall through
+
+        # Strategy 2: bare JSON (full response is already valid JSON)
         try:
             return json.loads(cleaned)
-        except json.JSONDecodeError as exc:
-            raise StructuredOutputError(
-                f"Agent '{self.name}' returned malformed JSON: {exc}. "
-                f"First 200 chars: {raw_response[:200]}"
-            ) from exc
+        except json.JSONDecodeError:
+            pass
+
+        # Strategy 3: find first '{' or '[' and raw_decode (skips LLM preamble)
+        _decoder = json.JSONDecoder()
+        for start_char in ("{", "["):
+            idx = cleaned.find(start_char)
+            if idx != -1:
+                try:
+                    obj, _ = _decoder.raw_decode(cleaned, idx)
+                    if isinstance(obj, (dict, list)):
+                        logger.warning(
+                            "%s: stripped %d-char LLM preamble before JSON",
+                            self.name, idx,
+                        )
+                        return obj
+                except json.JSONDecodeError:
+                    pass
+
+        raise StructuredOutputError(
+            f"Agent '{self.name}' returned malformed JSON: no valid JSON found. "
+            f"First 200 chars: {raw_response[:200]}"
+        )

@@ -577,8 +577,13 @@ class PipelineEngine:
 
         self._save_stage_output(9, risk_output)
         gate = self.gates.gate_9_risk(
-            risk_packet_present=True,
+            risk_packet_present=risk_packet is not None,
             scenario_results_count=len(scenario_results),
+            concentration_breaches=[
+                f"{t}: weight={(1.0/len(universe)):.2%}"
+                for t in universe
+                if (1.0 / len(universe)) > 0.40  # flag single names >40% weight
+            ] if universe else [],
         )
         return self._check_gate(gate)
 
@@ -747,9 +752,15 @@ class PipelineEngine:
             "audit_trail": audit_trail.model_dump(),
         })
 
+        # Check mandate compliance violations for gate
+        mandate_violations = [
+            v.description for v in mandate_check.violations
+        ] if not mandate_check.is_compliant else []
+
         gate = self.gates.gate_12_portfolio(
             variants_count=3 if result.success else 0,
-            review_passed=True,
+            review_passed=ic_record.is_approved,  # IC vote must approve; hard False blocks downstream
+            constraint_violations=mandate_violations or None,
         )
         return self._check_gate(gate)
 
@@ -780,7 +791,10 @@ class PipelineEngine:
         # Save report
         output_path = self.report_assembly.save_report(report, self.settings.reports_dir)
         self._save_stage_output(13, {"report_path": str(output_path), "status": report.publication_status})
-        gate = self.gates.gate_13_report(report_generated=True, all_sections_approved=True)
+        gate = self.gates.gate_13_report(
+            report_generated=True,
+            all_sections_approved=review_result.is_publishable,  # use reviewer verdict, not hardcoded True
+        )
         return self._check_gate(gate)
 
     async def stage_14_monitoring(self) -> None:

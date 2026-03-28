@@ -1,8 +1,8 @@
 # Project Tracker — AI Research & Portfolio Platform
 
 > **Last updated:** March 28, 2026  
-> **Test suite:** 427 / 427 passing  
-> **Commit:** `86f5c1c` → session 4 in progress
+> **Test suite:** 453 / 453 passing  
+> **Commit:** `c8a7d11` → session 5 in progress
 
 ---
 
@@ -14,6 +14,7 @@
 | Session 2 debt-clearing (10 items) | All **COMPLETE** |
 | Session 3 (P-5, P-6, ACT-6) | All **COMPLETE** |
 | Session 4 (P-4, P-7, P-8) | All **COMPLETE** |
+| Session 5 (ACT-S5-1, ACT-S5-2) | All **COMPLETE** |
 
 ---
 
@@ -46,6 +47,8 @@
 | P-4 | **Frontend** | Wire ETF overlap + BHB + benchmark analytics into Streamlit | Medium | Medium | ✅ session 4 |
 | P-7 | **Agents** | Fixed-income thesis agent | Medium | High | ✅ session 4 |
 | P-8 | **CI** | Weekly live-data validation run as CI job | Low | Low | ✅ session 4 |
+| ACT-S5-1 | **Engine** | Fix engine.py gate logic — gates 9/12/13 no longer hardcoded True | High | Low | ✅ session 5 |
+| ACT-S5-2 | **Agents** | Fix base_agent.parse_output — 3-strategy JSON extraction incl. preamble | High | Low | ✅ session 5 |
 
 ---
 
@@ -96,7 +99,8 @@
 | `test_services.py` | ~20 | Deterministic services |
 | `test_smoke_pipeline.py` | 19 | E2E pipeline + adapter |
 | `test_next_section.py` | 49 | P-5 yfinance fallback, P-6 relative valuation, ACT-6 RiskPacket, P-7 FI agent, P-4 panel |
-| **Total** | **427** | All passing |
+| `test_session5.py` | 26 | ACT-S5-1 gate logic hardening (gates 9/12/13), ACT-S5-2 base_agent parse_output strategies |
+| **Total** | **453** | All passing |
 
 ---
 
