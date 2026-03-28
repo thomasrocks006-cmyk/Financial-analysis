@@ -281,6 +281,21 @@ All services live in `src/research_pipeline/services/`. They contain **no LLM ca
 | **RunRegistryService** | `run_registry.py` | Persists `RunRecord` objects to disk (JSON). Each run gets a UUID, timestamps, stage outcomes, and final status (RUNNING / COMPLETED / FAILED). Enables audit and re-run. |
 | **GoldenTestHarness** | `golden_tests.py` | Regression tests run at Stage 14. Checks that key numeric outputs fall within expected bands established from prior approved runs. |
 | **Scheduler** | `scheduler.py` | Cron-style scheduling for automated recurring pipeline runs. |
+| **FactorExposureEngine** | `factor_engine.py` | Computes 5-factor (market, size, value, momentum, quality) exposures per ticker via OLS regression or heuristic subtheme profiles. Portfolio-level factor decomposition and attribution. |
+| **BenchmarkModule** | `benchmark_module.py` | Loads benchmark constituents (SPY, QQQ, XLK, SOXX). Computes active weights, tracking error, information ratio, Sharpe ratio, max drawdown. Full benchmark comparison. |
+| **VaREngine** | `var_engine.py` | Parametric and historical VaR/CVaR at configurable confidence levels (95%, 99%). Drawdown analysis with max drawdown, recovery tracking. Portfolio-level VaR with position decomposition. |
+| **PortfolioOptimisationEngine** | `portfolio_optimisation.py` | Mean-variance optimisation: minimum variance, maximum Sharpe, risk parity, Black-Litterman. Enforces min/max weight constraints. Returns `OptimisationResult` with weights, expected return, volatility, risk contributions. |
+| **MandateComplianceEngine** | `mandate_compliance.py` | Checks portfolio weights against investment mandate rules (single-name limits, sector caps, position count, liquidity floors). Returns `MandateCheckResult` with violations and severity. |
+| **ESGService** | `esg_service.py` | ESG scoring per ticker (heuristic profiles for 15 AI infra stocks). Exclusion checking (rating, controversy, composite). Portfolio-level ESG compliance and weighted scoring. |
+| **InvestmentCommitteeService** | `investment_committee.py` | Simulates 5-member IC voting (chair, PM, risk officer, analyst, compliance). Per-role voting logic based on gate results, mandate, risk, review. Audit trail and committee records. |
+| **PositionSizingEngine** | `position_sizing.py` | Converts conviction signals and risk budgets into portfolio weights. Methods: equal weight, conviction-weighted, inverse volatility, risk-budget weighted. Iterative constraint application. |
+| **MonitoringEngine** | `monitoring_engine.py` | Portfolio drift detection: price moves, weight drift, concentration breach (HHI), volatility spikes. Generates `MonitoringReport` with severity-rated alerts. |
+| **PerformanceTracker** | `performance_tracker.py` | BHB attribution (allocation, selection, interaction effects). Liquidity profiling (days-to-liquidate, market impact). Thesis lifecycle (create, challenge, invalidate). Portfolio snapshots. |
+| **RebalancingEngine** | `rebalancing_engine.py` | Drift detection and rebalance proposal generation. Computes current weights from price drift, generates trade orders with direction, sizing, and participation rate. |
+| **AuditExporter** | `audit_exporter.py` | Exports full governance audit as structured JSON: pipeline metadata, gate results, committee record, mandate compliance, ESG results, risk summary, compliance summary. |
+| **CacheLayer** | `cache_layer.py` | File-backed cache with TTL, namespace isolation, stats tracking. `QuotaManager` tracks API usage per run with explicit budgets for FMP, Finnhub, LLM tokens. |
+| **ResearchMemory** | `research_memory.py` | SQLite FTS5-backed research corpus. Stores documents, run outputs, reports, claim ledgers. Full-text search. Thesis evolution tracking across runs. |
+| **PromptRegistry** | `prompt_registry.py` | Version-tracks all agent prompts with SHA256 hash dedup. Drift detection comparing current vs registered prompts. Regression status management per version. |
 
 ---
 

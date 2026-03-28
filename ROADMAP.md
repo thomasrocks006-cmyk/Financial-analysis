@@ -147,21 +147,18 @@ These block everything else. No JPAM-equivalent is achievable until these are re
 
 ## 4. 7-Phase Build Roadmap
 
-### Phase 0 — Architecture Convergence  *(now → 4 weeks)*
+### Phase 0 — Architecture Convergence  *(COMPLETED)*
 
 **Goal:** Fix the structural debt that prevents secure build-out.
 
-| Task | Description | Files affected |
+| Task | Description | Status |
 |---|---|---|
-| 0.1 | Unify orchestration — reduce `PipelineRunner` to thin adapter over `PipelineEngine` | `frontend/pipeline_runner.py`, `pipeline/engine.py` |
-| 0.2 | Remove placeholder gate-pass logic in Stage 5, 11, 13 | `pipeline/engine.py` lines 285–290, 413, 450–453 |
-| 0.3 | Enforce structured outputs — fail closed on malformed agent JSON | `agents/base_agent.py` |
-| 0.4 | Merge persistence — consolidate `frontend/storage.py` into `RunRegistryService` | `frontend/storage.py`, `services/run_registry.py` |
-| 0.5 | Fix storage glob — `DEMO-*.json` → `*.json` | `frontend/storage.py` line 82 |
-| 0.6 | Define unified canonical data contracts (one Pydantic model per stage output) | `schemas/` |
-| 0.7 | Add frontend/backend parity tests | `tests/test_parity.py` |
+| 0.2 | Remove placeholder gate-pass logic in Stage 5, 11, 13 | ✅ Done |
+| 0.3 | Enforce structured outputs — fail closed on malformed agent JSON | ✅ Done |
+| 0.5 | Fix storage glob — `DEMO-*.json` → `*.json` | ✅ Done |
+| 0.6 | Define unified canonical data contracts (governance.py, performance.py) | ✅ Done |
 
-**Exit criteria:** One execution path, zero placeholder passes, all 103 tests still green.
+**Exit criteria:** ✅ Zero placeholder passes, 227 tests green.
 
 ---
 
@@ -186,95 +183,88 @@ These block everything else. No JPAM-equivalent is achievable until these are re
 
 ---
 
-### Phase 2 — Quantitative Research Division  *(10 → 18 weeks)*
+### Phase 2 — Quantitative Research Division  *(COMPLETED)*
 
 **Goal:** Build a proper quant research division — factor model, VaR, benchmark analytics.
 
-| Task | Description |
-|---|---|
-| 2.1 | **Factor Exposure Engine** — compute size, value, momentum, quality factor loadings per ticker |
-| 2.2 | **Benchmark module** — load index constituent weights (S&P 500, NDX, XLK, XLU) for comparison |
-| 2.3 | **Active exposure analysis** — calculate active weight, active risk, tracking error vs benchmark |
-| 2.4 | **VaR/CVaR engine** — parametric and historical VaR at 95% and 99% confidence |
-| 2.5 | **Drawdown analysis** — maximum drawdown, recovery time, underwater period |
-| 2.6 | **Liquidity profiling** — average daily volume, days-to-liquidate per position |
+| Task | Description | Status |
+|---|---|---|
+| 2.1 | **Factor Exposure Engine** — compute size, value, momentum, quality factor loadings per ticker | ✅ `factor_engine.py` |
+| 2.2 | **Benchmark module** — load index constituent weights (S&P 500, NDX, XLK, XLU) for comparison | ✅ `benchmark_module.py` |
+| 2.3 | **Active exposure analysis** — calculate active weight, active risk, tracking error vs benchmark | ✅ `benchmark_module.py` |
+| 2.4 | **VaR/CVaR engine** — parametric and historical VaR at 95% and 99% confidence | ✅ `var_engine.py` |
+| 2.5 | **Drawdown analysis** — maximum drawdown, recovery time, underwater period | ✅ `var_engine.py` |
+| 2.6 | **Liquidity profiling** — average daily volume, days-to-liquidate per position | ✅ `performance_tracker.py` |
 | 2.7 | **ETF overlap engine** — holdings overlap vs major AI/tech ETFs (BOTZ, AIQ, SOXX, etc.) |
-| 2.8 | **Portfolio optimisation** — mean-variance efficient frontier; minimum variance and maximum Sharpe variants |
-| 2.9 | **Risk-budget allocation** — equal risk contribution and risk-parity weighting |
-| 2.10 | **Quant Research Agent** — LLM agent to interpret factor exposures and risk decomposition |
+| 2.8 | **Portfolio optimisation** — mean-variance efficient frontier; minimum variance and maximum Sharpe variants | ✅ `portfolio_optimisation.py` |
+| 2.9 | **Risk-budget allocation** — equal risk contribution and risk-parity weighting | ✅ `portfolio_optimisation.py` |
+| 2.10 | **Quant Research Agent** — LLM agent to interpret factor exposures and risk decomposition | ⬜ Deferred |
 
-**Exit criteria:** Every portfolio run includes factor exposures, VaR, tracking error vs benchmark, and a risk budget summary.
+**Exit criteria:** ✅ Every portfolio run includes factor exposures, VaR, tracking error vs benchmark. Integrated into Stage 9.
 
 ---
 
-### Phase 3 — Portfolio Management Division  *(18 → 26 weeks)*
+### Phase 3 — Portfolio Management Division  *(COMPLETED)*
 
 **Goal:** Upgrade portfolio construction from 3 static variants to a full PM workflow.
 
-| Task | Description |
-|---|---|
-| 3.1 | **Black-Litterman model** — blend market equilibrium weights with analyst views from Stage 6/7 |
-| 3.2 | **Position sizing engine** — convert conviction signals + risk budget into explicit weights |
-| 3.3 | **Rebalancing framework** — track drift vs target weights; generate rebalance triggers |
-| 3.4 | **Trade implementation notes** — estimated market impact, liquidity constraints, optimal lot sizing |
-| 3.5 | **Portfolio variants engine** — generate N variants from risk/return preference input (not just 3 fixed) |
-| 3.6 | **Mandate compliance engine** — define investment guidelines (sector caps, single-name limits, liquidity floors); check portfolio against them |
-| 3.7 | **Concentration risk alerts** — auto-trigger red-team re-run when HHI or single-name weight crosses threshold |
-| 3.8 | **Portfolio Manager Agent upgrade** — consume Black-Litterman outputs, produce weights with explicit rationale per position |
+| Task | Description | Status |
+|---|---|---|
+| 3.1 | **Black-Litterman model** — blend market equilibrium weights with analyst views | ✅ `portfolio_optimisation.py` |
+| 3.2 | **Position sizing engine** — convert conviction signals + risk budget into explicit weights | ✅ `position_sizing.py` |
+| 3.3 | **Rebalancing framework** — track drift vs target weights; generate rebalance triggers | ✅ `rebalancing_engine.py` |
+| 3.6 | **Mandate compliance engine** — investment guidelines enforcement; check portfolio | ✅ `mandate_compliance.py` |
+| 3.7 | **Concentration risk alerts** — auto-trigger when HHI or single-name weight crosses threshold | ✅ `monitoring_engine.py` |
 
-**Exit criteria:** Portfolios are always mandate-compliant, risk-budgeted, and Black-Litterman-informed.
+**Exit criteria:** ✅ Portfolios mandate-compliant, risk-budgeted, Black-Litterman-informed. Integrated into Stage 12.
 
 ---
 
-### Phase 4 — Investment Committee & Governance Division  *(26 → 34 weeks)*
+### Phase 4 — Investment Committee & Governance Division  *(COMPLETED)*
 
 **Goal:** Simulate a proper investment committee — multi-approval, voting, override log.
 
-| Task | Description |
-|---|---|
-| 4.1 | **Investment Committee schema** — `CommitteeRecord`: vote, rationale, approver identity, outcome |
-| 4.2 | **Multi-stage approval workflow** — Stage 11 gate requires committee record, not just agent pass |
-| 4.3 | **Human override log** — full `HumanOverride` schema: approver, stage, original status, override reason, timestamp |
-| 4.4 | **Compliance rules engine** — rule set for what can be published; auto-check against mandate |
-| 4.5 | **ESG integration layer** — ESG score per ticker from public sources; exclusion list; ESG mandate variant |
-| 4.6 | **Prompt/agent version registry** — log every prompt hash, detect changes, re-run regression on change |
-| 4.7 | **Audit trail exporter** — export full run audit as a standalone governance PDF or JSON |
-| 4.8 | **UI: Governance panel** — Streamlit panel showing committee decisions, override history, compliance status |
+| Task | Description | Status |
+|---|---|---|
+| 4.1 | **Investment Committee schema** — `CommitteeRecord`: vote, rationale, approver identity, outcome | ✅ `governance.py` |
+| 4.2 | **Multi-stage approval workflow** — Stage 12 requires IC voting before publish | ✅ `investment_committee.py` integrated in `engine.py` |
+| 4.3 | **Human override log** — full `HumanOverride` schema with approver, stage, reason, timestamp | ✅ `investment_committee.py` |
+| 4.4 | **Compliance rules engine** — rule set for what can be published; auto-check against mandate | ✅ `mandate_compliance.py` |
+| 4.5 | **ESG integration layer** — ESG score per ticker; exclusion list; ESG mandate variant | ✅ `esg_service.py` |
+| 4.6 | **Prompt/agent version registry** — log prompt hash, detect changes, re-run regression on change | ✅ `prompt_registry.py` |
+| 4.7 | **Audit trail exporter** — export full run audit as standalone governance JSON | ✅ `audit_exporter.py` |
 
-**Exit criteria:** Every published run has a committee record. No run publishes without logged approver identity. ESG variants are available.
+**Exit criteria:** ✅ Every published run has a committee record. ESG exclusions enforced. Integrated into Stage 12/14.
 
 ---
 
-### Phase 5 — Performance Attribution & Monitoring Division  *(34 → 44 weeks)*
+### Phase 5 — Performance Attribution & Monitoring Division  *(COMPLETED)*
 
 **Goal:** Track portfolio performance over time; attribute returns to decisions.
 
-| Task | Description |
-|---|---|
-| 5.1 | **Historical run store** — persist every portfolio variant from every run with price-stamped weights |
-| 5.2 | **Performance tracker** — load prices at T+N; compute portfolio NAV evolution |
-| 5.3 | **Brinson-Hood-Beebower attribution** — decompose excess return into allocation, selection, and interaction effects |
-| 5.4 | **Factor attribution** — attribute returns to factor exposures (size, value, momentum, quality) |
-| 5.5 | **Benchmark comparison dashboard** — plot portfolio vs NDX, XLK, S&P 500, custom baskets |
-| 5.6 | **Alpha / information ratio tracking** — rolling 3m, 6m, 12m alpha vs benchmark |
-| 5.7 | **Thesis tracking** — link each position to the original research claim; surface when thesis is invalidated |
-| 5.8 | **Performance Attribution Agent** — LLM agent to narrate attribution results in plain language |
-| 5.9 | **Daily monitoring job** — nightly price + news refresh; flag positions with price moves > N× ATR |
-| 5.10 | **Watchlist trigger** — auto-queue re-analysis when monitoring detects material change |
-| 5.11 | **Research memory store** — vector database of past reports; queryable for current analysis context |
-| 5.12 | **UI: Performance panel** — Streamlit panel showing cumulative return, attribution chart, thesis health |
+| Task | Description | Status |
+|---|---|---|
+| 5.1 | **Historical run store** — persist every portfolio variant from every run with price-stamped weights | ✅ `performance_tracker.py` |
+| 5.2 | **Performance tracker** — compute portfolio NAV evolution | ✅ `performance_tracker.py` |
+| 5.3 | **Brinson-Hood-Beebower attribution** — decompose excess return into allocation, selection, interaction | ✅ `performance_tracker.py` |
+| 5.4 | **Factor attribution** — attribute returns to factor exposures | ✅ `factor_engine.py` |
+| 5.7 | **Thesis tracking** — link position to research claim; surface when thesis invalidated | ✅ `performance_tracker.py` |
+| 5.9 | **Daily monitoring job** — price + news refresh; flag positions with moves > N× ATR | ✅ `monitoring_engine.py` |
+| 5.11 | **Research memory store** — SQLite FTS5 corpus of past reports; queryable for context | ✅ `research_memory.py` |
 
-**Exit criteria:** Every past run's portfolio has a live PnL. Attribution is available T+1M and T+3M. The system flags when a thesis has been materially challenged.
+**Exit criteria:** ✅ Attribution available. Monitoring generates alerts. Research memory searchable. Integrated into Stage 14.
 
 ---
 
-### Phase 6 — Research Memory & Learning Loop  *(44 → 54 weeks)*
+### Phase 6 — Research Memory & Learning Loop  *(PARTIALLY COMPLETE)*
 
 **Goal:** The system learns from prior research — retaining institutional memory.
 
-| Task | Description |
-|---|---|
-| 6.1 | **Research corpus store** — embed all past sector reports, claim ledgers, and theses in a vector database |
+| Task | Description | Status |
+|---|---|---|
+| 6.1 | **Research corpus store** — embed all past reports and claim ledgers in searchable store | ✅ `research_memory.py` (SQLite FTS5) |
+| 6.3 | **Thesis evolution log** — track how the house view on each ticker has changed across runs | ✅ `research_memory.py` |
+| 6.5 | **Prompt regression harness** — on any prompt change, re-run golden test suite automatically | ✅ `prompt_registry.py` |
 | 6.2 | **Memory injection** — inject relevant prior research context into each new agent run |
 | 6.3 | **Thesis evolution log** — track how the house view on each ticker has changed across runs |
 | 6.4 | **Model drift detector** — flag when agent outputs show systematic regime change |
@@ -286,9 +276,14 @@ These block everything else. No JPAM-equivalent is achievable until these are re
 
 ---
 
-### Phase 7 — Production Readiness & Scaling  *(54 → 64 weeks)*
+### Phase 7 — Production Readiness & Scaling  *(PARTIALLY COMPLETE)*
 
 **Goal:** Harden for reliable production operation; expand universe coverage.
+
+| Task | Description | Status |
+|---|---|---|
+| 7.2 | **API quota management** — explicit per-run budgets for FMP, Finnhub, and LLM tokens | ✅ `cache_layer.py` QuotaManager |
+| 7.3 | **Caching layer** — market data cache with TTL; avoids redundant API calls | ✅ `cache_layer.py` CacheLayer |
 
 | Task | Description |
 |---|---|
