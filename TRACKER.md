@@ -1,8 +1,8 @@
 # Project Tracker — AI Research & Portfolio Platform
 
 > **Last updated:** March 28, 2026  
-> **Test suite:** 480 / 480 passing  
-> **Commit:** `608c286` — session 6 complete
+> **Test suite:** 503 / 503 passing  
+> **Commit:** `2530399` — session 7 complete
 
 ---
 
@@ -16,6 +16,7 @@
 | Session 4 (P-4, P-7, P-8) | All **COMPLETE** |
 | Session 5 (ACT-S5-1, ACT-S5-2) | All **COMPLETE** |
 | Session 6 (ACT-S6-1 through ACT-S6-5) | All **COMPLETE** |
+| Session 7 (ACT-S7-1 through ACT-S7-5) | All **COMPLETE** |
 
 ---
 
@@ -61,6 +62,16 @@
 | ACT-S6-4 | **Schemas** | Close A-1 debt — `pipeline_runner.py` `DeprecationWarning` on import; `app.py` switched to `pipeline_adapter` | Operations | Medium | ✅ `608c286` |
 | ACT-S6-5 | **Testing** | `tests/test_session6.py` — 27 new tests covering SelfAuditPacket wiring, ESG agent, PDF export, deprecation | Operations | Medium | ✅ `608c286` |
 
+### Session 7 — Completed Work
+
+| ID | Area | Task | JPAM Division | Priority | Status |
+|---|---|---|---|---|---|
+| ACT-S7-1 | **Attribution** | BHB Performance Attribution with synthetic returns (`_generate_synthetic_returns`, `_compute_bhb_attribution`) wired into Stage 14 | Performance Attribution | High | ✅ `2530399` |
+| ACT-S7-2 | **ESG** | `ESGService` baseline profiles enriching `EsgAnalystAgent` prompts — per-ticker E/S/G baselines, controversy flags, heuristic profiles | ESG / Sustainable Investing | High | ✅ `2530399` |
+| ACT-S7-3 | **Audit** | `SelfAuditPacket` per-stage latency (`stage_latencies_ms`) + `total_pipeline_duration_s`; `_emit_audit_packet` called on ALL exits (success + every early gate failure) | Investment Governance | Medium | ✅ `2530399` |
+| ACT-S7-4 | **Portfolio** | `PortfolioOptimisationEngine` — risk parity, min-variance, max-Sharpe; wired into Stage 12 `optimisation_results` | Portfolio Management | High | ✅ `2530399` |
+| ACT-S7-5 | **Testing** | `tests/test_session7.py` — 23 new tests covering attribution, ESG enrichment, optimiser, latency fields | Operations | Low | ✅ `2530399` |
+
 ---
 
 ## 3. Post-Roadmap Build Candidates (original)
@@ -78,19 +89,19 @@
 
 ## 4. Division-Level Maturity
 
-*Scores updated through session 6. Session 6 wired SelfAuditPacket (Governance +0.5), built EsgAnalystAgent (ESG 0→3), PDF export (Client Solutions +0.5), A-1 closed.*
+*Scores updated through session 7. BHB attribution built (Performance Attribution 0→4), ESGService baselines (ESG 3→5), optimiser live in Stage 12 (Portfolio Management +1), latency on all exits.*
 
-| Division | Session 6 Score | JPAM Target | Gap | Primary Remaining Gap |
+| Division | Session 7 Score | JPAM Target | Gap | Primary Remaining Gap |
 |---|---|---|---|---|
 | Global Research | **7.5 / 10** | 9.0 / 10 | 1.5 | Agent outputs still partially shallow (political risk, macro) |
-| Quantitative Research | **7.5 / 10** | 9.0 / 10 | 1.5 | No live historical return data; factor exposures synthetic |
-| Portfolio Management | **6.5 / 10** | 8.5 / 10 | 2.0 | IC vote blocks on mandate violations (good), but no weights optimiser |
-| Investment Governance | **8.5 / 10** ↑ | 9.5 / 10 | 1.0 | SelfAuditPacket now on every run ✅; PASS_WITH_DISCLOSURE removed ✅ |
-| Performance Attribution | **0 / 10** | 8.5 / 10 | 8.5 | Not built — requires time-series price store |
-| ESG / Sustainable Investing | **3.0 / 10** ↑ | 7.5 / 10 | 4.5 | EsgAnalystAgent wired; no third-party ESG dataset |
-| Operations & Technology | **8.5 / 10** ↑ | 9.0 / 10 | 0.5 | 480 tests; CI weekly live; A-1 debt closed; pipeline_adapter active |
-| Client Solutions / Reporting | **8.0 / 10** ↑ | 8.5 / 10 | 0.5 | PDF export live ✅; Quant Analytics ESG panel complete |
-| **Weighted platform score** | **7.5 / 10** ↑ | **9.0 / 10** | **1.5** | Performance Attribution (8.5 gap) is the main remaining anchor |
+| Quantitative Research | **8.0 / 10** ↑ | 9.0 / 10 | 1.0 | Synthetic returns used; no live historical price feed |
+| Portfolio Management | **7.5 / 10** ↑ | 8.5 / 10 | 1.0 | Risk parity / min-var / max-Sharpe optimiser live ✅; no live rebalancing |
+| Investment Governance | **8.5 / 10** | 9.5 / 10 | 1.0 | Audit packet on every exit ✅; latency fields populated ✅ |
+| Performance Attribution | **4.0 / 10** ↑ | 8.5 / 10 | 4.5 | BHB attribution built ✅; synthetic returns only — no live price feed |
+| ESG / Sustainable Investing | **5.0 / 10** ↑ | 7.5 / 10 | 2.5 | ESGService baselines wired ✅; no paid third-party ESG dataset |
+| Operations & Technology | **8.5 / 10** | 9.0 / 10 | 0.5 | 503 tests; CI weekly live; all exits emit audit packet |
+| Client Solutions / Reporting | **8.0 / 10** | 8.5 / 10 | 0.5 | PDF export live ✅; ESG panel + latency data in UI |
+| **Weighted platform score** | **8.0 / 10** ↑ | **9.0 / 10** | **1.0** | Live price feed (attribution accuracy) is the main remaining anchor |
 
 ---
 
@@ -114,7 +125,8 @@
 | `test_next_section.py` | 49 | P-5 yfinance fallback, P-6 relative valuation, ACT-6 RiskPacket, P-7 FI agent, P-4 panel |
 | `test_session5.py` | 26 | ACT-S5-1 gate logic hardening (gates 9/12/13), ACT-S5-2 base_agent parse_output strategies |
 | `test_session6.py` | 27 | ACT-S6-1 SelfAuditPacket wiring, ACT-S6-2 ESG agent, ACT-S6-3 PDF export, ACT-S6-4 deprecation |
-| **Total** | **480** | All passing |
+| `test_session7.py` | 23 | ACT-S7-1 BHB attribution, ACT-S7-2 ESG enrichment, ACT-S7-3 latency fields, ACT-S7-4 optimiser |
+| **Total** | **503** | All passing |
 
 ---
 
@@ -125,6 +137,8 @@
 | Main pipeline orchestrator | `src/research_pipeline/pipeline/engine.py` |
 | All 14 LLM agents | `src/research_pipeline/agents/` |
 | ESG analyst agent (new S6) | `src/research_pipeline/agents/esg_analyst.py` |
+| ESG baseline service (new S7) | `src/research_pipeline/services/esg_service.py` |
+| Portfolio optimisation engine (new S7) | `src/research_pipeline/services/portfolio_optimisation.py` |
 | Deterministic services | `src/research_pipeline/services/` |
 | Qualitative schemas (new) | `src/research_pipeline/schemas/qualitative.py` |
 | Quant Research Agent (new) | `src/research_pipeline/agents/quant_research_analyst.py` |

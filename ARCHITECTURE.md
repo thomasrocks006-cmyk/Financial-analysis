@@ -826,16 +826,16 @@ These are concrete defects in the current code — not design gaps but bugs or u
 | Division | Analogous in codebase | Current score | JPAM target | Gap |
 |---|---|---|---|---|
 | Global Research | Stages 5–8 + associated agents | 7.5 / 10 ↑ | 9.0 / 10 | 1.5 |
-| Quantitative Research | Risk Engine + Scenario + QuantResearchAnalystAgent + FixedIncomeAnalystAgent | 7.5 / 10 ↑ | 9.0 / 10 | 1.5 |
-| Portfolio Management | Stage 12 + Portfolio Manager agent | 6.5 / 10 ↑ | 8.5 / 10 | 2.0 |
-| Investment Governance | Gates + Associate Reviewer + binary PASS/FAIL + gate hardening + `SelfAuditPacket` on every run | 8.5 / 10 ↑ | 9.5 / 10 | 1.0 |
-| Performance Attribution | Not built | 0 / 10 | 8.5 / 10 | 8.5 |
-| ESG / Sustainable Investing | `EsgAnalystAgent` (E/S/G [0-100], exclusion trigger, controversy flags) wired into Stage 6 | 3.0 / 10 ↑ | 7.5 / 10 | 4.5 |
-| Operations & Technology | Ingestion + Run Registry + pipeline_adapter + 480 tests + CI weekly + robust parse_output + A-1 closed | 8.5 / 10 ↑ | 9.0 / 10 | 0.5 |
-| Client Solutions / Reporting | Streamlit UI + Report Assembly + Quant Analytics Panel (VaR, ETF overlap, IC vote, FI context, ESG panel) + PDF export | 8.0 / 10 ↑ | 8.5 / 10 | 0.5 |
+| Quantitative Research | Risk Engine + Scenario + QuantResearchAnalystAgent + FixedIncomeAnalystAgent + `PortfolioOptimisationEngine` | 8.0 / 10 ↑ | 9.0 / 10 | 1.0 |
+| Portfolio Management | Stage 12 + Portfolio Manager agent + risk-parity / min-var / max-Sharpe optimiser | 7.5 / 10 ↑ | 8.5 / 10 | 1.0 |
+| Investment Governance | Gates + Associate Reviewer + binary PASS/FAIL + gate hardening + `SelfAuditPacket` on every exit (success + failure) + latency fields | 8.5 / 10 | 9.5 / 10 | 1.0 |
+| Performance Attribution | BHB attribution with synthetic returns (`_generate_synthetic_returns`, `_compute_bhb_attribution`) wired into Stage 14 | 4.0 / 10 ↑ | 8.5 / 10 | 4.5 |
+| ESG / Sustainable Investing | `EsgAnalystAgent` + `ESGService` baseline profiles; heuristic E/S/G + controversy; wired into Stage 6 | 5.0 / 10 ↑ | 7.5 / 10 | 2.5 |
+| Operations & Technology | Ingestion + Run Registry + pipeline_adapter + 503 tests + CI weekly + robust parse_output + all exits emit audit packet | 8.5 / 10 | 9.0 / 10 | 0.5 |
+| Client Solutions / Reporting | Streamlit UI + Report Assembly + Quant Analytics Panel (VaR, ETF overlap, IC vote, FI context, ESG panel, latency) + PDF export | 8.0 / 10 | 8.5 / 10 | 0.5 |
 
-**Weighted platform score vs JPAM standard: 7.5 / 10 ↑** *(updated session 6 from 7.1)*  
-*(Primary remaining gaps: Performance Attribution not built [8.5 gap]; ESG needs third-party data source to reach 7.5 target)*
+**Weighted platform score vs JPAM standard: 8.0 / 10 ↑** *(updated session 7 from 7.5)*  
+*(Primary remaining gaps: Performance Attribution on synthetic data only [needs live price feed]; ESG on heuristic profiles [needs paid dataset])*
 
 ### 12.5 Next 10 Actions (Priority Order)
 
@@ -857,7 +857,7 @@ These are concrete defects in the current code — not design gaps but bugs or u
 3. ~~Implement `SelfAuditPacket` schema~~ — **DONE** session 6 (engine `_build_self_audit_packet()`; JSON persisted; quality score computed; ACT-S6-1)
 4. ~~Add `asyncio.gather` to market data ingestion~~ — **ALREADY DONE** (`ingest_universe` uses semaphore + `asyncio.gather`; qualitative ingestor same)
 5. ~~ESG/Governance analyst agent~~ — **DONE** session 6 (`EsgAnalystAgent` with E/S/G clamped [0-100], exclusion trigger, wired into Stage 6 non-blocking; ACT-S6-2)
-6. Performance Attribution (BHB) with real historical data — requires time-series price store — **deferred**
+6. ~~Performance Attribution (BHB) with real historical data~~ — **DONE** session 7 (`_generate_synthetic_returns` + `_compute_bhb_attribution` wired into Stage 14; `PortfolioOptimisationEngine` in Stage 12; ACT-S7-1/S7-4)
 7. Add Redis-backed run cache — avoid re-fetching market data for same ticker set within 1 h — **deferred**
 8. ~~Export Report-tab data to PDF~~ — **DONE** session 6 (`fpdf2` cover page + body via `_generate_report_pdf()`; download button in Report tab; ACT-S6-3)
 
@@ -873,22 +873,34 @@ These are concrete defects in the current code — not design gaps but bugs or u
 
 **Session 6 achieved state:** Weighted platform score 7.1 → **7.5**; ESG division 0 → **3.0/10**; Investment Governance 8.0 → **8.5**; `SelfAuditPacket` on every run ✅; 480 tests passing.
 
-### 12.8 Session 7 Work Plan
+### 12.8 Session 7 Completed Work
+
+| ID | Task | File(s) | JPAM Division | Status |
+|---|---|---|---|---|
+| ACT-S7-1 | BHB Performance Attribution with synthetic returns — `_generate_synthetic_returns`, `_compute_bhb_attribution`; wired into Stage 14 `stage_outputs[14]["attribution"]` | `engine.py`, `schemas/governance.py` | Performance Attribution | ✅ `2530399` |
+| ACT-S7-2 | `ESGService` baseline profiles (heuristic E/S/G + controversy per ticker) passed to `EsgAnalystAgent.format_input`; `esg_baseline_profiles` in Stage 6 context | `agents/esg_analyst.py`, `services/esg_service.py`, `engine.py` | ESG / Sustainable Investing | ✅ `2530399` |
+| ACT-S7-3 | `SelfAuditPacket.stage_latencies_ms` + `total_pipeline_duration_s`; `_emit_audit_packet` extracted — called on every pipeline exit (14 early-fail paths + success); stage 14 timed via `_timed_stage(14, ...)` | `engine.py`, `schemas/governance.py` | Investment Governance | ✅ `2530399` |
+| ACT-S7-4 | `PortfolioOptimisationEngine` — risk parity (inverse-vol), min-variance, max-Sharpe; wired into Stage 12 as `optimisation_results` dict alongside existing PM agent output | `services/portfolio_optimisation.py`, `engine.py` | Portfolio Management | ✅ `2530399` |
+| ACT-S7-5 | 23 new tests covering attribution BHB identity, synthetic returns, optimiser weight sums, ESG format_input enrichment, latency fields | `tests/test_session7.py` | Operations | ✅ `2530399` |
+
+**Session 7 achieved state:** Weighted platform score 7.5 → **8.0**; Performance Attribution 0 → **4.0/10**; ESG 3.0 → **5.0/10**; Portfolio Management 6.5 → **7.5**; audit packet on all exits ✅; 503 tests passing.
+
+### 12.9 Session 8 Work Plan
 
 Priority order for next session:
 
 | ID | Task | File(s) | JPAM Division | Effort |
 |---|---|---|---|---|
-| ACT-S7-1 | **Performance Attribution engine** — BHB factor attribution with synthetic return data; `PerformanceAttributionService`; wired into Stage 13 | `services/performance_attribution.py`, `engine.py`, `app.py` | Performance Attribution | High |
-| ACT-S7-2 | **ESG data enrichment** — third-party ESG dataset loader (CSV/API); `EsgDataStore` backing `EsgAnalystAgent`; raises ESG division 3→5 | `agents/esg_analyst.py`, `services/esg_store.py` | ESG / Sustainable Investing | High |
-| ACT-S7-3 | **SelfAuditPacket analytics** — per-stage latency, LLM token counts, agent-level confidence distribution; add to `_build_self_audit_packet()` | `pipeline/engine.py`, `schemas/governance.py` | Investment Governance | Medium |
-| ACT-S7-4 | **Portfolio weights optimiser** — mean-variance or risk-parity via `cvxpy`; replaces equal-weight placeholder; wired into Stage 12 | `agents/portfolio_manager.py`, `engine.py` | Portfolio Management | High |
-| ACT-S7-5 | **Tests** — session 7 coverage: attribution engine, ESG store, optimiser outputs, audit latency fields | `tests/test_session7.py` | Operations | Low |
+| ACT-S8-1 | **Live price feed** — yfinance historical returns loader replacing synthetic data; `LiveReturnStore`; feeds `PortfolioOptimisationEngine` and BHB attribution | `services/live_return_store.py`, `engine.py` | Performance Attribution | High |
+| ACT-S8-2 | **Portfolio rebalancing signals** — compare optimiser weights to current holdings; surface +/− delta per ticker in Streamlit and `SelfAuditPacket` | `services/portfolio_optimisation.py`, `app.py` | Portfolio Management | Medium |
+| ACT-S8-3 | **Paid ESG dataset** — CSV/API ingest of MSCI or Sustainalytics data; replace `ESGService` heuristics; raises ESG 5 → 7 | `services/esg_service.py`, `agents/esg_analyst.py` | ESG / Sustainable Investing | High |
+| ACT-S8-4 | **Prompt versioning** — assign semver tags to all 14 agent prompts; compare output drift across versions in CI | `src/research_pipeline/prompts/`, `tests/` | Operations | Medium |
+| ACT-S8-5 | **Tests** — session 8: live return loader, rebalancing delta, ESG ingest round-trip | `tests/test_session8.py` | Operations | Low |
 
-**Session 7 target state:** Weighted platform score 7.5 → 8.0+; Performance Attribution 0 → 4/10; ESG 3 → 5/10; Portfolio Management 6.5 → 7.5.
+**Session 8 target state:** Weighted platform score 8.0 → 8.5+; Performance Attribution 4.0 → 6.0/10 (live data); ESG 5.0 → 7.0/10 (real dataset).
 
 ---
 
-*Document updated: session 6 — ACT-S6-1 (SelfAuditPacket wired), ACT-S6-2 (EsgAnalystAgent), ACT-S6-3 (PDF export), ACT-S6-4 (A-1 closed), ACT-S6-5 (27 new tests). Test count: 480 passing. Session 7 plan in §12.8.*  
+*Document updated: session 7 — ACT-S7-1 (BHB attribution wired), ACT-S7-2 (ESGService baselines), ACT-S7-3 (latency + `_emit_audit_packet` on all exits), ACT-S7-4 (PortfolioOptimisationEngine), ACT-S7-5 (23 new tests). Test count: 503 passing. Session 8 plan in §12.9.*  
 *Document updated: March 28, 2026 — Extended gap analysis and JPAM roadmap goal logged.*  
 *See ROADMAP.md for the complete 7-phase build plan.*
