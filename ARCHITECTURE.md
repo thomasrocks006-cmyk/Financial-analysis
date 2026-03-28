@@ -19,7 +19,9 @@
 7. [Entry Points](#7-entry-points)
 8. [Configuration & Secrets](#8-configuration--secrets)
 9. [Testing Layer](#9-testing-layer)
-10. [Directory Map](#10-directory-map)
+10. [Critical Architecture Review](#10-critical-architecture-review-actual-code-state--march-28-2026)
+11. [Directory Map](#11-directory-map)
+12. [Extended Gap Analysis: JPAM Capability Assessment](#12-extended-gap-analysis-jpam-capability-assessment)
 
 ---
 
@@ -493,7 +495,174 @@ pytest tests/ -v
 
 ---
 
-## 10. Directory Map
+## 10. Critical Architecture Review (Actual Code State — March 28, 2026)
+
+### Executive Verdict
+
+**Overall architecture score: 6.6 / 10**
+
+This project has a strong institutional workflow design and better-than-average
+process discipline for an AI research platform. The core idea is right:
+deterministic services should produce facts, LLMs should produce judgment, and
+gates should control publication.
+
+The biggest architectural issue is that the codebase currently behaves like two
+overlapping systems:
+
+1. a backend target-state pipeline in `src/research_pipeline/`
+2. a richer frontend execution pipeline in `src/frontend/pipeline_runner.py`
+
+That split is now the main source of architectural drag.
+
+### Component Scorecard
+
+| Component | Score / 10 | What is strong | Main gap |
+|---|---:|---|---|
+| Research workflow / stage design | 8.5 | Excellent decomposition of the research process into 15 coherent stages | Some stages are still more prompt-driven than contract-driven |
+| Frontend operator experience | 8.0 | Streamlit workflow is polished and practical | Frontend owns too much pipeline logic instead of acting as a thin client |
+| Core orchestration architecture | 4.5 | Real pipeline engine exists with stage persistence and gates | Execution logic is duplicated across backend and frontend |
+| Deterministic services | 7.5 | Good modular service set: DCF, reconciliation, QA, risk, scenarios | Service maturity is uneven; some are still shallow |
+| Market + qualitative data ingestion | 7.5 | Broad source coverage and graceful degradation | Backend ingestion is serial and contracts differ from frontend shapes |
+| LLM agent layer | 6.5 | Good role separation, prompt hashing, common base class | Weak structured-output enforcement |
+| Governance / gates / review | 4.0 | Correctly designed as a first-class concern | Backend enforcement still contains placeholder pass-through logic |
+| Schema layer / type safety | 7.0 | Pydantic models are a solid foundation | Frontend often bypasses typed contracts with ad hoc dicts |
+| Persistence / audit trail | 5.5 | Run registry exists and captures execution metadata | Persistence is fragmented across multiple stores |
+| Report assembly | 6.0 | Reports can be generated on both backend and frontend paths | Two assembly paths create drift risk |
+| Testing / QA | 6.0 | 103 tests passing; services and gates are covered | Product-level and frontend coverage are thin |
+| Documentation accuracy | 5.0 | Documentation effort is strong | Current docs overstate how converged the implementation is |
+
+### Gap Analysis
+
+#### Gap 1 — Split-brain orchestration
+
+**Severity:** Critical
+
+**Target**
+
+- one canonical execution engine
+- one gate framework
+- one report assembly path
+- one set of stage contracts
+
+**Actual**
+
+- `src/research_pipeline/pipeline/engine.py` contains a typed backend engine
+- `src/frontend/pipeline_runner.py` contains a second full orchestration layer
+- the frontend path is currently the more feature-rich runtime path
+
+**Impact**
+
+- fixes must often be applied twice
+- stage logic drifts over time
+- tests on one path do not guarantee the other path
+
+**Recommendation**
+
+Choose one canonical runtime. Best direction: keep `research_pipeline/` as the
+system of record and reduce the frontend runner into a thin adapter.
+
+#### Gap 2 — Governance is strong in design, weaker in implementation
+
+**Severity:** Critical
+
+The architecture promises hard publication controls, but parts of the backend
+pipeline still use permissive placeholder logic.
+
+Examples:
+
+- Stage 5 evidence handling seeds an initialization claim if the agent succeeds
+- Stage 11 review converts agent success into `PASS_WITH_DISCLOSURE`
+- Stage 13 report assembly still uses placeholder sections and empty stock cards
+
+**Recommendation**
+
+Remove all placeholder approval behavior and fail closed on malformed or missing
+structured outputs.
+
+#### Gap 3 — Frontend and backend data contracts have drifted
+
+**Severity:** High
+
+Backend services were designed around typed models like `MarketSnapshot`, but
+the frontend pipeline mostly operates on richer dict payloads.
+
+**Recommendation**
+
+Define one shared canonical snapshot/report contract for both frontend and
+backend usage.
+
+#### Gap 4 — Testing is more modular than systemic
+
+**Severity:** High
+
+The current test suite is meaningful, but it mostly proves module integrity,
+not full product integrity.
+
+**Recommendation**
+
+Add product-level smoke tests and parity tests between backend and frontend
+execution paths.
+
+#### Gap 5 — Persistence is fragmented
+
+**Severity:** Medium-High
+
+There are multiple storage concepts: backend run registry, frontend report
+storage, and stage artifact persistence.
+
+**Recommendation**
+
+Unify reports, artifacts, audit history, and run metadata under one registry.
+
+#### Gap 6 — Operational processes are under-built
+
+**Severity:** Medium
+
+Missing or incomplete production processes include caching, explicit quota
+management, centralized telemetry, queue-grade orchestration, and stronger raw
+payload reproducibility.
+
+**Recommendation**
+
+The next phase should focus on operationalization, not just more analytical
+features.
+
+### Process Maturity Review
+
+| Process Area | Score / 10 | Assessment |
+|---|---:|---|
+| Data acquisition | 8.0 | Good breadth, fallback logic, and practical source handling |
+| Reconciliation and QA | 7.0 | Correctly prioritized, but not yet deep enough to be truly institutional-grade |
+| Evidence formation | 6.0 | Strong concept, partial enforcement |
+| Sector and thesis generation | 8.0 | Good decomposition and reasoning structure |
+| Valuation process | 7.5 | Significantly improved by deterministic DCF integration |
+| Risk process | 7.0 | Better now that scenarios are deterministic, but still not fully portfolio-native |
+| Red-team process | 7.5 | Strong role separation and useful adversarial framing |
+| Publication control | 4.5 | Right idea, insufficiently hardened implementation |
+| Portfolio construction | 6.5 | Valuable stage, should consume more typed upstream contracts |
+| Reporting and delivery | 6.5 | Reliable output generation, but split assembly paths create drift risk |
+
+### Priority Remediation Plan
+
+#### P0 — Architecture convergence
+
+1. Unify orchestration under one canonical runtime path
+2. Remove placeholder gate-pass logic
+3. Unify frontend/backend stage contracts
+
+#### P1 — Process hardening
+
+4. Enforce structured outputs per agent/stage
+5. Consolidate persistence and audit storage
+6. Add frontend and end-to-end regression tests
+
+#### P2 — Production readiness
+
+7. Add caching, quotas, telemetry, and provider isolation
+8. Deepen QA/lineage to field-level provenance
+9. Maintain target-state vs current-state docs separately
+
+## 11. Directory Map
 
 ```
 Financial-analysis/
@@ -550,4 +719,124 @@ Financial-analysis/
 
 ---
 
-*Document auto-generated from codebase analysis — March 27, 2026*
+## 12. Extended Gap Analysis: JPAM Capability Assessment
+
+> **Goal logged March 28, 2026:** Build a fully autonomous AI-powered investment organisation
+> that structurally emulates JPMorgan Asset Management — with research, risk, portfolio
+> management, governance, performance attribution, and client delivery operating as distinct,
+> correctly governed divisions. See ROADMAP.md for the full 7-phase build plan.
+
+### 12.1 What the Platform Still Needs to Build
+
+The following capabilities exist in a real institutional asset manager (JPAM reference) but do
+not yet exist in this codebase. Each is assessed for priority and build effort.
+
+| Capability | JPAM Division | Priority | Effort | Status |
+|---|---|---|---|---|
+| **Factor exposure engine** (size, value, momentum, quality loadings) | Quant Research | P0 | Medium | Not started |
+| **Benchmark-relative analytics** (active weight, tracking error, information ratio) | Quant Research | P0 | Medium | Not started |
+| **VaR / CVaR engine** (parametric + historical, 95% and 99%) | Risk Management | P0 | Medium | Not started |
+| **Drawdown analysis** (max drawdown, recovery time, underwater charts) | Risk Management | P0 | Low | Not started |
+| **Liquidity profiling** (ADV, days-to-liquidate per position) | Portfolio Mgmt | P1 | Low | Not started |
+| **ETF overlap engine** (BOTZ, AIQ, SOXX, etc.) | Quant Research | P1 | Low | Not started |
+| **Portfolio optimisation** (mean-variance efficient frontier, min-var, max-Sharpe) | Portfolio Mgmt | P1 | High | Not started |
+| **Black-Litterman model** (blend market equilibrium with analyst views) | Portfolio Mgmt | P1 | High | Not started |
+| **Risk-budget allocation** (equal risk contribution, risk parity) | Risk Management | P1 | Medium | Not started |
+| **Mandate compliance engine** (sector caps, single-name limits, liquidity floors) | Governance | P1 | Medium | Not started |
+| **Investment committee process** (multi-approver voting, committee record schema) | Governance | P1 | Medium | Not started |
+| **Human override log with identity** (approver, reason, timestamp, original status) | Governance | P1 | Low | Partial |
+| **ESG integration layer** (ESG score per ticker, exclusion lists, ESG mandates) | ESG / Governance | P2 | High | Not started |
+| **Performance attribution — BHB** (allocation, selection, interaction decomposition) | Performance | P2 | High | Not started |
+| **Factor attribution** (attribute returns to factor exposures over time) | Performance | P2 | High | Not started |
+| **Performance tracker** (price-stamped portfolio at T+N; NAV evolution) | Performance | P2 | Medium | Not started |
+| **Thesis tracking** (link positions to original claims; surface thesis invalidation) | Research | P2 | Medium | Not started |
+| **Research memory / vector store** (embed past reports for context injection) | Research | P2 | High | Not started |
+| **Daily monitoring & diff engine** (nightly price/news refresh; trigger re-analysis) | Operations | P2 | Medium | Not started |
+| **Prompt regression harness** (auto-run golden tests on any prompt change) | Governance | P2 | Low | Not started |
+| **Observability dashboard** (stage latency, token usage, cost per run) | Operations | P2 | Medium | Not started |
+
+### 12.2 What the Platform Needs to Improve
+
+These components exist but fall short of institutional standard. Each gap is scored and
+described with the specific improvement required.
+
+#### Data layer improvements
+
+| Component | Current state | Required improvement | Score gap |
+|---|---|---|---|
+| Market data ingestion | Serial requests, FMP + Finnhub only | Async parallel ingestion; add at least one more data source | 7.5 → 9.0 |
+| Consensus reconciliation | Basic flag/threshold system | Field-level provenance; source preference logic with audit | 7.0 → 8.5 |
+| Data QA / lineage | Completeness and staleness checks present | Add split/corporate action detection; currency unit cross-checks | 6.5 → 8.5 |
+| Qualitative ingestion | Partially built in frontend | Formalise into a typed schema with tier classification | 5.5 → 8.0 |
+
+#### Agent layer improvements
+
+| Agent | Current state | Required improvement | Score gap |
+|---|---|---|---|
+| Evidence Librarian | Claim ledger built, partial source tier enforcement | Hard-reject Tier 3/4 sources for core claims | 6.0 → 8.5 |
+| Sector analysts | Four-box structure per sector, not per ticker | Per-ticker four-box output with individual claim counts | 7.0 → 8.5 |
+| Valuation Analyst | Interprets DCF output | Must label every target with methodology; disallow point estimates | 6.5 → 8.5 |
+| Red Team Analyst | Challenge memo present | Enforce structural minimum of 3 concrete falsification paths per top idea | 7.0 → 9.0 |
+| Associate Reviewer | Working, placeholder pass-through | Remove auto-pass; require explicit resolution for every unresolved item | 5.0 → 9.0 |
+| Portfolio Manager | 3 variants produced | Must consume Black-Litterman weights and produce mandate-compliant output | 6.5 → 8.5 |
+| Base Agent | JSON fallback to raw_text silently | Fail closed on malformed output; surface structured parse error explicitly | 6.0 → 9.0 |
+
+#### Services improvements
+
+| Service | Current state | Required improvement |
+|---|---|---|
+| DCF Engine | WACC/FCF/terminal value/sensitivity working | Add EV/EBITDA, P/E relative valuation methods for non-DCF-amenable stocks |
+| Risk Engine | Correlation, HHI, contribution-to-variance | Add VaR, drawdown, benchmark beta, liquidity analysis |
+| Scenario Engine | 7 named scenarios, deterministic | Add macro factor shock scenarios (rate +200bps, USD +10%, credit spread +150bps) |
+| Report Assembly | Works on backend path, frontend builds inline | Unify to one Jinja2 path; add self-audit appendix and claim register as mandatory sections |
+| Run Registry | UUID, timestamps, and stage outcomes | Add dataset version hash, config hash, LLM cost, token usage per run |
+| Scheduler | Cron-style skeleton | Reliable async scheduler with alert-on-failure and watchlist monitoring |
+
+### 12.3 What the Platform Needs to Fix
+
+These are concrete defects in the current code — not design gaps but bugs or unsafe patterns.
+
+| File | Location | Defect | Fix |
+|---|---|---|---|
+| `pipeline/engine.py` | Line 285–290 | Synthetic `INIT-001` claim seeded when agent succeeds — Stage 5 gate bypass | Remove synthetic claim; fail gate if minimum claims not met from real data |
+| `pipeline/engine.py` | Line 413 | Stage 11 review converts agent success alone to `PASS_WITH_DISCLOSURE` | Require structured reviewer output with explicit disposition per unresolved item |
+| `pipeline/engine.py` | Line 450–453 | Stage 13 fallback to `PASS_WITH_DISCLOSURE` if no review result | Fail closed — no review result must halt pipeline |
+| `agents/base_agent.py` | Lines 208–212 | Malformed agent JSON silently degraded to `{"raw_text": raw_response}` | Raise structured error; route to retry; fail stage on repeated malformed response |
+| `services/golden_tests.py` | Line 148 | `passed = True  # placeholder for custom categories` | Implement real assertion logic per test category |
+| `frontend/storage.py` | Line 82 | `REPORTS_DIR.glob("DEMO-*.json")` only finds DEMO-prefixed runs | Change glob to `RUN-*.json` or `*.json` with schema validation |
+| `frontend/pipeline_runner.py` | Full file (1852 lines) | Second full orchestration engine duplicating `PipelineEngine` | Reduce to thin adapter pattern calling `PipelineEngine` stages |
+| `services/market_data_ingestor.py` | `ingest_universe()` | Sequential per-ticker requests, no parallelism | Wrap per-ticker calls in `asyncio.gather` with semaphore for rate control |
+
+### 12.4 Division-Level Maturity Assessment (JPAM Benchmark)
+
+| Division | Analogous in codebase | Current score | JPAM target | Gap |
+|---|---|---|---|---|
+| Global Research | Stages 5–8 + associated agents | 6.5 / 10 | 9.0 / 10 | 2.5 |
+| Quantitative Research | Risk Engine + Scenario Engine | 5.5 / 10 | 9.0 / 10 | 3.5 |
+| Portfolio Management | Stage 12 + Portfolio Manager agent | 6.0 / 10 | 8.5 / 10 | 2.5 |
+| Investment Governance | Gates + Associate Reviewer | 4.5 / 10 | 9.5 / 10 | 5.0 |
+| Performance Attribution | Not built | 0 / 10 | 8.5 / 10 | 8.5 |
+| ESG / Sustainable Investing | Not built | 0 / 10 | 7.5 / 10 | 7.5 |
+| Operations & Technology | Ingestion + Run Registry + CLI | 6.5 / 10 | 9.0 / 10 | 2.5 |
+| Client Solutions / Reporting | Streamlit UI + Report Assembly | 6.5 / 10 | 8.5 / 10 | 2.0 |
+
+**Weighted platform score vs JPAM standard: 4.4 / 10**  
+*(Weighted by division importance; weighted gap is primarily driven by missing Performance Attribution and Governance quality)*
+
+### 12.5 Next 10 Actions (Priority Order)
+
+1. Fix `engine.py` placeholder gate logic (lines 285–290, 413, 450–453) — **highest risk item in current code**
+2. Fix `base_agent.py` silent JSON fallback — **all agent outputs are currently untrusted**
+3. Reduce `frontend/pipeline_runner.py` to an adapter — **architectural convergence**
+4. Merge `frontend/storage.py` into `RunRegistryService` — **persistence unification**
+5. Implement `SelfAuditPacket` schema and attach to every run — **governance foundation**
+6. Add drawdown analysis and VaR to `RiskEngine` — **lowest-effort quant uplift**
+7. Add benchmark-relative analytics module — **biggest missing quant signal**
+8. Implement investment committee schema and human override log with identity — **governance hardening**
+9. Begin historical portfolio logging — **attribution data accrual starts now**
+10. Add `asyncio.gather` to market data ingestion — **quick operational win**
+
+---
+
+*Document updated: March 28, 2026 — Extended gap analysis and JPAM roadmap goal logged.*  
+*See ROADMAP.md for the complete 7-phase build plan.*
