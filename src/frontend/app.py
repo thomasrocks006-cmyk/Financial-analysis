@@ -1184,6 +1184,21 @@ with tab_report:
                         line += f" · ⚠️ `{err[:60]}`"
                     cols_t[i % 2].markdown(line)
 
+                # ACT-S7-3: per-stage ms from SelfAuditPacket
+                _ap = (st.session_state.get("result") or {}).get("audit_packet") or {}
+                _lat = _ap.get("stage_latencies_ms", {})
+                _dur = _ap.get("total_pipeline_duration_s", 0)
+                if _lat:
+                    st.markdown("---")
+                    st.markdown("**Engine-level stage latencies (ms)**")
+                    lat_cols = st.columns(4)
+                    for j, (skey, ms) in enumerate(
+                        sorted(_lat.items(), key=lambda x: int(x[0].replace("stage_", "") or 0))
+                    ):
+                        lat_cols[j % 4].metric(skey, f"{ms:.0f} ms")
+                    if _dur:
+                        st.metric("Total pipeline duration", f"{_dur:.1f} s")
+
         # Token/cost breakdown expander
         if token_log_src:
             with st.expander("💰  Token & Cost Breakdown", expanded=False):
@@ -1469,12 +1484,89 @@ with tab_report:
                 baseline_w = portfolio_out.get("baseline_weights", {})
                 if isinstance(baseline_w, dict) and baseline_w:
                     st.markdown("---")
-                    st.markdown("#### ⚖️ Portfolio Weights (Baseline)")
+                    st.markdown("#### ⚖️ Portfolio Weights (Baseline — Equal Weight)")
                     w_cols = st.columns(min(len(baseline_w), 6))
                     for i, (ticker, wt) in enumerate(
                         sorted(baseline_w.items(), key=lambda x: -x[1])
                     ):
                         w_cols[i % len(w_cols)].metric(ticker, f"{wt * 100:.1f}%")
+
+                # ── Portfolio Optimisation (ACT-S7-4) ─────────────────────
+                opt_results = portfolio_out.get("optimisation_results", {})
+                if opt_results:
+                    st.markdown("---")
+                    st.markdown("#### 🎯 Portfolio Optimisation (Synthetic Returns)")
+                    rp = opt_results.get("risk_parity", {})
+                    mv = opt_results.get("min_variance", {})
+                    ms = opt_results.get("max_sharpe", {})
+                    if rp or mv or ms:
+                        oc1, oc2, oc3 = st.columns(3)
+                        with oc1:
+                            st.markdown("**Risk Parity**")
+                            if rp:
+                                st.metric("Expected Vol", f"{rp.get('expected_volatility_pct', 0):.1f}%")
+                                st.metric("Expected Ret", f"{rp.get('expected_return_pct', 0):.1f}%")
+                        with oc2:
+                            st.markdown("**Min Variance**")
+                            if mv:
+                                st.metric("Expected Vol", f"{mv.get('expected_volatility_pct', 0):.1f}%")
+                                st.metric("Sharpe", f"{mv.get('sharpe_ratio', 0):.2f}")
+                        with oc3:
+                            st.markdown("**Max Sharpe**")
+                            if ms:
+                                st.metric("Sharpe", f"{ms.get('sharpe_ratio', 0):.2f}")
+                                st.metric("Expected Ret", f"{ms.get('expected_return_pct', 0):.1f}%")
+
+                        # Risk Parity weights detail
+                        rp_weights = rp.get("weights", {})
+                        if rp_weights:
+                            with st.expander("Risk Parity Weights vs Baseline", expanded=False):
+                                import pandas as pd  # noqa: PLC0415
+                                rows = []
+                                for t in sorted(rp_weights, key=lambda x: -rp_weights.get(x, 0)):
+                                    bw = baseline_w.get(t, 0) * 100 if isinstance(baseline_w, dict) else 0.0
+                                    rows.append({
+                                        "Ticker": t,
+                                        "Baseline %": round(bw, 1),
+                                        "Risk Parity %": round(rp_weights[t], 1),
+                                        "Active %": round(rp_weights[t] - bw, 1),
+                                        "Risk Contrib %": round(rp.get("risk_contributions", {}).get(t, 0), 1),
+                                    })
+                                if rows:
+                                    st.dataframe(pd.DataFrame(rows).set_index("Ticker"), use_container_width=True)
+                    st.caption("Optimisation uses synthetic return data — for structural illustration only. Use live price data for production weights.")
+
+                # ── Performance Attribution (BHB) (ACT-S7-1) ──────────────
+                stage14_out = _stage_out(14)
+                attribution = stage14_out.get("attribution", {})
+                if attribution:
+                    st.markdown("---")
+                    st.markdown("#### 📈 Performance Attribution (Brinson-Hood-Beebower)")
+                    ac1, ac2, ac3, ac4 = st.columns(4)
+                    ac1.metric("Portfolio Return", f"{attribution.get('total_portfolio_return_pct', 0):.2f}%")
+                    ac2.metric("Benchmark Return (SPY)", f"{attribution.get('total_benchmark_return_pct', 0):.2f}%")
+                    ac3.metric("Excess Return", f"{attribution.get('excess_return_pct', 0):.2f}%")
+                    ac4.metric("Allocation Effect", f"{attribution.get('allocation_effect_pct', 0):.3f}%")
+
+                    ac5, ac6, _ = st.columns(3)
+                    ac5.metric("Selection Effect", f"{attribution.get('selection_effect_pct', 0):.3f}%")
+                    ac6.metric("Interaction Effect", f"{attribution.get('interaction_effect_pct', 0):.3f}%")
+
+                    sect_alloc = attribution.get("sector_allocation", {})
+                    sect_sel = attribution.get("sector_selection", {})
+                    if sect_alloc:
+                        with st.expander("Sector Attribution Detail", expanded=False):
+                            import pandas as pd  # noqa: PLC0415
+                            rows = []
+                            for sector in sorted(sect_alloc):
+                                rows.append({
+                                    "Sector": sector,
+                                    "Allocation Effect %": round(sect_alloc.get(sector, 0), 4),
+                                    "Selection Effect %": round(sect_sel.get(sector, 0), 0),
+                                })
+                            if rows:
+                                st.dataframe(pd.DataFrame(rows).set_index("Sector"), use_container_width=True)
+                    st.caption("Attribution uses synthetic return data — for structural illustration only until a live price feed is connected.")
 
 
 # ═════════════════════════════════════════════════════════════════════════

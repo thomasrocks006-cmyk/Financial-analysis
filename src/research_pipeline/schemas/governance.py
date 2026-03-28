@@ -212,6 +212,10 @@ class SelfAuditPacket(BaseModel):
     mandate_compliant: Optional[bool] = None
     esg_exclusions: list[str] = []
 
+    # Operational metrics (ACT-S7-3)
+    stage_latencies_ms: dict[str, float] = Field(default_factory=dict)  # "stage_0" -> ms
+    total_pipeline_duration_s: float = 0.0
+
     # Summary verdict
     publication_quality_score: float = 0.0  # 0-10 derived metric
     blockers: list[str] = []

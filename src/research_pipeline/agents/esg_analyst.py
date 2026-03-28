@@ -100,7 +100,57 @@ Return ONLY the JSON object with the "esg_scores" array."""
 
     def format_input(self, inputs: dict[str, Any]) -> str:
         import json
-        return json.dumps(inputs, indent=2, default=str)
+
+        tickers = inputs.get("tickers", [])
+        baseline = inputs.get("esg_baseline_profiles", [])
+
+        sections: list[str] = []
+
+        # ── Ticker list ───────────────────────────────────────────────────
+        sections.append(f"TICKERS TO SCORE: {', '.join(tickers)}")
+
+        # ── ACT-S7-2: ESG baseline data from ESGService ───────────────────
+        if baseline:
+            sections.append("\nESG BASELINE PROFILES (internal heuristic data — use as grounding):")
+            for profile in baseline:
+                ticker = profile.get("ticker", "?")
+                rating = profile.get("overall_rating", "?")
+                e = profile.get("environmental_score", "?")
+                s = profile.get("social_score", "?")
+                g = profile.get("governance_score", "?")
+                controversy = profile.get("controversy_flag", False)
+                sections.append(
+                    f"  {ticker}: rating={rating}  E={e}  S={s}  G={g}"
+                    + ("  ⚠ controversy flagged" if controversy else "")
+                )
+            sections.append(
+                "NOTE: These baseline scores are heuristic estimates. Adjust them based on "
+                "the sector context and any more recent public information below. Scores "
+                "from the baseline profiles should be expressed on the 0-100 scale "
+                "(e.g. E=6.5 on the 0-10 heuristic → approximately 65 on the 0-100 LLM scale)."
+            )
+
+        # ── Sector context (abbreviated) ─────────────────────────────────
+        sector_outputs = inputs.get("sector_outputs", [])
+        if sector_outputs:
+            sections.append("\nSECTOR ANALYST CONTEXT (abbreviated):")
+            for res in sector_outputs[:3]:  # limit to avoid token explosion
+                agent_name = res.get("agent_name", "sector")
+                parsed = res.get("parsed_output") or {}
+                thesis = parsed.get("sector_thesis", parsed.get("thesis", ""))
+                if thesis:
+                    sections.append(f"  [{agent_name}] {str(thesis)[:200]}")
+
+        # ── Remaining inputs (market data etc.) ──────────────────────────
+        extra = {
+            k: v for k, v in inputs.items()
+            if k not in ("tickers", "esg_baseline_profiles", "sector_outputs")
+        }
+        if extra:
+            sections.append("\nADDITIONAL CONTEXT:")
+            sections.append(json.dumps(extra, indent=2, default=str)[:3000])
+
+        return "\n".join(sections)
 
     def parse_output(self, raw_response: str) -> dict[str, Any]:
         """Validate and clamp ESG scores; enforce mandatory fields."""

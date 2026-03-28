@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -164,6 +165,9 @@ class PipelineEngine:
         self.gate_results: dict[int, GateResult] = {}
         self.stage_outputs: dict[int, Any] = {}
         self._review_result: Optional[AssociateReviewResult] = None  # set by stage_11, read by stage_13
+        # ACT-S7-3: per-stage timing
+        self._stage_timings: dict[int, float] = {}   # stage_num -> elapsed_ms
+        self._pipeline_start: float = 0.0
 
     # ── helpers ─────────────────────────────────────────────────────────
     def _build_self_audit_packet(self, universe: list[str]) -> SelfAuditPacket:
@@ -293,6 +297,15 @@ class PipelineEngine:
         # ── Compute quality score ────────────────────────────────────────
         packet.compute_quality_score()
 
+        # ── ACT-S7-3: per-stage latencies ────────────────────────────────
+        packet.stage_latencies_ms = {
+            f"stage_{s}": ms for s, ms in self._stage_timings.items()
+        }
+        if self._pipeline_start > 0:
+            packet.total_pipeline_duration_s = round(
+                time.monotonic() - self._pipeline_start, 2
+            )
+
         return packet
 
     def _get_sector_outputs(self) -> list:
@@ -307,6 +320,83 @@ class PipelineEngine:
         if isinstance(raw, list):
             return raw
         return []
+
+    def _emit_audit_packet(self, universe: list[str]) -> "Optional[SelfAuditPacket]":
+        """Build, persist and attach the SelfAuditPacket for every pipeline exit.
+
+        Called from both the success path and every early-exit (gate failure)
+        so the audit packet is always available in the returned result dict.
+        Non-fatal — returns None on any exception.
+        """
+        try:
+            packet = self._build_self_audit_packet(universe)
+            if self.run_record:
+                self.run_record.self_audit_packet = packet.model_dump(mode="json")
+                self.registry.update_run(self.run_record)
+                audit_dir = (
+                    self.settings.storage_dir / "artifacts" / self.run_record.run_id
+                )
+                audit_dir.mkdir(parents=True, exist_ok=True)
+                (audit_dir / "self_audit_packet.json").write_text(
+                    packet.model_dump_json(indent=2)
+                )
+            logger.info(
+                "SelfAuditPacket — quality=%.1f gates_passed=%d agents_ok=%d "
+                "duration=%.2fs",
+                packet.publication_quality_score,
+                len(packet.gates_passed),
+                len(packet.agents_succeeded),
+                packet.total_pipeline_duration_s,
+            )
+            return packet
+        except Exception as exc:
+            logger.warning("SelfAuditPacket build failed (non-blocking): %s", exc)
+            return None
+
+    async def _timed_stage(self, stage_num: int, coro) -> bool:  # ACT-S7-3
+        """Await a stage coroutine and record its wall-clock duration."""
+        _t = time.monotonic()
+        try:
+            return await coro
+        finally:
+            self._stage_timings[stage_num] = round((time.monotonic() - _t) * 1000, 1)
+
+    def _generate_synthetic_returns(
+        self,
+        tickers: list[str],
+        n_days: int = 252,
+        seed_offset: int = 0,
+    ) -> dict[str, list[float]]:
+        """Generate reproducible synthetic daily returns for optimisation and attribution.
+
+        Returns are drawn from N(mu, sigma) using per-ticker seeds derived from
+        the ticker symbol.  Parameters are intentionally conservative — this is a
+        structural / demo implementation until a live price feed is available.
+        The seed is deterministic so the same universe always produces the same
+        synthetic history within a session.
+        """
+        import hashlib
+
+        # Tier-1 volatility assumptions (annualised sigma) keyed by ticker
+        _SIGMA = {
+            "NVDA": 0.58, "AMD": 0.52, "AVGO": 0.38, "MRVL": 0.48,
+            "ARM": 0.55, "TSM": 0.40, "MSFT": 0.28, "AMZN": 0.32,
+            "GOOGL": 0.30, "META": 0.43, "EQIX": 0.22, "DLR": 0.22,
+            "VRT": 0.44, "DELL": 0.40, "SMCI": 0.72,
+        }
+        _MU = 0.15  # conservative annual return assumption
+
+        result: dict[str, list[float]] = {}
+        for ticker in tickers:
+            sigma_ann = _SIGMA.get(ticker, 0.40)
+            sigma_daily = sigma_ann / (252 ** 0.5)
+            mu_daily = _MU / 252
+            # Deterministic seed from ticker name
+            raw_seed = int(hashlib.md5(ticker.encode()).hexdigest()[:8], 16)
+            rng = __import__("numpy").random.default_rng(raw_seed + seed_offset)
+            rets = rng.normal(mu_daily, sigma_daily, n_days).tolist()
+            result[ticker] = rets
+        return result
 
     def _save_stage_output(self, stage: int, data: Any) -> None:
         """Persist stage output to disk."""
@@ -555,12 +645,22 @@ class PipelineEngine:
         # ── ESG analysis — non-critical-path, runs after sector agents ──
         esg_result_dump: dict | None = None
         try:
+            # ACT-S7-2: enrich ESG agent context with ESGService baseline profiles
+            esg_baseline = []
+            try:
+                esg_baseline = [
+                    s.model_dump() for s in self.esg_service.get_portfolio_scores(universe)
+                ]
+            except Exception:
+                pass  # fallback to empty — non-blocking
+
             esg_result = await self.esg_analyst_agent.run(
                 self.run_record.run_id,
                 {
                     "tickers": universe,
                     "sector_outputs": [r.model_dump() for r in results],
                     "market_data": mkt_data,
+                    "esg_baseline_profiles": esg_baseline,  # ACT-S7-2
                 },
             )
             esg_result_dump = esg_result.model_dump()
@@ -853,6 +953,47 @@ class PipelineEngine:
         # Position sizing (equal weight as baseline)
         baseline_weights = self.position_sizing.equal_weight(esg_clean_universe)
 
+        # ACT-S7-4: Portfolio optimisation — risk parity and min-variance
+        optimisation_results: dict[str, Any] = {}
+        try:
+            synth_returns = self._generate_synthetic_returns(esg_clean_universe)
+            risk_parity = self.portfolio_optimisation.compute_risk_parity(
+                esg_clean_universe, synth_returns
+            )
+            min_var = self.portfolio_optimisation.compute_minimum_variance(
+                esg_clean_universe, synth_returns
+            )
+            max_sharpe = self.portfolio_optimisation.compute_max_sharpe(
+                esg_clean_universe, synth_returns
+            )
+            optimisation_results = {
+                "risk_parity": {
+                    "weights": risk_parity.weights,
+                    "expected_return_pct": risk_parity.expected_return,
+                    "expected_volatility_pct": risk_parity.expected_volatility,
+                    "risk_contributions": risk_parity.risk_contributions,
+                },
+                "min_variance": {
+                    "weights": min_var.weights,
+                    "expected_return_pct": min_var.expected_return,
+                    "expected_volatility_pct": min_var.expected_volatility,
+                    "sharpe_ratio": min_var.sharpe_ratio,
+                },
+                "max_sharpe": {
+                    "weights": max_sharpe.weights,
+                    "expected_return_pct": max_sharpe.expected_return,
+                    "expected_volatility_pct": max_sharpe.expected_volatility,
+                    "sharpe_ratio": max_sharpe.sharpe_ratio,
+                },
+            }
+            logger.info(
+                "Portfolio optimisation complete — risk_parity vol=%.1f%% max_sharpe=%.2f",
+                risk_parity.expected_volatility,
+                max_sharpe.sharpe_ratio,
+            )
+        except Exception as _exc:
+            logger.warning("Portfolio optimisation failed (non-blocking): %s", _exc)
+
         # Mandate compliance check on baseline weights
         mandate_check = self.mandate_engine.check_compliance(
             run_id=self.run_record.run_id,
@@ -918,6 +1059,7 @@ class PipelineEngine:
             "esg_compliance": esg_result,
             "mandate_compliance": mandate_check.model_dump(),
             "baseline_weights": baseline_weights,
+            "optimisation_results": optimisation_results,  # ACT-S7-4
             "ic_record": ic_record.model_dump(),
             "ic_approved": ic_record.is_approved,
             "audit_trail": audit_trail.model_dump(),
@@ -1030,12 +1172,84 @@ class PipelineEngine:
             except Exception as exc:
                 logger.warning("Snapshot save failed: %s", exc)
 
+        # ACT-S7-1: Performance Attribution — BHB decomposition with synthetic returns
+        attribution_output: dict[str, Any] = {}
+        if baseline_weights:
+            try:
+                from research_pipeline.services.benchmark_module import BENCHMARK_CONSTITUENTS
+
+                tickers = list(baseline_weights.keys())
+                # Synthetic returns for portfolio tickers and benchmark proxy
+                synth_returns = self._generate_synthetic_returns(tickers, seed_offset=1)
+                bench_tickers = list(BENCHMARK_CONSTITUENTS.get("SPY", {}).keys())
+                bench_returns = self._generate_synthetic_returns(bench_tickers, seed_offset=2)
+
+                # Normalised benchmark weights (SPY proxy)
+                raw_bench_w = BENCHMARK_CONSTITUENTS.get("SPY", {})
+                total_bw = sum(raw_bench_w.get(t, 0) for t in bench_tickers) or 100
+                benchmark_weights_norm = {
+                    t: raw_bench_w.get(t, 0) / total_bw for t in bench_tickers
+                }
+
+                # Per-ticker synthetic portfolio returns (annualised mean)
+                port_returns_annualised = {
+                    t: float(__import__("numpy").mean(synth_returns[t]) * 252) for t in tickers
+                }
+                bench_returns_annualised = {
+                    t: float(__import__("numpy").mean(bench_returns[t]) * 252)
+                    for t in bench_tickers
+                }
+
+                # Sector map from sector analyst outputs
+                sector_results = self._get_sector_outputs()
+                sector_map: dict[str, str] = {}
+                for res in sector_results:
+                    if isinstance(res, dict):
+                        agent_name = res.get("agent_name", "")
+                        # Map compute/power/infra to sector labels
+                        if "compute" in agent_name:
+                            sector = "Semiconductors"
+                        elif "power" in agent_name:
+                            sector = "Power & Energy"
+                        else:
+                            sector = "Infrastructure"
+                        parsed = res.get("parsed_output") or {}
+                        covered = parsed.get("covered_tickers", tickers)
+                        for t in covered:
+                            if t in tickers and t not in sector_map:
+                                sector_map[t] = sector
+                # Default sector for unmapped tickers
+                for t in tickers:
+                    sector_map.setdefault(t, "Semiconductors")
+                # Benchmark sector map
+                for t in bench_tickers:
+                    sector_map.setdefault(t, "Semiconductors")
+
+                bhb = self.performance_tracker.compute_bhb_attribution(
+                    run_id=self.run_record.run_id,
+                    portfolio_weights=baseline_weights,
+                    portfolio_returns=port_returns_annualised,
+                    benchmark_weights=benchmark_weights_norm,
+                    benchmark_returns=bench_returns_annualised,
+                    sector_map=sector_map,
+                )
+                attribution_output = bhb.model_dump(mode="json")
+                logger.info(
+                    "BHB attribution — excess_return=%.2f%% allocation=%.2f%% selection=%.2f%%",
+                    bhb.excess_return_pct,
+                    bhb.allocation_effect_pct,
+                    bhb.selection_effect_pct,
+                )
+            except Exception as exc:
+                logger.warning("BHB attribution failed (non-blocking): %s", exc)
+
         self._save_stage_output(14, {
             "final_status": final_status.value,
             "stages_completed": [s for s, g in self.gate_results.items() if g.passed],
             "stages_failed": failed_stages,
             "gate_summary": {s: g.reason for s, g in self.gate_results.items()},
             "cache_stats": self.cache.stats,
+            "attribution": attribution_output,  # ACT-S7-1
         })
         logger.info("Pipeline run %s finished with status: %s", self.run_record.run_id, final_status.value)
 
@@ -1051,78 +1265,95 @@ class PipelineEngine:
         if self.run_record:
             self.observability.start_run(self.run_record.run_id)
 
+        # ACT-S7-3: pipeline-level start time for total_pipeline_duration_s
+        self._pipeline_start = time.monotonic()
+
         # Stage 0: Bootstrap
-        if not await self.stage_0_bootstrap(universe):
-            await self.stage_14_monitoring()
-            return {"status": "failed", "blocked_at": 0, "run_id": self.run_record.run_id}
+        if not await self._timed_stage(0, self.stage_0_bootstrap(universe)):
+            await self._timed_stage(14, self.stage_14_monitoring())
+            _ap = self._emit_audit_packet(universe)
+            return {"status": "failed", "blocked_at": 0, "run_id": self.run_record.run_id, "audit_packet": _ap.model_dump(mode="json") if _ap else None}
 
         # Stage 1: Universe
-        if not await self.stage_1_universe(universe):
-            await self.stage_14_monitoring()
-            return {"status": "failed", "blocked_at": 1, "run_id": self.run_record.run_id}
+        if not await self._timed_stage(1, self.stage_1_universe(universe)):
+            await self._timed_stage(14, self.stage_14_monitoring())
+            _ap = self._emit_audit_packet(universe)
+            return {"status": "failed", "blocked_at": 1, "run_id": self.run_record.run_id, "audit_packet": _ap.model_dump(mode="json") if _ap else None}
 
         # Stage 2: Data Ingestion
-        if not await self.stage_2_ingestion(universe):
-            await self.stage_14_monitoring()
-            return {"status": "failed", "blocked_at": 2, "run_id": self.run_record.run_id}
+        if not await self._timed_stage(2, self.stage_2_ingestion(universe)):
+            await self._timed_stage(14, self.stage_14_monitoring())
+            _ap = self._emit_audit_packet(universe)
+            return {"status": "failed", "blocked_at": 2, "run_id": self.run_record.run_id, "audit_packet": _ap.model_dump(mode="json") if _ap else None}
 
         # Stage 3: Reconciliation
-        if not await self.stage_3_reconciliation():
-            await self.stage_14_monitoring()
-            return {"status": "failed", "blocked_at": 3, "run_id": self.run_record.run_id}
+        if not await self._timed_stage(3, self.stage_3_reconciliation()):
+            await self._timed_stage(14, self.stage_14_monitoring())
+            _ap = self._emit_audit_packet(universe)
+            return {"status": "failed", "blocked_at": 3, "run_id": self.run_record.run_id, "audit_packet": _ap.model_dump(mode="json") if _ap else None}
 
         # Stage 4: Data QA
-        if not await self.stage_4_data_qa():
-            await self.stage_14_monitoring()
-            return {"status": "failed", "blocked_at": 4, "run_id": self.run_record.run_id}
+        if not await self._timed_stage(4, self.stage_4_data_qa()):
+            await self._timed_stage(14, self.stage_14_monitoring())
+            _ap = self._emit_audit_packet(universe)
+            return {"status": "failed", "blocked_at": 4, "run_id": self.run_record.run_id, "audit_packet": _ap.model_dump(mode="json") if _ap else None}
 
         # Stage 5: Evidence Librarian
-        if not await self.stage_5_evidence(universe):
-            await self.stage_14_monitoring()
-            return {"status": "failed", "blocked_at": 5, "run_id": self.run_record.run_id}
+        if not await self._timed_stage(5, self.stage_5_evidence(universe)):
+            await self._timed_stage(14, self.stage_14_monitoring())
+            _ap = self._emit_audit_packet(universe)
+            return {"status": "failed", "blocked_at": 5, "run_id": self.run_record.run_id, "audit_packet": _ap.model_dump(mode="json") if _ap else None}
 
         # Stage 6: Sector Analysis (parallel)
-        if not await self.stage_6_sector_analysis(universe):
-            await self.stage_14_monitoring()
-            return {"status": "failed", "blocked_at": 6, "run_id": self.run_record.run_id}
+        if not await self._timed_stage(6, self.stage_6_sector_analysis(universe)):
+            await self._timed_stage(14, self.stage_14_monitoring())
+            _ap = self._emit_audit_packet(universe)
+            return {"status": "failed", "blocked_at": 6, "run_id": self.run_record.run_id, "audit_packet": _ap.model_dump(mode="json") if _ap else None}
 
         # Stage 7: Valuation
-        if not await self.stage_7_valuation(universe):
-            await self.stage_14_monitoring()
-            return {"status": "failed", "blocked_at": 7, "run_id": self.run_record.run_id}
+        if not await self._timed_stage(7, self.stage_7_valuation(universe)):
+            await self._timed_stage(14, self.stage_14_monitoring())
+            _ap = self._emit_audit_packet(universe)
+            return {"status": "failed", "blocked_at": 7, "run_id": self.run_record.run_id, "audit_packet": _ap.model_dump(mode="json") if _ap else None}
 
         # Stage 8: Macro & Political
-        if not await self.stage_8_macro(universe):
-            await self.stage_14_monitoring()
-            return {"status": "failed", "blocked_at": 8, "run_id": self.run_record.run_id}
+        if not await self._timed_stage(8, self.stage_8_macro(universe)):
+            await self._timed_stage(14, self.stage_14_monitoring())
+            _ap = self._emit_audit_packet(universe)
+            return {"status": "failed", "blocked_at": 8, "run_id": self.run_record.run_id, "audit_packet": _ap.model_dump(mode="json") if _ap else None}
 
         # Stage 9: Risk & Scenarios
-        if not await self.stage_9_risk(universe):
-            await self.stage_14_monitoring()
-            return {"status": "failed", "blocked_at": 9, "run_id": self.run_record.run_id}
+        if not await self._timed_stage(9, self.stage_9_risk(universe)):
+            await self._timed_stage(14, self.stage_14_monitoring())
+            _ap = self._emit_audit_packet(universe)
+            return {"status": "failed", "blocked_at": 9, "run_id": self.run_record.run_id, "audit_packet": _ap.model_dump(mode="json") if _ap else None}
 
         # Stage 10: Red Team
-        if not await self.stage_10_red_team(universe):
-            await self.stage_14_monitoring()
-            return {"status": "failed", "blocked_at": 10, "run_id": self.run_record.run_id}
+        if not await self._timed_stage(10, self.stage_10_red_team(universe)):
+            await self._timed_stage(14, self.stage_14_monitoring())
+            _ap = self._emit_audit_packet(universe)
+            return {"status": "failed", "blocked_at": 10, "run_id": self.run_record.run_id, "audit_packet": _ap.model_dump(mode="json") if _ap else None}
 
         # Stage 11: Associate Review
-        if not await self.stage_11_review():
-            await self.stage_14_monitoring()
-            return {"status": "failed", "blocked_at": 11, "run_id": self.run_record.run_id}
+        if not await self._timed_stage(11, self.stage_11_review()):
+            await self._timed_stage(14, self.stage_14_monitoring())
+            _ap = self._emit_audit_packet(universe)
+            return {"status": "failed", "blocked_at": 11, "run_id": self.run_record.run_id, "audit_packet": _ap.model_dump(mode="json") if _ap else None}
 
         # Stage 12: Portfolio Construction
-        if not await self.stage_12_portfolio(universe):
-            await self.stage_14_monitoring()
-            return {"status": "failed", "blocked_at": 12, "run_id": self.run_record.run_id}
+        if not await self._timed_stage(12, self.stage_12_portfolio(universe)):
+            await self._timed_stage(14, self.stage_14_monitoring())
+            _ap = self._emit_audit_packet(universe)
+            return {"status": "failed", "blocked_at": 12, "run_id": self.run_record.run_id, "audit_packet": _ap.model_dump(mode="json") if _ap else None}
 
         # Stage 13: Report Assembly
-        if not await self.stage_13_report():
-            await self.stage_14_monitoring()
-            return {"status": "failed", "blocked_at": 13, "run_id": self.run_record.run_id}
+        if not await self._timed_stage(13, self.stage_13_report()):
+            await self._timed_stage(14, self.stage_14_monitoring())
+            _ap = self._emit_audit_packet(universe)
+            return {"status": "failed", "blocked_at": 13, "run_id": self.run_record.run_id, "audit_packet": _ap.model_dump(mode="json") if _ap else None}
 
         # Stage 14: Monitoring & Logging
-        await self.stage_14_monitoring()
+        await self._timed_stage(14, self.stage_14_monitoring())
 
         # Phase 7.5: End observability tracking and save telemetry
         if self.run_record:
@@ -1155,28 +1386,8 @@ class PipelineEngine:
             except Exception as exc:
                 logger.warning("Report format rendering failed: %s", exc)
 
-        # ── ACT-S6-1: Build and attach SelfAuditPacket ────────────────────
-        audit_packet: Optional[SelfAuditPacket] = None
-        try:
-            audit_packet = self._build_self_audit_packet(universe)
-            if self.run_record:
-                self.run_record.self_audit_packet = audit_packet.model_dump(mode="json")
-                self.registry.update_run(self.run_record)
-            # Persist as a named artifact alongside other stage outputs
-            if self.run_record:
-                audit_dir = self.settings.storage_dir / "artifacts" / self.run_record.run_id
-                audit_dir.mkdir(parents=True, exist_ok=True)
-                (audit_dir / "self_audit_packet.json").write_text(
-                    audit_packet.model_dump_json(indent=2)
-                )
-            logger.info(
-                "SelfAuditPacket built — quality_score=%.1f gates_passed=%d agents_succeeded=%d",
-                audit_packet.publication_quality_score,
-                len(audit_packet.gates_passed),
-                len(audit_packet.agents_succeeded),
-            )
-        except Exception as exc:
-            logger.warning("SelfAuditPacket build failed (non-blocking): %s", exc)
+        # ── ACT-S6-1 / ACT-S7-3: Build and attach SelfAuditPacket ─────────────
+        audit_packet = self._emit_audit_packet(universe)
 
         return {
             "status": "completed",
