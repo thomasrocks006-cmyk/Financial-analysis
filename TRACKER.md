@@ -1,8 +1,8 @@
 # Project Tracker — AI Research & Portfolio Platform
 
-> **Last updated:** March 28, 2026  
-> **Test suite:** 503 / 503 passing  
-> **Commit:** `2530399` — session 7 complete
+> **Last updated:** March 29, 2026  
+> **Test suite:** 529 / 529 passing  
+> **Commit:** `a7e520e` — session 8 complete
 
 ---
 
@@ -17,6 +17,7 @@
 | Session 5 (ACT-S5-1, ACT-S5-2) | All **COMPLETE** |
 | Session 6 (ACT-S6-1 through ACT-S6-5) | All **COMPLETE** |
 | Session 7 (ACT-S7-1 through ACT-S7-5) | All **COMPLETE** |
+| Session 8 (ACT-S8-1 through ACT-S8-5) | All **COMPLETE** |
 
 ---
 
@@ -72,6 +73,16 @@
 | ACT-S7-4 | **Portfolio** | `PortfolioOptimisationEngine` — risk parity, min-variance, max-Sharpe; wired into Stage 12 `optimisation_results` | Portfolio Management | High | ✅ `2530399` |
 | ACT-S7-5 | **Testing** | `tests/test_session7.py` — 23 new tests covering attribution, ESG enrichment, optimiser, latency fields | Operations | Low | ✅ `2530399` |
 
+### Session 8 — Completed Work
+
+| ID | Area | Task | JPAM Division | Priority | Status |
+|---|---|---|---|---|---|
+| ACT-S8-1 | **Data** | `LiveReturnStore` — yfinance-backed daily return fetcher with in-memory cache; `_get_returns()` engine helper tries live first, falls back to synthetic | Performance Attribution | High | ✅ `a7e520e` |
+| ACT-S8-2 | **Portfolio** | Rebalancing signals wired into Stage 12 output (`rebalance_proposal`); Streamlit Rebalancing Signals panel with trade-level detail | Portfolio Management | High | ✅ `a7e520e` |
+| ACT-S8-3 | **ESG** | `ESGService.load_from_csv()` — ingest external ESG scores (ticker, E/S/G, controversy) from CSV; validates enum, invalidates cache | ESG / Sustainable Investing | Medium | ✅ `a7e520e` |
+| ACT-S8-4 | **Governance** | `PromptRegistry` wired into engine `_scan_prompt_registry()`; `SelfAuditPacket.prompt_drift_reports` populated on every run | Investment Governance | Medium | ✅ `a7e520e` |
+| ACT-S8-5 | **Testing** | `tests/test_session8.py` — 26 new tests covering LiveReturnStore, rebalancing wiring, ESG CSV ingest, PromptRegistry wiring | Operations | Low | ✅ `a7e520e` |
+
 ---
 
 ## 3. Post-Roadmap Build Candidates (original)
@@ -89,19 +100,19 @@
 
 ## 4. Division-Level Maturity
 
-*Scores updated through session 7. BHB attribution built (Performance Attribution 0→4), ESGService baselines (ESG 3→5), optimiser live in Stage 12 (Portfolio Management +1), latency on all exits.*
+*Scores updated through session 8. LiveReturnStore built (Performance Attribution live path available), ESG CSV ingest opens real-data path, rebalancing signals in UI, PromptRegistry wired to audit.*
 
-| Division | Session 7 Score | JPAM Target | Gap | Primary Remaining Gap |
+| Division | Session 8 Score | JPAM Target | Gap | Primary Remaining Gap |
 |---|---|---|---|---|
 | Global Research | **7.5 / 10** | 9.0 / 10 | 1.5 | Agent outputs still partially shallow (political risk, macro) |
-| Quantitative Research | **8.0 / 10** ↑ | 9.0 / 10 | 1.0 | Synthetic returns used; no live historical price feed |
-| Portfolio Management | **7.5 / 10** ↑ | 8.5 / 10 | 1.0 | Risk parity / min-var / max-Sharpe optimiser live ✅; no live rebalancing |
-| Investment Governance | **8.5 / 10** | 9.5 / 10 | 1.0 | Audit packet on every exit ✅; latency fields populated ✅ |
-| Performance Attribution | **4.0 / 10** ↑ | 8.5 / 10 | 4.5 | BHB attribution built ✅; synthetic returns only — no live price feed |
-| ESG / Sustainable Investing | **5.0 / 10** ↑ | 7.5 / 10 | 2.5 | ESGService baselines wired ✅; no paid third-party ESG dataset |
-| Operations & Technology | **8.5 / 10** | 9.0 / 10 | 0.5 | 503 tests; CI weekly live; all exits emit audit packet |
-| Client Solutions / Reporting | **8.0 / 10** | 8.5 / 10 | 0.5 | PDF export live ✅; ESG panel + latency data in UI |
-| **Weighted platform score** | **8.0 / 10** ↑ | **9.0 / 10** | **1.0** | Live price feed (attribution accuracy) is the main remaining anchor |
+| Quantitative Research | **8.0 / 10** | 9.0 / 10 | 1.0 | Live return path built ✅; no live factor model refit |
+| Portfolio Management | **8.0 / 10** ↑ | 8.5 / 10 | 0.5 | Rebalancing signals live in UI ✅; no execution integration |
+| Investment Governance | **8.5 / 10** | 9.5 / 10 | 1.0 | Prompt drift tracking wired ✅; no automated prompt regression CI |
+| Performance Attribution | **5.5 / 10** ↑ | 8.5 / 10 | 3.0 | Live return path built ✅; attribution accuracy depends on yfinance availability |
+| ESG / Sustainable Investing | **5.5 / 10** ↑ | 7.5 / 10 | 2.0 | CSV ingest available ✅; no real MSCI/Sustainalytics dataset loaded |
+| Operations & Technology | **8.5 / 10** | 9.0 / 10 | 0.5 | 529 tests; CI weekly live; all exits emit audit packet |
+| Client Solutions / Reporting | **8.0 / 10** | 8.5 / 10 | 0.5 | PDF export live ✅; Rebalancing Signals panel added ✅ |
+| **Weighted platform score** | **8.3 / 10** ↑ | **9.0 / 10** | **0.7** | Real ESG dataset + live attribution accuracy are the main remaining anchors |
 
 ---
 
@@ -126,7 +137,8 @@
 | `test_session5.py` | 26 | ACT-S5-1 gate logic hardening (gates 9/12/13), ACT-S5-2 base_agent parse_output strategies |
 | `test_session6.py` | 27 | ACT-S6-1 SelfAuditPacket wiring, ACT-S6-2 ESG agent, ACT-S6-3 PDF export, ACT-S6-4 deprecation |
 | `test_session7.py` | 23 | ACT-S7-1 BHB attribution, ACT-S7-2 ESG enrichment, ACT-S7-3 latency fields, ACT-S7-4 optimiser |
-| **Total** | **503** | All passing |
+| `test_session8.py` | 26 | ACT-S8-1 LiveReturnStore, ACT-S8-2 rebalancing wiring, ACT-S8-3 ESG CSV ingest, ACT-S8-4 PromptRegistry |
+| **Total** | **529** | All passing |
 
 ---
 
@@ -139,6 +151,9 @@
 | ESG analyst agent (new S6) | `src/research_pipeline/agents/esg_analyst.py` |
 | ESG baseline service (new S7) | `src/research_pipeline/services/esg_service.py` |
 | Portfolio optimisation engine (new S7) | `src/research_pipeline/services/portfolio_optimisation.py` |
+| Live return store (new S8) | `src/research_pipeline/services/live_return_store.py` |
+| Rebalancing engine (new S7, wired S8) | `src/research_pipeline/services/rebalancing_engine.py` |
+| Prompt registry (new S7, wired S8) | `src/research_pipeline/services/prompt_registry.py` |
 | Deterministic services | `src/research_pipeline/services/` |
 | Qualitative schemas (new) | `src/research_pipeline/schemas/qualitative.py` |
 | Quant Research Agent (new) | `src/research_pipeline/agents/quant_research_analyst.py` |

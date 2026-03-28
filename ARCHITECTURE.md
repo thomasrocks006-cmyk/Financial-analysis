@@ -885,22 +885,34 @@ These are concrete defects in the current code — not design gaps but bugs or u
 
 **Session 7 achieved state:** Weighted platform score 7.5 → **8.0**; Performance Attribution 0 → **4.0/10**; ESG 3.0 → **5.0/10**; Portfolio Management 6.5 → **7.5**; audit packet on all exits ✅; 503 tests passing.
 
-### 12.9 Session 8 Work Plan
+### 12.9 Session 8 Completed Work
+
+| ID | Task | File(s) | JPAM Division | Status |
+|---|---|---|---|---|
+| ACT-S8-1 | `LiveReturnStore` — yfinance-backed daily return fetcher with in-memory cache and graceful fallback; `_get_returns()` engine helper tries live first, falls back to synthetic; wired into Stage 12 + Stage 14 | `services/live_return_store.py`, `engine.py` | Performance Attribution | ✅ `a7e520e` |
+| ACT-S8-2 | Rebalancing signals — `RebalancingEngine.generate_rebalance()` called post-optimisation in Stage 12; `rebalance_proposal` in `stage_outputs[12]`; Streamlit Rebalancing Signals panel with trade-level detail table | `engine.py`, `app.py` | Portfolio Management | ✅ `a7e520e` |
+| ACT-S8-3 | `ESGService.load_from_csv()` — ingest external ESG scores (ticker, overall_rating, E/S/G scores, controversy_flag) from CSV; validates `ESGRating` enum, skips invalid rows, invalidates score cache per ticker | `services/esg_service.py` | ESG / Sustainable Investing | ✅ `a7e520e` |
+| ACT-S8-4 | `PromptRegistry` wired — `_scan_prompt_registry(packet)` iterates all 14 agents, registers prompt hashes, checks drift; `SelfAuditPacket.prompt_drift_reports: list[dict]` populated on every completed run | `engine.py`, `schemas/governance.py` | Investment Governance | ✅ `a7e520e` |
+| ACT-S8-5 | 26 new tests — `TestLiveReturnStore` (7), `TestRebalancingWiring` (5), `TestESGCsvIngest` (6), `TestPromptRegistryWiring` (8) | `tests/test_session8.py` | Operations | ✅ `a7e520e` |
+
+**Session 8 achieved state:** Weighted platform score 8.0 → **8.3**; Performance Attribution 4.0 → **5.5/10** (live data path built); ESG 5.0 → **5.5/10** (CSV ingest available); Portfolio Management 7.5 → **8.0/10** (rebalancing signals in UI); prompt drift tracking wired ✅; 529 tests passing.
+
+### 12.10 Session 9 Work Plan
 
 Priority order for next session:
 
 | ID | Task | File(s) | JPAM Division | Effort |
 |---|---|---|---|---|
-| ACT-S8-1 | **Live price feed** — yfinance historical returns loader replacing synthetic data; `LiveReturnStore`; feeds `PortfolioOptimisationEngine` and BHB attribution | `services/live_return_store.py`, `engine.py` | Performance Attribution | High |
-| ACT-S8-2 | **Portfolio rebalancing signals** — compare optimiser weights to current holdings; surface +/− delta per ticker in Streamlit and `SelfAuditPacket` | `services/portfolio_optimisation.py`, `app.py` | Portfolio Management | Medium |
-| ACT-S8-3 | **Paid ESG dataset** — CSV/API ingest of MSCI or Sustainalytics data; replace `ESGService` heuristics; raises ESG 5 → 7 | `services/esg_service.py`, `agents/esg_analyst.py` | ESG / Sustainable Investing | High |
-| ACT-S8-4 | **Prompt versioning** — assign semver tags to all 14 agent prompts; compare output drift across versions in CI | `src/research_pipeline/prompts/`, `tests/` | Operations | Medium |
-| ACT-S8-5 | **Tests** — session 8: live return loader, rebalancing delta, ESG ingest round-trip | `tests/test_session8.py` | Operations | Low |
+| ACT-S9-1 | **Real ESG dataset** — load an actual MSCI/Sustainalytics-format CSV into `ESGService.load_from_csv()`; include sample fixture CSV in `tests/fixtures/`; raises ESG 5.5 → 7.0 | `services/esg_service.py`, `tests/fixtures/` | ESG / Sustainable Investing | Medium |
+| ACT-S9-2 | **Prompt A/B regression tests** — use `PromptRegistry.check_all_drift()` in CI; add `tests/test_prompt_regression.py`; flag agents whose hash changes unexpectedly | `services/prompt_registry.py`, `tests/` | Operations | Medium |
+| ACT-S9-3 | **Rebalancing in SelfAuditPacket** — persist `rebalance_proposal` summary (turnover, trade count) as `SelfAuditPacket.rebalancing_summary`; surface in Governance tab | `schemas/governance.py`, `engine.py`, `app.py` | Investment Governance | Low |
+| ACT-S9-4 | **Attribution accuracy hardening** — handle partial yfinance failures gracefully (ticker-level fallback, not full-universe fallback); improve BHB accuracy reporting metric | `services/live_return_store.py`, `engine.py` | Performance Attribution | Medium |
+| ACT-S9-5 | **Tests** — session 9: ESG fixture round-trip, prompt regression, rebalancing in audit packet | `tests/test_session9.py` | Operations | Low |
 
-**Session 8 target state:** Weighted platform score 8.0 → 8.5+; Performance Attribution 4.0 → 6.0/10 (live data); ESG 5.0 → 7.0/10 (real dataset).
+**Session 9 target state:** Weighted platform score 8.3 → 8.6+; ESG 5.5 → 7.0/10 (real fixture data); Performance Attribution 5.5 → 7.0/10 (granular fallback); prompt drift in CI.
 
 ---
 
-*Document updated: session 7 — ACT-S7-1 (BHB attribution wired), ACT-S7-2 (ESGService baselines), ACT-S7-3 (latency + `_emit_audit_packet` on all exits), ACT-S7-4 (PortfolioOptimisationEngine), ACT-S7-5 (23 new tests). Test count: 503 passing. Session 8 plan in §12.9.*  
-*Document updated: March 28, 2026 — Extended gap analysis and JPAM roadmap goal logged.*  
+*Document updated: session 8 — ACT-S8-1 (LiveReturnStore + `_get_returns` wired), ACT-S8-2 (RebalancingEngine signals in Stage 12 + Streamlit panel), ACT-S8-3 (ESGService.load_from_csv), ACT-S8-4 (PromptRegistry → SelfAuditPacket.prompt_drift_reports), ACT-S8-5 (26 new tests). Test count: 529 passing. Session 9 plan in §12.10.*  
+*Document updated: March 29, 2026 — Session 8 complete, session 9 plan added.*  
 *See ROADMAP.md for the complete 7-phase build plan.*
