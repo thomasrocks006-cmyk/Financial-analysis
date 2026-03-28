@@ -1190,9 +1190,11 @@ with tab_about:
 | Layer | Components |
 |---|---|
 | **Client Onboarding** | Risk profiling, investment objectives, mandate constraints, ESG screening |
-| **Live Data** | FMP (primary) + Finnhub (secondary) + yfinance (fallback), cross-validation |
+| **Quantitative Data** | FMP (primary) + Finnhub (secondary) + yfinance (fallback), cross-validation |
+| **Qualitative Intelligence** | 8-source engine: news, press releases, earnings transcripts, SEC filings, analyst actions, insider trading, forward estimates, sentiment |
 | **Deterministic** | Data ingestion, reconciliation, QA, DCF engine, risk math, scenario engine |
-| **LLM Agents** | Evidence librarian, sector analysts, valuation, red team, reviewer, PM, macro |
+| **LLM Agents** | Evidence librarian, sector analysts (Six-Box), valuation, red team, reviewer, PM, macro |
+| **Qual-Quant Correlation** | Automated divergence/convergence detection between qualitative signals and quantitative data |
 | **Governance** | Prompt versioning, golden tests, self-audit, human override log |
 """)
         st.markdown("#### Supported Providers")
@@ -1203,11 +1205,11 @@ with tab_about:
 | **OpenAI** | GPT-5.4, GPT-5.4 mini, GPT-5.4 nano |
 | **Google** | Gemini 3.1 Pro, 2.5 Pro, 2.5 Flash, Flash-Lite |
 
-| Data Source | Coverage |
-|---|---|
-| **FMP** | Quotes, financials, key metrics, price targets, income/cashflow statements |
-| **Finnhub** | Analyst recs, fundamental metrics, company news (qualitative), cross-validation |
-| **yfinance** | Fallback prices and fundamentals if both APIs fail |
+| Data Source | Quantitative | Qualitative |
+|---|---|---|
+| **FMP** | Quotes, financials, key metrics, price targets, income/cashflow | News, press releases, earnings transcripts, SEC filings, analyst actions, insider trading, estimates, social sentiment |
+| **Finnhub** | Quotes, analyst recs, fundamental metrics, cross-validation | Company news (14-day window), insider sentiment (MSPR), news sentiment scores |
+| **yfinance** | Fallback prices and fundamentals | — |
 """)
 
     with col_b:
@@ -1221,13 +1223,26 @@ with tab_about:
             if key != "custom":
                 st.markdown(f"**{info['name']}**: {info['description']}")
 
+        st.markdown("#### Qualitative Intelligence Sources")
+        st.markdown("""
+1. **Company News** — FMP + Finnhub (deduplicated, 14-day window)
+2. **Press Releases** — Official corporate communications (FMP)
+3. **Earnings Transcripts** — Management commentary & forward guidance (FMP)
+4. **SEC Filings** — 8-K, 10-K, 10-Q material events (FMP)
+5. **Analyst Actions** — Upgrades/downgrades with firm attribution (FMP)
+6. **Insider Trading** — Executive buy/sell patterns & net sentiment (FMP)
+7. **Forward Estimates** — Consensus revenue/EPS with estimate spread (FMP)
+8. **Sentiment Signals** — Social media (StockTwits/Reddit) + news sentiment (FMP + Finnhub)
+""")
+
     st.divider()
     st.caption(
         "> **Disclaimer**: This platform uses live market data from FMP, Finnhub, and Yahoo Finance APIs. "
+        "Qualitative intelligence sourced from 8 channels per ticker. "
         "All [HOUSE VIEW] content reflects analytical opinion. Not investment advice. "
         "AI-generated research for analytical purposes only."
     )
     st.caption(
-        f"Pipeline v8.0 · Python 3.12 · Streamlit · "
+        f"Pipeline v8.1 · Deep Qualitative Intelligence · Python 3.12 · Streamlit · "
         f"Reports stored in `{REPORTS_DIR.relative_to(ROOT)}/`"
     )

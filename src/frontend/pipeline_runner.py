@@ -3,6 +3,19 @@
 Drives the full 15-stage institutional research pipeline.
 Uses FMP + Finnhub for live market data, yfinance as fallback.
 Injects client investment profile context into every LLM agent.
+
+Qualitative Intelligence (8-source engine):
+  - Company news & press releases (FMP + Finnhub, deduplicated)
+  - Earnings call transcripts (FMP — management commentary)
+  - SEC filings (8-K / 10-K / 10-Q material events)
+  - Analyst upgrades/downgrades (FMP grade changes)
+  - Insider trading activity (FMP + Finnhub MSPR)
+  - Forward analyst estimates (FMP revenue/EPS consensus)
+  - Social & news sentiment (FMP social + Finnhub sentiment scores)
+
+Qualitative Synthesis uses a dedicated reasoning model (Gemini 2.5 Pro preferred)
+to correlate qualitative signals with quantitative data before the main
+analysis stages, producing deep narrative intelligence per ticker.
 """
 
 from __future__ import annotations
@@ -152,8 +165,33 @@ class PipelineRunner:
         except Exception:
             macro_data = {"date": datetime.now(timezone.utc).strftime("%Y-%m-%d"), "source": "unavailable"}
 
+        # ── Load qualitative intelligence (8 sources per ticker) ────────
+        from frontend.qualitative_data import fetch_qualitative_universe
+        try:
+            qual_packages = await fetch_qualitative_universe(
+                self.tickers,
+                fmp_key=fmp_key,
+                finnhub_key=finnhub_key,
+                activity_cb=self._activity_cb,
+            )
+            total_signals = sum(p.signal_count for p in qual_packages.values())
+            logger.info(
+                "Qualitative data loaded: %d signals across %d tickers",
+                total_signals, len(self.tickers),
+            )
+            if self._activity_cb:
+                coverage = {t: p.coverage_score for t, p in qual_packages.items()}
+                self._activity_cb(f"Qualitative coverage: {coverage}")
+        except Exception as _qual_exc:
+            logger.warning("Qualitative data fetch failed (%s)", _qual_exc)
+            from frontend.qualitative_data import QualitativePackage
+            qual_packages = {
+                t: QualitativePackage(ticker=t, coverage_gaps=[f"TOTAL FAILURE: {_qual_exc}"])
+                for t in self.tickers
+            }
+
         # ── Stage 0: Bootstrap ────────────────────────────────────────────
-        s0 = await self._run_stage(0, "Bootstrap & Configuration", _cb, self._stage_bootstrap, run_id, market_data)
+        s0 = await self._run_stage(0, "Bootstrap & Configuration", _cb, self._stage_bootstrap, run_id, market_data, qual_packages)
         result.stages.append(s0)
 
         # ── Stage 1: Universe ─────────────────────────────────────────────
@@ -170,13 +208,13 @@ class PipelineRunner:
         s4 = await self._run_stage(4, "Data QA & Lineage", _cb, self._stage_qa, market_data)
         result.stages.append(s4)
 
-        # ── Stage 5: Evidence Librarian (LLM) ────────────────────────────
-        s5 = await self._run_stage(5, "Evidence Librarian / Claim Ledger", _cb, self._stage_evidence, market_data)
+        # ── Stage 5: Evidence Librarian + Qualitative Synthesis (LLM) ──
+        s5 = await self._run_stage(5, "Evidence Librarian / Claim Ledger", _cb, self._stage_evidence, market_data, qual_packages)
         result.stages.append(s5)
         claim_ledger_text = s5.raw_text
 
-        # ── Stage 6: Sector Analysis (LLM) ───────────────────────────────
-        s6 = await self._run_stage(6, "Sector Analysis", _cb, self._stage_sector, market_data)
+        # ── Stage 6: Sector Analysis + Narrative Intelligence (LLM) ──────
+        s6 = await self._run_stage(6, "Sector Analysis", _cb, self._stage_sector, market_data, qual_packages)
         result.stages.append(s6)
         sector_outputs = s6.raw_text
 
@@ -367,7 +405,15 @@ class PipelineRunner:
 
     # ── Individual stage implementations ─────────────────────────────────
 
-    async def _stage_bootstrap(self, run_id: str, market_data: dict) -> dict:
+    async def _stage_bootstrap(self, run_id: str, market_data: dict, qual_packages: dict = None) -> dict:
+        qual_summary = {}
+        if qual_packages:
+            for t, pkg in qual_packages.items():
+                qual_summary[t] = {
+                    "signals": pkg.signal_count,
+                    "coverage": pkg.coverage_score,
+                    "gaps": pkg.coverage_gaps[:3] if pkg.coverage_gaps else [],
+                }
         return {
             "run_id": run_id,
             "model": self.model,
@@ -379,6 +425,7 @@ class PipelineRunner:
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "client_profile": self.client_profile.name if self.client_profile else "Default",
             "risk_tolerance": self.client_profile.risk_tolerance if self.client_profile else "moderate",
+            "qualitative_coverage": qual_summary,
         }
 
     async def _stage_universe(self, tickers: list[str]) -> dict:
@@ -439,8 +486,20 @@ class PipelineRunner:
             "data_tier": tier,
         }
 
-    async def _stage_evidence(self, market_data: dict) -> str:
-        stocks_summary = []
+    async def _stage_evidence(self, market_data: dict, qual_packages: dict = None) -> str:
+        """Stage 5: Evidence Librarian with deep qualitative-quantitative correlation.
+
+        This stage uses a reasoning model (Gemini 2.5 Pro when available) to:
+        1. Ingest ALL quantitative data from FMP/Finnhub/yfinance
+        2. Ingest ALL qualitative data (8 sources) from the qualitative engine
+        3. Cross-correlate: do insider actions align with fundamentals?
+           Do analyst grade changes match estimate revisions? Does news
+           sentiment match price action?
+        4. Build a structured Evidence Library with provenance tags and
+           confidence tiers for every claim.
+        """
+        # Build quantitative summary per ticker
+        quant_blocks = []
         for ticker, snap in market_data.get("stocks", {}).items():
             parts = [f"**{ticker} ({snap.get('company_name', ticker)})**:"]
             if snap.get("price"): parts.append(f"price ${snap['price']}")
@@ -450,35 +509,103 @@ class PipelineRunner:
             if snap.get("consensus_target_12m"): parts.append(f"consensus target ${snap['consensus_target_12m']}")
             if snap.get("revenue_ttm_bn"): parts.append(f"revenue ${snap['revenue_ttm_bn']}B")
             if snap.get("gross_margin_pct"): parts.append(f"gross margin {snap['gross_margin_pct']}%")
+            if snap.get("operating_margin_pct"): parts.append(f"op margin {snap['operating_margin_pct']}%")
             if snap.get("free_cash_flow_ttm_bn"): parts.append(f"FCF ${snap['free_cash_flow_ttm_bn']}B")
             if snap.get("ev_ebitda"): parts.append(f"EV/EBITDA {snap['ev_ebitda']}x")
             if snap.get("debt_to_equity"): parts.append(f"D/E {snap['debt_to_equity']}")
-            if snap.get("roe"): parts.append(f"ROE {snap['roe']:.1%}" if isinstance(snap['roe'], float) and snap['roe'] < 1 else f"ROE {snap['roe']}")
-            # News headlines
-            news = snap.get("recent_news", [])
-            if news:
-                headlines = [n.get("headline", "") for n in news[:5] if n.get("headline")]
-                if headlines:
-                    parts.append(f"Recent news: {'; '.join(headlines[:3])}")
-            stocks_summary.append(", ".join(parts))
+            if snap.get("roe"):
+                roe_val = snap["roe"]
+                parts.append(f"ROE {roe_val:.1%}" if isinstance(roe_val, float) and roe_val < 1 else f"ROE {roe_val}")
+            if snap.get("eps_growth_yoy"): parts.append(f"EPS growth {snap['eps_growth_yoy']}%")
+            if snap.get("beta"): parts.append(f"beta {snap['beta']}")
+            quant_blocks.append(", ".join(parts))
+
+        # Build qualitative blocks per ticker
+        qual_blocks = []
+        correlation_hints_all = []
+        if qual_packages:
+            for ticker, pkg in qual_packages.items():
+                qual_blocks.append(pkg.to_prompt_block())
+                # Generate correlation hints
+                snap = market_data.get("stocks", {}).get(ticker, {})
+                hints = pkg.correlation_hints(snap)
+                if hints:
+                    correlation_hints_all.append(
+                        f"**{ticker} correlations:**\n" + "\n".join(f"  • {h}" for h in hints)
+                    )
+
+        qual_text = "\n\n".join(qual_blocks) if qual_blocks else "(No qualitative data available)"
+        hints_text = "\n\n".join(correlation_hints_all) if correlation_hints_all else "(No correlation signals detected)"
 
         system = textwrap.dedent(f"""
-            You are the Evidence Librarian for an institutional research platform.
+            You are the Evidence Librarian and Qualitative Intelligence Analyst for an
+            institutional research platform. You have PhD-level analytical reasoning skills.
 
             {self._client_context()}
 
-            You have been provided with LIVE market data from FMP and Finnhub APIs plus
-            recent news headlines. These are real, current data points.
+            You have been provided with:
+            1. LIVE QUANTITATIVE DATA from FMP and Finnhub APIs (prices, fundamentals, ratios)
+            2. DEEP QUALITATIVE INTELLIGENCE from 8 sources:
+               - Company news & press releases (official corporate communications)
+               - Earnings call transcripts (management commentary, tone, guidance)
+               - SEC filings (8-K material events, 10-K annual, 10-Q quarterly)
+               - Analyst upgrades/downgrades (sell-side grade changes)
+               - Insider trading activity (executive buy/sell patterns)
+               - Forward analyst estimates (consensus revenue/EPS, estimate spread)
+               - Social & news sentiment scores (market mood indicators)
+            3. CORRELATION HINTS — pre-computed signals where qualitative and quantitative
+               data align (convergence) or diverge (divergence).
 
-            For each company:
-            1. List 4-6 primary verified facts from the live data feed.
-               Tag source: [FMP], [FHB], or [YF] for provider. Rate tier: [T1] or [T2].
-            2. List 3-5 items from news/market signals (recent headlines). Tag [NEWS].
-            3. Identify 3-4 evidence gaps — material questions the API data cannot answer
-               (e.g., management commentary, capex guidance, contract wins, regulatory status).
-            4. Rate overall evidence quality (HIGH/MEDIUM/LOW) with reasoning.
+            Your task is to build a DEEP Evidence Library that goes far beyond listing data points.
+            You must REASON about what the data means collectively.
 
-            Format as clean readable markdown with headers per company.
+            For each company, produce:
+
+            ## [TICKER] — Evidence Library
+
+            ### Tier 1: Verified Quantitative Facts
+            List 5-8 hard numerical facts from the live data feed.
+            Tag source: [FMP], [FHB], [YF]. Rate: [T1 — machine-verified].
+            For each fact, note what it IMPLIES (e.g., "FCF of $X implies Y% FCF yield,
+            which is [above/below] peer median").
+
+            ### Tier 2: Qualitative Intelligence
+            Synthesise the qualitative signals into a NARRATIVE, not just a list:
+            - What story do the news headlines tell? Is coverage positive/negative/mixed?
+            - What did management say on the earnings call? What tone? What guidance?
+            - Are analysts upgrading or downgrading? Is there consensus movement?
+            - Are insiders buying or selling? Does insider behavior MATCH the bull thesis?
+            - What SEC filings are material? Any 8-K events that change the picture?
+            Tag each insight: [NEWS], [TRANSCRIPT], [SEC], [ANALYST], [INSIDER], [SENTIMENT].
+
+            ### Tier 3: Cross-Correlation Analysis
+            This is the most important section. Reason about:
+            - **Narrative-Fundamental Alignment**: Do qualitative signals CONFIRM or
+              CONTRADICT the quantitative picture? (e.g., "Revenue growing 30% [T1] AND
+              management guiding higher [TRANSCRIPT] AND analysts upgrading [ANALYST]
+              = STRONG CONVERGENCE" vs "Revenue growing but insiders selling = DIVERGENCE")
+            - **Information Asymmetry Signals**: Where might the market be wrong?
+              What does insider/management behavior tell us that the headline numbers don't?
+            - **Catalyst Identification**: What upcoming events could move the stock?
+              (earnings dates, product launches, regulatory decisions, contract renewals)
+            - **Evidence Gaps**: What CRITICAL information is missing? What would change
+              your assessment if you knew it?
+
+            ### Evidence Quality Rating
+            - Overall: HIGH / MEDIUM / LOW
+            - Quantitative depth: X/10
+            - Qualitative depth: X/10
+            - Correlation confidence: X/10
+            - Key gap that would change the assessment: (one sentence)
+
+            **REASONING RULES:**
+            - Every qualitative insight must connect back to a quantitative data point
+            - Never state a qualitative signal without assessing its reliability
+            - Insider trading is a LEADING indicator — weight it heavily
+            - Earnings transcript tone matters as much as the numbers
+            - Analyst estimate spread indicates conviction/uncertainty level
+            - High social sentiment + stretched valuation = crowding risk
+            - Low coverage + strong fundamentals = potential under-the-radar opportunity
         """).strip()
 
         user_content = f"""
@@ -486,15 +613,30 @@ Date: {market_data.get('date')}
 Universe: {', '.join(self.tickers)}
 Data source: {market_data.get('data_source')}
 
-LIVE DATA PACKAGE:
-{chr(10).join(stocks_summary)}
+═══════════════════════════════════════════════════════════════
+SECTION A — QUANTITATIVE DATA (live from FMP + Finnhub)
+═══════════════════════════════════════════════════════════════
+{chr(10).join(quant_blocks)}
 
-Please build the Evidence Library and Claim Ledger for this universe.
+═══════════════════════════════════════════════════════════════
+SECTION B — QUALITATIVE INTELLIGENCE (8 sources)
+═══════════════════════════════════════════════════════════════
+{qual_text}
+
+═══════════════════════════════════════════════════════════════
+SECTION C — PRE-COMPUTED CORRELATION SIGNALS
+═══════════════════════════════════════════════════════════════
+{hints_text}
+
+Please build the deep Evidence Library with full qualitative-quantitative
+correlation analysis for each company in the universe.
         """.strip()
 
+        # Use Gemini for evidence synthesis if available (strong reasoning benchmark),
+        # otherwise fall back to the default model
         return await self._call_llm(system, user_content, stage_num=5)
 
-    async def _stage_sector(self, market_data: dict) -> str:
+    async def _stage_sector(self, market_data: dict, qual_packages: dict = None) -> str:
         # Build comprehensive per-stock data for the LLM
         stocks_data = {}
         for ticker, snap in market_data.get("stocks", {}).items():
@@ -505,52 +647,175 @@ Please build the Evidence Library and Claim Ledger for this universe.
                 "industry": snap.get("industry", ""),
             }
             # Add available quantitative fields
-            for field in ["price", "market_cap_bn", "forward_pe", "trailing_pe",
+            for fld in ["price", "market_cap_bn", "forward_pe", "trailing_pe",
                           "ev_ebitda", "ev_to_sales", "consensus_target_12m",
                           "upside_to_consensus_pct", "revenue_ttm_bn",
                           "gross_margin_pct", "operating_margin_pct", "net_margin_pct",
                           "free_cash_flow_ttm_bn", "eps", "eps_growth_yoy",
                           "roe", "roic", "debt_to_equity", "beta",
                           "week52_high", "week52_low"]:
-                val = snap.get(field)
+                val = snap.get(fld)
                 if val is not None:
-                    entry[field] = val
-            # Add news headlines
-            news = snap.get("recent_news", [])
-            if news:
-                entry["recent_headlines"] = [n.get("headline", "") for n in news[:5]]
+                    entry[fld] = val
             # Analyst ratings
             ratings = snap.get("analyst_ratings", {})
             if ratings:
                 entry["analyst_ratings"] = ratings
             stocks_data[ticker] = entry
 
+        # Build qualitative context per ticker
+        qual_context_blocks = []
+        if qual_packages:
+            for ticker, pkg in qual_packages.items():
+                snap = market_data.get("stocks", {}).get(ticker, {})
+                block_parts = [f"\n### {ticker} — Qualitative Intelligence"]
+
+                # Earnings transcript excerpt (most valuable qualitative source)
+                if pkg.earnings_transcript:
+                    et = pkg.earnings_transcript
+                    content = et.get("content", "")
+                    block_parts.append(
+                        f"**Earnings Call ({et.get('quarter', '?')} {et.get('year', '?')}):**\n"
+                        f"{content[:2500]}"
+                    )
+
+                # Analyst actions summary
+                if pkg.analyst_actions:
+                    upgrades = sum(1 for a in pkg.analyst_actions if "upgrade" in (a.get("action", "")).lower())
+                    downgrades = sum(1 for a in pkg.analyst_actions if "downgrade" in (a.get("action", "")).lower())
+                    actions_list = [
+                        f"  {a.get('gradeCompany', '?')}: {a.get('action', '')} "
+                        f"{a.get('previousGrade', '')} → {a.get('newGrade', '')} ({a.get('gradingDate', '')})"
+                        for a in pkg.analyst_actions[:6]
+                    ]
+                    block_parts.append(
+                        f"**Analyst Actions:** {upgrades} upgrades, {downgrades} downgrades\n"
+                        + "\n".join(actions_list)
+                    )
+
+                # Insider activity net
+                if pkg.insider_activity:
+                    buys = sum(
+                        1 for tx in pkg.insider_activity
+                        if tx.get("acquistionOrDisposition") in ("A", "P")
+                    )
+                    sells = sum(
+                        1 for tx in pkg.insider_activity
+                        if tx.get("acquistionOrDisposition") in ("D", "S")
+                    )
+                    total_val = sum(tx.get("value", 0) for tx in pkg.insider_activity)
+                    block_parts.append(
+                        f"**Insider Activity:** {buys} buys, {sells} sells, "
+                        f"total value ${total_val:,.0f}"
+                    )
+
+                # Forward estimates
+                if pkg.analyst_estimates:
+                    for period_key in ("current_year", "next_year"):
+                        est = pkg.analyst_estimates.get(period_key, {})
+                        if est:
+                            rev = est.get("estimatedRevenueAvg")
+                            eps = est.get("estimatedEpsAvg")
+                            rev_str = f"${rev / 1e9:.2f}B" if rev else "N/A"
+                            eps_str = f"${eps:.2f}" if eps else "N/A"
+                            block_parts.append(
+                                f"**{period_key.replace('_', ' ').title()} Estimates:** "
+                                f"Revenue {rev_str}, EPS {eps_str}"
+                            )
+
+                # Sentiment summary
+                if pkg.sentiment:
+                    ns = pkg.sentiment.get("news_sentiment_score")
+                    if ns is not None:
+                        label = "BULLISH" if ns > 0.5 else "BEARISH" if ns < -0.5 else "NEUTRAL"
+                        block_parts.append(f"**Sentiment:** {label} (score: {ns:.2f})")
+
+                # Key news headlines (top 5)
+                if pkg.news:
+                    headlines = [n.get("headline", "") for n in pkg.news[:5]]
+                    block_parts.append("**Key Headlines:**\n" + "\n".join(f"  • {h}" for h in headlines))
+
+                # Coverage assessment
+                block_parts.append(
+                    f"**Qualitative Coverage:** {pkg.coverage_score} "
+                    f"({pkg.signal_count} signals)"
+                )
+                if pkg.coverage_gaps:
+                    block_parts.append(f"**Gaps:** {', '.join(pkg.coverage_gaps[:3])}")
+
+                # Correlation hints
+                hints = pkg.correlation_hints(snap)
+                if hints:
+                    block_parts.append(
+                        "**Quant-Qual Correlation Signals:**\n"
+                        + "\n".join(f"  ⚡ {h}" for h in hints)
+                    )
+
+                qual_context_blocks.append("\n".join(block_parts))
+
+        qual_text = "\n\n".join(qual_context_blocks) if qual_context_blocks else "(No qualitative data)"
+
         system = textwrap.dedent(f"""
             You are a team of Sector Analysts for an institutional research platform.
+            You combine deep quantitative analysis with qualitative intelligence synthesis.
 
             {self._client_context()}
 
-            For EACH stock in the universe, produce a **Four-Box analysis**:
+            You have been provided with:
+            - QUANTITATIVE DATA: Full financial profiles from FMP + Finnhub (live)
+            - QUALITATIVE INTELLIGENCE: Earnings transcripts, analyst actions, insider trading,
+              forward estimates, sentiment scores, news headlines, and correlation signals.
 
-            ### Box 1 — Verified Facts
-            Only confirmed data from the live feed. Tag source: [FMP], [FHB]. No estimates.
+            For EACH stock in the universe, produce a **Six-Box analysis** (enhanced from Four-Box
+            to incorporate the deeper qualitative intelligence):
 
-            ### Box 2 — Recent Developments & News
-            Recent headlines and market signals. Tag [NEWS]. Note limitations.
+            ### Box 1 — Verified Quantitative Facts
+            Only confirmed numerical data from the live feed. Tag source: [FMP], [FHB].
+            No estimates. Include what each metric implies.
 
-            ### Box 3 — Consensus & Market View
-            Consensus estimates, analyst targets, and sell-side views from the data.
+            ### Box 2 — Management Narrative & Earnings Intelligence
+            What is management saying? Analyze the earnings transcript for:
+            - Forward guidance (specific numbers, tone, confidence level)
+            - Strategic priorities and capital allocation
+            - Risks they acknowledge vs risks they avoid discussing
+            - Changes in language vs previous quarters (if detectable)
+            Tag [TRANSCRIPT]. This is the highest-value qualitative source.
 
-            ### Box 4 — Analyst Judgment [HOUSE VIEW]
-            Your differentiated view vs consensus. What does the market miss?
-            Bull/bear arguments from the same factual base.
-            Conviction level: HIGH / MEDIUM / LOW with explicit rationale.
+            ### Box 3 — Market Participant Signals
+            Synthesize what other market participants are doing:
+            - Analyst upgrades/downgrades — which firms, what direction, consensus shift
+            - Insider buying/selling — does smart money confirm or contradict the thesis?
+            - Social sentiment — crowded or under-the-radar?
+            - Forward estimate revisions — are estimates moving up or down?
+            Tag [ANALYST], [INSIDER], [SENTIMENT], [ESTIMATES].
+
+            ### Box 4 — Recent Developments & Catalysts
+            News headlines, press releases, SEC filings — what is happening NOW?
+            - Material 8-K events that change the investment picture
+            - Product launches, contract wins/losses, regulatory developments
+            - Upcoming catalysts (earnings dates, FDA decisions, contract renewals)
+            Tag [NEWS], [SEC], [PR].
+
+            ### Box 5 — Consensus & Market View
+            Consensus price targets, analyst estimates, and where the market is positioned.
+            Critically: what does the CURRENT PRICE already embed?
+
+            ### Box 6 — Analyst Judgment [HOUSE VIEW]
+            Your differentiated view. This must be REASONED, not just stated:
+            - Where does qualitative evidence SUPPORT the quantitative picture?
+            - Where does it CONTRADICT? (These contradictions are the most valuable insights)
+            - What is the market missing? What narrative shift is underway?
+            - What single piece of information would change your view?
+            - Conviction level: HIGH / MEDIUM / LOW with explicit multi-factor rationale
 
             **HARD RULES:**
             - Every numerical claim must reference source data provided
+            - Qualitative signals must be CORRELATED with quantitative data
+              (e.g., "insider selling + declining margins + cautious guidance = CONVERGENT BEARISH")
             - Flag evidence gaps explicitly
             - No price targets (valuation analyst's job only)
-            - Separate fact from opinion
+            - Separate fact from opinion rigorously
+            - Weight insider behavior and management tone MORE than news headlines
             - Tailor analysis to the client's investment objectives and risk tolerance
         """).strip()
 
@@ -558,11 +823,19 @@ Please build the Evidence Library and Claim Ledger for this universe.
 Date: {market_data.get('date')}
 Universe: {', '.join(self.tickers)}
 
-STOCK DATA (live from FMP + Finnhub):
+═══════════════════════════════════════════════════════════════
+QUANTITATIVE DATA (live from FMP + Finnhub):
+═══════════════════════════════════════════════════════════════
 {json.dumps(stocks_data, indent=2, default=str)}
 
-Please produce the full Four-Box sector analysis for each stock.
-Use headers: ## [TICKER] — [Company Name] then the four boxes.
+═══════════════════════════════════════════════════════════════
+QUALITATIVE INTELLIGENCE (8 sources per ticker):
+═══════════════════════════════════════════════════════════════
+{qual_text}
+
+Please produce the full Six-Box sector analysis for each stock.
+Use headers: ## [TICKER] — [Company Name] then the six boxes.
+Reason deeply about qualitative-quantitative alignment and divergence.
         """.strip()
 
         return await self._call_llm(system, user_content, stage_num=6)
@@ -571,7 +844,7 @@ Use headers: ## [TICKER] — [Company Name] then the four boxes.
         stocks_dict = {}
         for t, s in market_data.get("stocks", {}).items():
             entry: dict[str, Any] = {"ticker": t, "company": s.get("company_name", t)}
-            for field in ["price", "market_cap_bn", "forward_pe", "trailing_pe",
+            for fld in ["price", "market_cap_bn", "forward_pe", "trailing_pe",
                           "ev_ebitda", "ev_to_sales", "revenue_ttm_bn",
                           "free_cash_flow_ttm_bn", "consensus_target_12m",
                           "upside_to_consensus_pct", "analyst_ratings",
@@ -579,9 +852,9 @@ Use headers: ## [TICKER] — [Company Name] then the four boxes.
                           "eps", "eps_growth_yoy", "roe", "roic", "debt_to_equity",
                           "fcf_yield", "dividend_yield", "beta",
                           "week52_high", "week52_low"]:
-                val = s.get(field)
+                val = s.get(fld)
                 if val is not None:
-                    entry[field] = val
+                    entry[fld] = val
             stocks_dict[t] = entry
         stocks_str = json.dumps(stocks_dict, indent=2, default=str)
 
@@ -591,6 +864,15 @@ Use headers: ## [TICKER] — [Company Name] then the four boxes.
 
             {self._client_context()}
 
+            IMPORTANT: The Sector Analysis you receive now contains DEEP QUALITATIVE
+            INTELLIGENCE including earnings transcript analysis, insider trading patterns,
+            analyst upgrade/downgrade momentum, and forward estimate consensus. Use this
+            qualitative context to INFORM your valuation scenarios:
+            - If management guided higher + analysts upgrading → weight bull case higher
+            - If insiders selling + estimate spread widening → widen bear case
+            - If sentiment is extremely bullish + stretched multiples → flag crowding risk
+            - Earnings transcript tone should influence your confidence in growth assumptions
+
             For each stock produce:
 
             ### [TICKER] Valuation
@@ -599,8 +881,13 @@ Use headers: ## [TICKER] — [Company Name] then the four boxes.
             - Price, market cap, forward P/E, EV/EBITDA, FCF yield
             - Where multiples sit vs historical range (comment based on available data)
 
+            **Qualitative Valuation Overlay**
+            - How does management's own guidance affect your growth assumptions?
+            - Does insider behavior validate or undermine the current multiple?
+            - What do forward estimate revisions imply about consensus direction?
+
             **Return Decomposition**
-            - Revenue growth contribution
+            - Revenue growth contribution (calibrated to forward estimates + guidance)
             - Margin expansion contribution
             - Multiple re-rating contribution
             - Which driver dominates and how defensible it is
@@ -616,12 +903,16 @@ Use headers: ## [TICKER] — [Company Name] then the four boxes.
 
             **Expectation Pressure**: 0-10 (10 = maximum priced-in perfection)
 
+            **Qualitative Confidence Modifier**: Does qualitative evidence raise or lower
+            your confidence vs what the numbers alone suggest? Explain.
+
             **HARD RULES:**
             - All multi-year scenarios labelled [HOUSE VIEW]
             - Do NOT treat consensus target as intrinsic value
             - If current price is above consensus target, flag explicitly
             - No single-point fair values — always provide scenario ranges
             - Be explicit about what assumptions are embedded in current price
+            - Reference specific qualitative signals that inform scenario probabilities
             - Tailor valuation framework to the client's return objectives and risk tolerance
         """).strip()
 
@@ -632,10 +923,11 @@ Universe: {', '.join(self.tickers)}
 MARKET DATA (live from FMP + Finnhub):
 {stocks_str}
 
-SECTOR ANALYSIS OUTPUT (for context):
-{sector_outputs[:3000]}...
+SECTOR ANALYSIS OUTPUT (includes qualitative intelligence):
+{sector_outputs[:4000]}...
 
 Please produce the full valuation analysis for each stock.
+Reference qualitative signals where they inform scenario probabilities.
         """.strip()
 
         return await self._call_llm(system, user_content, stage_num=7)
@@ -761,7 +1053,12 @@ Please produce the risk and scenario analysis.
 
             {self._client_context()}
             Your sole job is to try to BREAK every investment thesis before publication.
-            The team has built a bull case for AI infrastructure. Your job is adversarial.
+            The team has built a bull case. Your job is adversarial.
+
+            IMPORTANT: The sector and valuation analysis now contain DEEP QUALITATIVE
+            INTELLIGENCE — earnings transcript analysis, insider trading patterns,
+            analyst upgrade/downgrade momentum, forward estimate consensus, and sentiment
+            signals. You MUST attack the QUALITATIVE reasoning, not just the numbers:
 
             For each stock in the universe:
 
@@ -769,10 +1066,22 @@ Please produce the risk and scenario analysis.
 
             **Thesis Under Attack**: (state the bull thesis in one sentence)
 
-            **Falsification Tests** (minimum 3 concrete disconfirming scenarios):
+            **Quantitative Falsification Tests** (minimum 3):
             1. What single data point, if announced tomorrow, would invalidate the thesis?
             2. What is the bear case that is being systematically underweighted?
             3. Where is the analysis most likely to be wrong?
+
+            **Qualitative Falsification Tests** (minimum 3 — THIS IS NEW):
+            1. Is management's earnings call guidance being taken at face value?
+               What incentive do they have to guide conservatively/aggressively?
+            2. Are the analyst upgrades LEADING or LAGGING? Are analysts upgrading
+               because the stock already went up (momentum-driven) or based on new information?
+            3. Insider selling: is the team dismissing it as "routine" when it might be material?
+               What is the magnitude relative to total holdings?
+            4. Is the news sentiment creating a narrative bubble? Is the team anchoring
+               on recent positive headlines while ignoring structural risks?
+            5. Forward estimate spread: is wide disagreement being treated as "opportunity"
+               when it might indicate genuine uncertainty about the business model?
 
             **Variant Bear Case [HOUSE VIEW]**:
             - Timeline: 6-18 months
@@ -783,22 +1092,25 @@ Please produce the risk and scenario analysis.
             **Crowding & Sentiment Risk**:
             - How consensus is this position? (1-10, 10 = maximum crowded)
             - What does an orderly exit look like vs a disorderly one?
+            - Is social sentiment a CONTRARY indicator here?
 
             **Overall Red Team Rating**: STRONG (thesis survives) / MODERATE (concerns) / WEAK (serious problems)
 
             Be specific. Vague risks are worthless. Every bear point should be actionable.
+            Attack the qualitative reasoning as hard as the quantitative.
         """).strip()
 
         user_content = f"""
 Universe: {', '.join(self.tickers)}
 
-SECTOR ANALYSIS:
-{sector_outputs[:3000]}
+SECTOR ANALYSIS (includes qualitative intelligence — Six-Box format):
+{sector_outputs[:4000]}
 
-VALUATION OUTPUTS:
-{valuation_outputs[:2000]}
+VALUATION OUTPUTS (includes qualitative confidence modifiers):
+{valuation_outputs[:2500]}
 
 Please conduct the full Red Team analysis for each stock.
+Challenge both the quantitative AND qualitative reasoning.
         """.strip()
 
         return await self._call_llm(system, user_content, stage_num=10)
@@ -1018,6 +1330,7 @@ Please construct the three portfolio variants.
 **Model:** {self._model_display()}
 **Universe:** {tickers_list} ({len(self.tickers)} names)
 **Data Source:** {data_source} ({live_count}/{len(self.tickers)} tickers live)
+**Intelligence Depth:** Quantitative (3 sources) + Qualitative (8 sources)
 
 ---
 
@@ -1028,6 +1341,9 @@ Please construct the three portfolio variants.
 
 > **IMPORTANT DISCLAIMERS**
 > This report uses live market data from FMP, Finnhub, and yfinance APIs.
+> Qualitative intelligence sourced from 8 channels: company news, press releases,
+> earnings call transcripts, SEC filings, analyst upgrades/downgrades, insider
+> trading activity, forward analyst estimates, and social/news sentiment.
 > All prices and metrics reflect data as of the date shown above.
 > All multi-year return scenarios are labelled [HOUSE VIEW] and represent analytical
 > estimates, not recommendations. Past performance is no guide to future returns.
@@ -1038,6 +1354,9 @@ Please construct the three portfolio variants.
 ## Executive Summary
 
 This report covers {len(self.tickers)} names across the client's selected investment universe.
+Analysis integrates live quantitative data with deep qualitative intelligence including
+management commentary (earnings transcripts), insider trading patterns, analyst grade
+changes, forward estimate consensus, and market sentiment signals.
 
 ### Universe Snapshot
 
@@ -1049,13 +1368,13 @@ This report covers {len(self.tickers)} names across the client's selected invest
 
 ---
 
-## 1. Evidence Library & Claim Ledger (Stage 5)
+## 1. Evidence Library & Qualitative-Quantitative Correlation (Stage 5)
 
 {claim_ledger}
 
 ---
 
-## 2. Sector Analysis (Stage 6)
+## 2. Sector Analysis — Six-Box with Narrative Intelligence (Stage 6)
 
 {sector_outputs}
 
@@ -1079,7 +1398,7 @@ This report covers {len(self.tickers)} names across the client's selected invest
 
 ---
 
-## 6. Red Team Analysis (Stage 10)
+## 6. Red Team Analysis — Quantitative & Qualitative Challenge (Stage 10)
 
 {red_team_outputs}
 
@@ -1107,12 +1426,14 @@ This report covers {len(self.tickers)} names across the client's selected invest
 | Universe size | {len(self.tickers)} stocks |
 | Live data tickers | {live_count} |
 | Data source | {data_source} |
-| Pipeline version | v8.0 — JPM Asset Management |
+| Qualitative sources | News, press releases, earnings transcripts, SEC filings, analyst actions, insider trading, estimates, sentiment |
+| Pipeline version | v8.1 — JPM Asset Management (Deep Qualitative) |
 
 ---
 
-*AI-Powered Institutional Research Pipeline v8*
+*AI-Powered Institutional Research Pipeline v8.1*
 *All [HOUSE VIEW] content is analytical opinion, not investment advice.*
-*Live data sourced from FMP, Finnhub, and yfinance APIs.*
+*Quantitative data: FMP, Finnhub, yfinance APIs.*
+*Qualitative intelligence: 8-source engine with cross-correlation analysis.*
 """
         return report
