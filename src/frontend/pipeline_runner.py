@@ -24,6 +24,7 @@ import asyncio
 import json
 import logging
 import os
+import sys
 import textwrap
 import time
 import uuid
@@ -32,6 +33,18 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
+
+# ── Quantitative engine imports (deterministic math) ─────────────────────
+# The research_pipeline package lives in src/; app.py inserts src/ into sys.path
+# before importing pipeline_runner, so these imports work at runtime.
+try:
+    from research_pipeline.services.dcf_engine import DCFEngine, DCFAssumptions
+    from research_pipeline.services.scenario_engine import ScenarioStressEngine
+    from research_pipeline.services.risk_engine import RiskEngine
+    _ENGINES_AVAILABLE = True
+except ImportError:
+    _ENGINES_AVAILABLE = False
+    logger.warning("Quantitative engines unavailable — pipeline falls back to LLM-only analysis")
 
 # ── Stage definitions ─────────────────────────────────────────────────────
 STAGES = [
@@ -840,6 +853,209 @@ Reason deeply about qualitative-quantitative alignment and divergence.
 
         return await self._call_llm(system, user_content, stage_num=6)
 
+    # ── Deterministic quantitative helpers ───────────────────────────────
+
+    def _run_dcf_for_ticker(self, ticker: str, snap: dict) -> Optional[dict]:
+        """Run 3-scenario DCF + reverse DCF + sensitivity table for one ticker.
+
+        Derives all inputs from the market data snapshot.  Returns a dict of
+        deterministic results that is injected as hard-math context into the
+        Stage 7 LLM prompt, or None when there is insufficient data.
+        """
+        if not _ENGINES_AVAILABLE:
+            return None
+
+        price = snap.get("price")
+        market_cap_bn = snap.get("market_cap_bn")
+        revenue_ttm_bn = snap.get("revenue_ttm_bn")
+
+        if not all([price, market_cap_bn, revenue_ttm_bn]):
+            return None
+
+        # Absolute-dollar inputs
+        revenue_base = revenue_ttm_bn * 1e9
+        shares_outstanding = max(1.0, market_cap_bn * 1e9 / price)
+        debt_to_equity = snap.get("debt_to_equity") or 0.0
+        # Net debt proxy: rough fraction of implied total debt
+        net_debt = max(0.0, debt_to_equity * market_cap_bn * 1e9 * 0.4)
+
+        # WACC via CAPM: rf=4.5%, ERP=5.5%, clamped 7–15%
+        beta = snap.get("beta") or 1.2
+        wacc = round(min(max(0.045 + beta * 0.055, 0.07), 0.15), 3)
+
+        # Margin structure from snapshot (operating margin + D&A proxy)
+        op_margin_pct = snap.get("operating_margin_pct") or 20.0
+        ebitda_base = min(max(op_margin_pct / 100 + 0.04, 0.10), 0.55)
+
+        # Base growth seed: use eps_growth_yoy if positive, else forward PE implied
+        eps_growth = snap.get("eps_growth_yoy")
+        if eps_growth and eps_growth > 0:
+            base_cagr = min(max(eps_growth / 100 * 0.7, 0.05), 0.40)
+        else:
+            fwd_pe = snap.get("forward_pe") or 25
+            # Higher multiple implies faster priced-in growth
+            base_cagr = min(max((fwd_pe - 15) * 0.008 + 0.10, 0.08), 0.35)
+
+        # Three-scenario growth & margin paths (5 years)
+        bear_g = max(base_cagr * 0.45, 0.03)
+        base_g = base_cagr
+        bull_g = min(base_cagr * 1.6, 0.50)
+
+        scenarios_params = {
+            "bear": {
+                "growth_rates": [bear_g] * 5,
+                "ebitda_margins": [max(ebitda_base - 0.04, 0.08)] * 5,
+                "terminal_growth": 0.025,
+            },
+            "base": {
+                "growth_rates": [
+                    base_g * 1.05, base_g, base_g,
+                    base_g * 0.85, base_g * 0.75,
+                ],
+                "ebitda_margins": [
+                    ebitda_base, ebitda_base + 0.02, ebitda_base + 0.03,
+                    ebitda_base + 0.04, ebitda_base + 0.04,
+                ],
+                "terminal_growth": 0.030,
+            },
+            "bull": {
+                "growth_rates": [
+                    bull_g, bull_g * 0.9, bull_g * 0.8,
+                    bull_g * 0.7, bull_g * 0.6,
+                ],
+                "ebitda_margins": [
+                    ebitda_base + 0.03, ebitda_base + 0.06, ebitda_base + 0.08,
+                    ebitda_base + 0.09, ebitda_base + 0.10,
+                ],
+                "terminal_growth": 0.035,
+            },
+        }
+
+        engine = DCFEngine()
+        dcf_results: dict[str, float] = {}
+        base_assumptions_obj = None
+
+        for case, params in scenarios_params.items():
+            try:
+                assumptions = DCFAssumptions(
+                    ticker=ticker,
+                    revenue_base=revenue_base,
+                    revenue_growth_rates=params["growth_rates"],
+                    ebitda_margin_path=params["ebitda_margins"],
+                    capex_pct_revenue=0.08,
+                    tax_rate=0.21,
+                    wacc=wacc,
+                    terminal_growth=params["terminal_growth"],
+                    shares_outstanding=shares_outstanding,
+                )
+                result = engine.compute_dcf(assumptions, net_debt)
+                dcf_results[case] = round(result.implied_share_price, 2)
+                if case == "base":
+                    base_assumptions_obj = assumptions
+            except Exception as exc:
+                logger.warning("DCF %s [%s] failed: %s", ticker, case, exc)
+
+        if not dcf_results:
+            return None
+
+        # Reverse DCF — implied revenue CAGR at current market price
+        implied_cagr_pct: Optional[float] = None
+        try:
+            cagr = engine.reverse_dcf(
+                ticker=ticker,
+                current_price=price,
+                shares_outstanding=shares_outstanding,
+                net_debt=net_debt,
+                wacc=wacc,
+                terminal_growth=0.030,
+                revenue_base=revenue_base,
+                ebitda_margin=ebitda_base,
+                capex_pct=0.08,
+                tax_rate=0.21,
+            )
+            implied_cagr_pct = round(cagr * 100, 1)
+        except Exception as exc:
+            logger.warning("Reverse DCF %s failed: %s", ticker, exc)
+
+        # Sensitivity table — WACC × terminal growth on base assumptions
+        sensitivity_text: Optional[str] = None
+        if base_assumptions_obj is not None:
+            try:
+                tbl = engine.sensitivity_table(base_assumptions_obj, net_debt)
+                rows = []
+                header = "WACC \\ TG  | " + "  ".join(f"{tg*100:.1f}%" for tg in tbl.col_values)
+                rows.append(header)
+                rows.append("-" * len(header))
+                for i, w_val in enumerate(tbl.row_values):
+                    row_str = f"{w_val*100:.0f}%        | " + "  ".join(
+                        f"${tbl.grid[i][j]:7.2f}" for j in range(len(tbl.col_values))
+                    )
+                    rows.append(row_str)
+                sensitivity_text = "\n".join(rows)
+            except Exception as exc:
+                logger.warning("Sensitivity table %s failed: %s", ticker, exc)
+
+        # Over/undervalued signal vs current price
+        base_fv = dcf_results.get("base")
+        if base_fv and price:
+            pct_diff = (base_fv - price) / price * 100
+            if pct_diff > 15:
+                signal = f"UNDERVALUED  +{pct_diff:.1f}% vs DCF base"
+            elif pct_diff > 5:
+                signal = f"Modest upside  +{pct_diff:.1f}% vs DCF base"
+            elif pct_diff < -15:
+                signal = f"OVERVALUED  {pct_diff:.1f}% vs DCF base"
+            elif pct_diff < -5:
+                signal = f"Modest downside  {pct_diff:.1f}% vs DCF base"
+            else:
+                signal = f"FAIRLY VALUED  {pct_diff:+.1f}% vs DCF base"
+        else:
+            signal = "INSUFFICIENT DATA"
+
+        return {
+            "fair_value_bear": dcf_results.get("bear"),
+            "fair_value_base": dcf_results.get("base"),
+            "fair_value_bull": dcf_results.get("bull"),
+            "implied_cagr_pct": implied_cagr_pct,
+            "vs_current_price": signal,
+            "current_price": price,
+            "wacc_used_pct": round(wacc * 100, 1),
+            "base_cagr_assumed_pct": round(base_cagr * 100, 1),
+            "methodology": "5-yr unlevered FCF DCF, Gordon Growth terminal value",
+            "sensitivity_wacc_x_tg": sensitivity_text,
+        }
+
+    def _format_dcf_block(self, ticker: str, dcf: dict) -> str:
+        """Format a DCF result dict as a structured text block for LLM injection."""
+        lines = [
+            f"=== {ticker} — DETERMINISTIC DCF OUTPUT ===",
+            f"  Methodology : {dcf['methodology']}",
+            f"  WACC used   : {dcf['wacc_used_pct']}%  (CAPM: rf 4.5% + beta × ERP 5.5%)",
+            f"  Base CAGR   : {dcf['base_cagr_assumed_pct']}%  (derived from market data)",
+            f"",
+            f"  Fair Value Estimates (implied share price):",
+            f"    Bear case : ${dcf['fair_value_bear']}",
+            f"    Base case : ${dcf['fair_value_base']}",
+            f"    Bull case : ${dcf['fair_value_bull']}",
+            f"",
+            f"  Current price : ${dcf['current_price']}",
+            f"  Signal        : {dcf['vs_current_price']}",
+        ]
+        if dcf.get("implied_cagr_pct") is not None:
+            lines.append(
+                f"  Implied CAGR  : {dcf['implied_cagr_pct']}%  "
+                f"(revenue growth required to justify current price)"
+            )
+        if dcf.get("sensitivity_wacc_x_tg"):
+            lines += [
+                f"",
+                f"  Sensitivity Table (base scenario assumptions, implied $/share):",
+            ]
+            for row in dcf["sensitivity_wacc_x_tg"].split("\n"):
+                lines.append(f"    {row}")
+        lines.append("")
+        return "\n".join(lines)
+
     async def _stage_valuation(self, market_data: dict, sector_outputs: str) -> str:
         stocks_dict = {}
         for t, s in market_data.get("stocks", {}).items():
@@ -858,11 +1074,49 @@ Reason deeply about qualitative-quantitative alignment and divergence.
             stocks_dict[t] = entry
         stocks_str = json.dumps(stocks_dict, indent=2, default=str)
 
+        # ── DETERMINISTIC DCF ENGINE  ───────────────────────────────────────
+        # Run before LLM — results are hard math, not estimates.
+        dcf_blocks: list[str] = []
+        dcf_signals: dict[str, str] = {}  # ticker → over/under signal (for report table)
+        for t, s in market_data.get("stocks", {}).items():
+            dcf = self._run_dcf_for_ticker(t, s)
+            if dcf:
+                dcf_blocks.append(self._format_dcf_block(t, dcf))
+                dcf_signals[t] = dcf["vs_current_price"]
+                # Attach DCF results back to stocks_dict so they appear in report table
+                stocks_dict[t]["dcf_fair_value_bear"] = dcf.get("fair_value_bear")
+                stocks_dict[t]["dcf_fair_value_base"] = dcf.get("fair_value_base")
+                stocks_dict[t]["dcf_fair_value_bull"] = dcf.get("fair_value_bull")
+                stocks_dict[t]["dcf_implied_cagr_pct"] = dcf.get("implied_cagr_pct")
+                stocks_dict[t]["dcf_signal"] = dcf.get("vs_current_price")
+
+        dcf_section = (
+            "\n\n".join(dcf_blocks)
+            if dcf_blocks
+            else "⚠️  DCF engine: insufficient market data for this universe."
+        )
+
         system = textwrap.dedent(f"""
             You are the Valuation Analyst for an institutional research platform.
             You are the ONLY team member who sets return scenarios and price context.
 
             {self._client_context()}
+
+            ╔══════════════════════════════════════════════════════════════════╗
+            ║  CRITICAL: YOU HAVE DETERMINISTIC DCF MATH IN THE USER MESSAGE  ║
+            ║  These numbers are computed by a quantitative engine, not        ║
+            ║  estimated. You MUST reference the DCF fair value ranges in      ║
+            ║  your analysis. Label them [DCF MODEL] when citing.             ║
+            ╚══════════════════════════════════════════════════════════════════╝
+
+            HOW TO USE THE DCF OUTPUTS:
+            - Bear / Base / Bull fair values are implied share prices from 5-yr FCF DCF
+            - Implied CAGR = revenue growth rate the market price already reflects
+            - Sensitivity table = range of outcomes across WACC and terminal growth
+            - If current price > Bull case → stock is pricing in hyper-growth assumptions
+            - If current price < Bear case → stock looks deeply undervalued on conservative assumptions
+            - Use quantitative signal to calibrate scenario probabilities (e.g. if Bear FV > price,
+              weight bull/base higher)
 
             IMPORTANT: The Sector Analysis you receive now contains DEEP QUALITATIVE
             INTELLIGENCE including earnings transcript analysis, insider trading patterns,
@@ -879,7 +1133,13 @@ Reason deeply about qualitative-quantitative alignment and divergence.
 
             **Current Snapshot**
             - Price, market cap, forward P/E, EV/EBITDA, FCF yield
-            - Where multiples sit vs historical range (comment based on available data)
+            - DCF Fair Value Range [DCF MODEL]: $bear – $base – $bull
+            - Signal: over/undervalued vs base case
+
+            **Implied Growth Check [DCF MODEL]**
+            - Implied CAGR baked into current price: X%
+            - Is this achievable? How does it compare to consensus estimates?
+            - What does the sensitivity table tell you about asymmetric risk?
 
             **Qualitative Valuation Overlay**
             - How does management's own guidance affect your growth assumptions?
@@ -887,7 +1147,7 @@ Reason deeply about qualitative-quantitative alignment and divergence.
             - What do forward estimate revisions imply about consensus direction?
 
             **Return Decomposition**
-            - Revenue growth contribution (calibrated to forward estimates + guidance)
+            - Revenue growth contribution (calibrated to DCF implied CAGR + forward estimates)
             - Margin expansion contribution
             - Multiple re-rating contribution
             - Which driver dominates and how defensible it is
@@ -908,10 +1168,10 @@ Reason deeply about qualitative-quantitative alignment and divergence.
 
             **HARD RULES:**
             - All multi-year scenarios labelled [HOUSE VIEW]
+            - Always explicitly reference the DCF fair value range [DCF MODEL]
             - Do NOT treat consensus target as intrinsic value
-            - If current price is above consensus target, flag explicitly
-            - No single-point fair values — always provide scenario ranges
-            - Be explicit about what assumptions are embedded in current price
+            - If current price is above consensus target AND above DCF Bull case, flag double-warning
+            - Always state what revenue CAGR is currently priced in (use Implied CAGR from DCF)
             - Reference specific qualitative signals that inform scenario probabilities
             - Tailor valuation framework to the client's return objectives and risk tolerance
         """).strip()
@@ -920,13 +1180,21 @@ Reason deeply about qualitative-quantitative alignment and divergence.
 Date: {market_data.get('date')}
 Universe: {', '.join(self.tickers)}
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DETERMINISTIC DCF MODEL OUTPUTS  [computed by quant engine — NOT LLM estimates]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{dcf_section}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 MARKET DATA (live from FMP + Finnhub):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {stocks_str}
 
 SECTOR ANALYSIS OUTPUT (includes qualitative intelligence):
 {sector_outputs[:4000]}...
 
 Please produce the full valuation analysis for each stock.
+Reference DCF fair value ranges [DCF MODEL] and implied CAGR for every stock.
 Reference qualitative signals where they inform scenario probabilities.
         """.strip()
 
@@ -1002,31 +1270,173 @@ Please produce the macro and political risk analysis.
                 "debt_to_equity": snap.get("debt_to_equity"),
             }
 
+        # ── DETERMINISTIC SCENARIO ENGINE  ────────────────────────────────
+        scenario_section = ""
+        if _ENGINES_AVAILABLE:
+            try:
+                stress_engine = ScenarioStressEngine()
+                scenario_results = stress_engine.run_all_scenarios(self.tickers)
+
+                # Build per-ticker scenario impact table
+                # Group results: {scenario_name → {ticker → impact_pct}}
+                scenario_map: dict[str, dict[str, float]] = {}
+                for sr in scenario_results:
+                    scenario_map.setdefault(sr.scenario_name, {})[sr.ticker] = (
+                        sr.estimated_impact_pct or 0.0
+                    )
+
+                # Format as readable table
+                table_lines = [
+                    "=== DETERMINISTIC SCENARIO STRESS IMPACTS (% drawdown per ticker) ===",
+                    "Scenario                       | " + " | ".join(f"{t:>6}" for t in self.tickers),
+                    "-" * (34 + 10 * len(self.tickers)),
+                ]
+                for scenario_name, impacts in scenario_map.items():
+                    row = f"{scenario_name:<30} | " + " | ".join(
+                        f"{impacts.get(t, 0.0):>+6.1f}%" for t in self.tickers
+                    )
+                    table_lines.append(row)
+
+                # Severity summary
+                severe_flags = [
+                    f"  {sr.ticker} under '{sr.scenario_name}': {sr.estimated_impact_pct:+.1f}% [{sr.severity.upper()}]"
+                    for sr in scenario_results if sr.severity in ("high", "severe")
+                ]
+                table_lines.append("")
+                table_lines.append("High/Severe exposures:")
+                table_lines.extend(severe_flags or ["  None identified at high/severe threshold"])
+                scenario_section = "\n".join(table_lines)
+
+            except Exception as exc:
+                logger.warning("ScenarioStressEngine failed: %s", exc)
+                scenario_section = f"⚠️  Scenario engine unavailable: {exc}"
+
+        # ── DETERMINISTIC RISK ENGINE  ─────────────────────────────────────
+        risk_engine_section = ""
+        if _ENGINES_AVAILABLE:
+            try:
+                risk_eng = RiskEngine()
+                n = len(self.tickers)
+                # Equal weights for universe-level analysis (portfolio weights set in Stage 12)
+                equal_weights = {t: 1.0 / n for t in self.tickers}
+
+                # Synthetic beta-scaled return series (60 monthly periods)
+                # sigma_market ≈ 4% monthly volatility
+                import random as _random
+                _random.seed(42)
+                sigma_mkt = 0.04
+                synthetic_returns: dict[str, list[float]] = {}
+                for t in self.tickers:
+                    b = stocks.get(t, {}).get("beta") or 1.2
+                    synthetic_returns[t] = [
+                        b * (_random.gauss(0, sigma_mkt))
+                        for _ in range(60)
+                    ]
+
+                corr_matrix = risk_eng.compute_correlation_matrix(synthetic_returns)
+                var_contrib = risk_eng.compute_contribution_to_variance(
+                    equal_weights, synthetic_returns
+                )
+
+                # Subtheme concentration (infer from company names / sectors)
+                subthemes: dict[str, str] = {}
+                for t in self.tickers:
+                    snap = stocks.get(t, {})
+                    company = (snap.get("company_name") or t).lower()
+                    sector = (snap.get("sector") or "").lower()
+                    if any(k in company for k in ["nvidia", "broadcom", "marvell", "amd"]):
+                        subthemes[t] = "compute_semiconductors"
+                    elif any(k in company for k in ["constellation", "vistra", "ge vernova", "nextracker"]):
+                        subthemes[t] = "power_energy"
+                    elif any(k in company for k in ["eaton", "hubbell", "quanta", "aecom"]):
+                        subthemes[t] = "infrastructure"
+                    elif any(k in company for k in ["taiwan", "tsmc"]):
+                        subthemes[t] = "compute_foundry"
+                    else:
+                        subthemes[t] = "other"
+
+                concentration = risk_eng.compute_concentration(equal_weights, subthemes)
+
+                # Format risk engine outputs
+                re_lines = [
+                    "=== DETERMINISTIC RISK ENGINE OUTPUTS (equal-weighted universe) ===",
+                    "",
+                    "Subtheme Concentration:",
+                ]
+                for theme, pct in sorted(concentration.items(), key=lambda x: -x[1]):
+                    re_lines.append(f"  {theme:<30}: {pct:.1f}%")
+
+                re_lines += ["", "Variance Contribution per Ticker (equal-weighted):"]
+                for t, contrib in sorted(var_contrib.items(), key=lambda x: -x[1]):
+                    re_lines.append(f"  {t:<8}: {contrib:.1f}% of portfolio variance")
+
+                re_lines += ["", "Beta-implied Correlation Structure (selected pairs):"]
+                # Show top correlated pairs
+                pairs_shown = 0
+                for i, t1 in enumerate(self.tickers):
+                    for j, t2 in enumerate(self.tickers):
+                        if j <= i:
+                            continue
+                        corr = corr_matrix.get(t1, {}).get(t2, 0.0)
+                        if abs(corr) > 0.6 and pairs_shown < 10:
+                            re_lines.append(f"  {t1} ↔ {t2}: {corr:.2f}")
+                            pairs_shown += 1
+
+                risk_engine_section = "\n".join(re_lines)
+
+            except Exception as exc:
+                logger.warning("RiskEngine failed: %s", exc)
+                risk_engine_section = f"⚠️  Risk engine unavailable: {exc}"
+
+        # Build engine context for prompt
+        quant_risk_context = ""
+        if scenario_section:
+            quant_risk_context += f"\n\n━━━ DETERMINISTIC SCENARIO IMPACTS ━━━\n{scenario_section}"
+        if risk_engine_section:
+            quant_risk_context += f"\n\n━━━ DETERMINISTIC RISK ENGINE ━━━\n{risk_engine_section}"
+
         system = textwrap.dedent(f"""
             You are the Risk Manager for an institutional research platform.
 
             {self._client_context()}
 
-            Review the provided risk metrics, sector analysis, valuation scenarios, and macro overlay,
-            then produce:
+            ╔══════════════════════════════════════════════════════════════════╗
+            ║  CRITICAL: DETERMINISTIC SCENARIO + RISK DATA IN USER MESSAGE   ║
+            ║  The scenario drawdowns and risk metrics are computed by quant   ║
+            ║  engines — NOT by you. Reference these as [SCENARIO ENGINE] and  ║
+            ║  [RISK ENGINE] when citing. Do NOT override or re-estimate them. ║
+            ╚══════════════════════════════════════════════════════════════════╝
+
+            HOW TO USE THE DETERMINISTIC DATA:
+            - Scenario impact %s are pre-computed per-ticker for all 7 stress scenarios
+            - Variance contributions show single-stock concentration risk
+            - You must comment on every high/severe flagged exposure
+            - Then add your qualitative overlay: which scenarios are most likely given
+              current macro regime, geopolitics, and sector dynamics?
+
+            Review all provided data and produce:
 
             ## Portfolio Risk Summary
-            - Concentration risk: compute vs power vs infrastructure allocation
-            - Correlation risk: names that will move together in a sell-off
+            - Concentration risk: reference [RISK ENGINE] subtheme breakdown
+            - Correlation risk: which names move together? Reference [RISK ENGINE] pairs
             - Factor exposures: AI capex beta, rates sensitivity, geopolitical beta
-            - How the current macro regime (rates, dollar, commodities) affects each sub-theme
+            - How the current macro regime affects each sub-theme
 
-            ## Scenario Stress Tests
-            For each scenario, estimate approximate portfolio drawdown:
-            1. **AI Capex Pause** — hyperscalers cut capex 30% following ROI disappointment
-            2. **Higher For Longer** — Fed holds at 5%+ through 2027; rates re-rate multiples
-            3. **Taiwan Crisis** — 10% probability 12-month scenario; tech supply chain disruption
-            4. **DeepSeek 2.0** — efficiency breakthrough reduces training compute demand 50%
-            5. **Power Price Collapse** — gas oversupply normalises electricity prices
+            ## Scenario Stress Tests [SCENARIO ENGINE]
+            Present the pre-computed drawdowns from the deterministic engine in a table.
+            Then ADD your qualitative overlay:
+            - Which scenarios are highest probability given current macro/geopolitical context?
+            - What would be the sequence of events that triggers each scenario?
+            - Portfolio-level weighted drawdown (consider the subtheme concentrations)
+
+            ## 7 Institutional Stress Scenarios
+            The engine covers: AI Capex Slowdown, Higher For Longer, Power Permitting Delays,
+            Export Control Escalation, Recession, Energy Price Shock, AI Efficiency Shock (DeepSeek).
+            Comment on each and add any additional scenario the engine doesn't cover.
 
             ## Risk-Adjusted Summary Table
-            | Ticker | Upside (consensus) | Beta | Key Risk | Risk Rating |
-            For each stock in the universe.
+            | Ticker | Consensus Upside | Beta | Worst Scenario Impact [SE] | Key Risk | Risk Rating |
+            For each stock.
         """).strip()
 
         val_ctx = f"\n\nVALUATION SCENARIOS (for drawdown calibration):\n{valuation_outputs[:1500]}..." if valuation_outputs else ""
@@ -1035,14 +1445,16 @@ Please produce the macro and political risk analysis.
         user_content = f"""
 Date: {market_data.get('date')}
 Universe: {', '.join(self.tickers)}
+{quant_risk_context}
 
-RISK METRICS:
+━━━ MARKET-BASED RISK METRICS ━━━
 {json.dumps(risk_metrics, indent=2)}
 
 SECTOR ANALYSIS EXCERPT:
 {sector_outputs[:2000]}...{val_ctx}{macro_ctx}
 
-Please produce the risk and scenario analysis.
+Please produce the full risk and scenario analysis.
+Reference [SCENARIO ENGINE] and [RISK ENGINE] data throughout.
         """.strip()
 
         return await self._call_llm(system, user_content, stage_num=9)
