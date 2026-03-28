@@ -32,7 +32,9 @@ class DataQALineageService:
                 issues.append(f"Row {i}: missing fields {missing}")
         return issues
 
-    def check_timestamps(self, snapshots: list[dict[str, Any]], max_age_hours: int = 24) -> list[str]:
+    def check_timestamps(
+        self, snapshots: list[dict[str, Any]], max_age_hours: int = 24
+    ) -> list[str]:
         """Flag stale or missing timestamps."""
         issues = []
         now = datetime.now(timezone.utc)

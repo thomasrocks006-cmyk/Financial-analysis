@@ -53,16 +53,16 @@ logger = logging.getLogger(__name__)
 # ── Stage registry (kept in sync with PipelineEngine) ────────────────────
 
 STAGES: list[tuple[int, str]] = [
-    (0,  "Bootstrap & Configuration"),
-    (1,  "Universe Definition"),
-    (2,  "Data Ingestion"),
-    (3,  "Reconciliation"),
-    (4,  "Data QA & Lineage"),
-    (5,  "Evidence Librarian / Claim Ledger"),
-    (6,  "Sector Analysis"),
-    (7,  "Valuation & Modelling"),
-    (8,  "Macro & Political Overlay"),
-    (9,  "Quant Risk & Scenario Testing"),
+    (0, "Bootstrap & Configuration"),
+    (1, "Universe Definition"),
+    (2, "Data Ingestion"),
+    (3, "Reconciliation"),
+    (4, "Data QA & Lineage"),
+    (5, "Evidence Librarian / Claim Ledger"),
+    (6, "Sector Analysis"),
+    (7, "Valuation & Modelling"),
+    (8, "Macro & Political Overlay"),
+    (9, "Quant Risk & Scenario Testing"),
     (10, "Red Team Analysis"),
     (11, "Associate Review / Publish Gate"),
     (12, "Portfolio Construction"),
@@ -73,11 +73,12 @@ STAGES: list[tuple[int, str]] = [
 
 # ── Data contracts (mirror pipeline_runner.py for drop-in compatibility) ─
 
+
 @dataclass
 class StageResult:
     stage_num: int
     stage_name: str
-    status: str = "pending"        # pending | running | done | failed
+    status: str = "pending"  # pending | running | done | failed
     output: dict[str, Any] = field(default_factory=dict)
     raw_text: str = ""
     elapsed_secs: float = 0.0
@@ -104,6 +105,7 @@ ActivityCallback = Callable[[str], None]
 
 
 # ── Adapter ───────────────────────────────────────────────────────────────
+
 
 class PipelineEngineAdapter:
     """Drop-in replacement for ``PipelineRunner`` backed by ``PipelineEngine``.
@@ -149,7 +151,9 @@ class PipelineEngineAdapter:
             api_keys=APIKeys(
                 fmp_api_key=provider_keys.get("fmp", os.environ.get("FMP_API_KEY", "")),
                 finnhub_api_key=provider_keys.get("finnhub", os.environ.get("FINNHUB_API_KEY", "")),
-                anthropic_api_key=provider_keys.get("anthropic", os.environ.get("ANTHROPIC_API_KEY", "")),
+                anthropic_api_key=provider_keys.get(
+                    "anthropic", os.environ.get("ANTHROPIC_API_KEY", "")
+                ),
                 openai_api_key=provider_keys.get("openai", os.environ.get("OPENAI_API_KEY", "")),
                 google_api_key=provider_keys.get("google", os.environ.get("GOOGLE_API_KEY", "")),
             ),
@@ -178,7 +182,9 @@ class PipelineEngineAdapter:
             def _intercepting_save(stage_num: int, output: Any) -> None:
                 _original_save(stage_num, output)
                 stage_name = dict(STAGES).get(stage_num, f"Stage {stage_num}")
-                progress_callback(stage_num, stage_name, "done", output if isinstance(output, dict) else {})
+                progress_callback(
+                    stage_num, stage_name, "done", output if isinstance(output, dict) else {}
+                )
 
             engine._save_stage_output = _intercepting_save  # type: ignore[method-assign]
 
@@ -200,12 +206,14 @@ class PipelineEngineAdapter:
                 status = "failed"
             else:
                 status = "done"
-            stage_results.append(StageResult(
-                stage_num=num,
-                stage_name=name,
-                status=status,
-                output=output if isinstance(output, dict) else {"data": output},
-            ))
+            stage_results.append(
+                StageResult(
+                    stage_num=num,
+                    stage_name=name,
+                    status=status,
+                    output=output if isinstance(output, dict) else {"data": output},
+                )
+            )
 
         # Fix: Load report markdown from report_path if inline markdown absent
         report_md: str = ""
@@ -228,8 +236,7 @@ class PipelineEngineAdapter:
         # Fix: Populate token_log and audit_packet from engine telemetry
         token_log: list[dict] = []
         audit_packet_dict: dict[str, Any] = {}
-        stage_timings_dict: dict[str, float] = {}
-        
+
         if engine.run_record:
             # Extract audit packet if available
             if hasattr(engine.run_record, "audit_packet") and engine.run_record.audit_packet:
@@ -238,24 +245,26 @@ class PipelineEngineAdapter:
                     audit_packet_dict = audit_packet.model_dump()
                 elif isinstance(audit_packet, dict):
                     audit_packet_dict = audit_packet
-                
+
                 # Extract stage timings from audit packet
                 if "stage_latencies_ms" in audit_packet_dict:
-                    stage_timings_dict = audit_packet_dict["stage_latencies_ms"]
-            
+                    pass  # stage_latencies_ms available for future telemetry use
+
             # Build token_log from stage outputs (approximate until engine emits real events)
             # This is a placeholder until Phase 2 implements full telemetry
             for num, name in STAGES:
                 output = engine.stage_outputs.get(num, {})
                 if isinstance(output, dict) and "agent_name" in output:
-                    token_log.append({
-                        "stage": num,
-                        "agent": output.get("agent_name", "unknown"),
-                        "model": self.model,
-                        "tokens_in": 0,  # Placeholder until Phase 2
-                        "tokens_out": 0,
-                        "cost_usd": 0.0,
-                    })
+                    token_log.append(
+                        {
+                            "stage": num,
+                            "agent": output.get("agent_name", "unknown"),
+                            "model": self.model,
+                            "tokens_in": 0,  # Placeholder until Phase 2
+                            "tokens_out": 0,
+                            "cost_usd": 0.0,
+                        }
+                    )
 
         return RunResult(
             run_id=run_id,

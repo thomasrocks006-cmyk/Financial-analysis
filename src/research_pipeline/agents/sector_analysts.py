@@ -43,9 +43,13 @@ NOT ALLOWED:
 - Vague TAM inflation or overclaiming partner announcements as hard demand"""
 
     _REQUIRED_FOUR_BOX_FIELDS = (
-        "ticker", "company_name", "date",
-        "box1_verified_facts", "box2_management_guidance",
-        "box3_consensus_market_view", "box4_analyst_judgment",
+        "ticker",
+        "company_name",
+        "date",
+        "box1_verified_facts",
+        "box2_management_guidance",
+        "box3_consensus_market_view",
+        "box4_analyst_judgment",
         "key_risks",
     )
 

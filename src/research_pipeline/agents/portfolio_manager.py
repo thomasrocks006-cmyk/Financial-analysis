@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
 
 from research_pipeline.agents.base_agent import BaseAgent
 

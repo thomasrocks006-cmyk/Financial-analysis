@@ -65,6 +65,7 @@ When asked to plan or execute a run, produce a structured JSON response with:
 
     def format_input(self, inputs: dict[str, Any]) -> str:
         import json
+
         context = {
             "action": inputs.get("action", "plan_run"),
             "universe": inputs.get("universe", []),

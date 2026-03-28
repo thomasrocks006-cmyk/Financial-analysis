@@ -93,6 +93,7 @@ Return a JSON array of valuation outputs."""
 
     def format_input(self, inputs: dict[str, Any]) -> str:
         import json
+
         return json.dumps(inputs, indent=2, default=str)
 
     def parse_output(self, raw_response: str) -> dict[str, Any]:
@@ -115,18 +116,21 @@ Return a JSON array of valuation outputs."""
             meth_tag = entry.get("methodology_tag", "")
             entry_quality = entry.get("entry_quality", "")
             if not meth_tag:
-                violations.append(f"[{ticker}] missing 'methodology_tag' — all targets must be tagged HOUSE VIEW or methodology")
+                violations.append(
+                    f"[{ticker}] missing 'methodology_tag' — all targets must be tagged HOUSE VIEW or methodology"
+                )
             if not entry_quality:
                 violations.append(f"[{ticker}] missing 'entry_quality' field")
             scenarios = entry.get("section_5_scenarios", [])
-            for sc in (scenarios if isinstance(scenarios, list) else []):
+            for sc in scenarios if isinstance(scenarios, list) else []:
                 if isinstance(sc, dict) and not sc.get("what_breaks_it"):
-                    violations.append(f"[{ticker}] scenario '{sc.get('case', '?')}' missing 'what_breaks_it' falsification")
+                    violations.append(
+                        f"[{ticker}] scenario '{sc.get('case', '?')}' missing 'what_breaks_it' falsification"
+                    )
 
         if violations:
             raise StructuredOutputError(
-                "ValuationAnalyst: methodology or structure violations:\n"
-                + "\n".join(violations)
+                "ValuationAnalyst: methodology or structure violations:\n" + "\n".join(violations)
             )
 
         if isinstance(parsed, list):

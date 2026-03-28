@@ -26,7 +26,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 # ── Storage root ──────────────────────────────────────────────────────────
-ROOT       = Path(__file__).parents[2]           # /workspaces/Financial-analysis
+ROOT = Path(__file__).parents[2]  # /workspaces/Financial-analysis
 REPORTS_DIR = ROOT / "reports"
 REPORTS_DIR.mkdir(exist_ok=True)
 
@@ -38,12 +38,11 @@ def _get_registry():
     """Return a RunRegistryService instance, or None if unavailable."""
     try:
         from research_pipeline.services.run_registry import RunRegistryService  # noqa: PLC0415
+
         return RunRegistryService(storage_dir=_REGISTRY_DIR)
     except Exception as exc:  # pragma: no cover
         logger.debug("RunRegistryService unavailable: %s", exc)
         return None
-
-
 
 
 def save_run(run_result) -> Path:
@@ -58,28 +57,28 @@ def save_run(run_result) -> Path:
     """
     run_id = run_result.run_id
     json_path = REPORTS_DIR / f"{run_id}.json"
-    md_path   = REPORTS_DIR / f"{run_id}.md"
+    md_path = REPORTS_DIR / f"{run_id}.md"
 
     # Serialise the full result
     try:
         payload = {
-            "run_id":              run_result.run_id,
-            "tickers":             run_result.tickers,
-            "model":               run_result.model,
-            "started_at":          run_result.started_at,
-            "completed_at":        run_result.completed_at,
-            "success":             run_result.success,
-            "publication_status":  run_result.publication_status,
-            "final_report_md":     run_result.final_report_md,
+            "run_id": run_result.run_id,
+            "tickers": run_result.tickers,
+            "model": run_result.model,
+            "started_at": run_result.started_at,
+            "completed_at": run_result.completed_at,
+            "success": run_result.success,
+            "publication_status": run_result.publication_status,
+            "final_report_md": run_result.final_report_md,
             "stages": [
                 {
-                    "stage_num":    s.stage_num,
-                    "stage_name":   s.stage_name,
-                    "status":       s.status,
+                    "stage_num": s.stage_num,
+                    "stage_name": s.stage_name,
+                    "status": s.status,
                     "elapsed_secs": s.elapsed_secs,
-                    "error":        s.error,
-                    "raw_text":     s.raw_text,
-                    "output":       s.output,
+                    "error": s.error,
+                    "raw_text": s.raw_text,
+                    "output": s.output,
                 }
                 for s in run_result.stages
             ],
@@ -110,6 +109,7 @@ def _mirror_to_registry(run_result) -> None:
         return
     try:
         from research_pipeline.schemas.registry import RunStatus  # noqa: PLC0415
+
         run_id = run_result.run_id
         existing = registry.get_run(run_id)
         if existing is None:
@@ -118,7 +118,9 @@ def _mirror_to_registry(run_result) -> None:
                 universe=getattr(run_result, "tickers", []),
                 config={"model": getattr(run_result, "model", "unknown")},
             )
-        final_status = RunStatus.COMPLETED if getattr(run_result, "success", False) else RunStatus.FAILED
+        final_status = (
+            RunStatus.COMPLETED if getattr(run_result, "success", False) else RunStatus.FAILED
+        )
         registry.update_run_status(
             run_id,
             final_status,
@@ -150,14 +152,14 @@ def list_saved_runs() -> list[dict]:
             md_path = jf.with_suffix(".md")
             rid = data.get("run_id", jf.stem)
             entries_by_id[rid] = {
-                "run_id":       rid,
-                "tickers":      data.get("tickers", []),
-                "model":        data.get("model", "unknown"),
+                "run_id": rid,
+                "tickers": data.get("tickers", []),
+                "model": data.get("model", "unknown"),
                 "completed_at": data.get("completed_at", ""),
-                "success":      data.get("success", False),
-                "word_count":   len((data.get("final_report_md") or "").split()),
-                "json_path":    str(jf),
-                "md_path":      str(md_path) if md_path.exists() else None,
+                "success": data.get("success", False),
+                "word_count": len((data.get("final_report_md") or "").split()),
+                "json_path": str(jf),
+                "md_path": str(md_path) if md_path.exists() else None,
             }
         except Exception as exc:
             logger.warning("Could not read saved run %s: %s", jf, exc)
@@ -171,15 +173,15 @@ def list_saved_runs() -> list[dict]:
                     continue  # file store has full detail — don't overwrite
                 completed = record.completed_at.isoformat() if record.completed_at else ""
                 entries_by_id[record.run_id] = {
-                    "run_id":       record.run_id,
-                    "tickers":      record.universe,
-                    "model":        record.agent_versions.get("orchestrator", "unknown"),
+                    "run_id": record.run_id,
+                    "tickers": record.universe,
+                    "model": record.agent_versions.get("orchestrator", "unknown"),
                     "completed_at": completed,
-                    "success":      str(record.status) in ("RunStatus.COMPLETED", "completed"),
-                    "word_count":   0,
-                    "json_path":    None,
-                    "md_path":      None,
-                    "_source":      "registry",
+                    "success": str(record.status) in ("RunStatus.COMPLETED", "completed"),
+                    "word_count": 0,
+                    "json_path": None,
+                    "md_path": None,
+                    "_source": "registry",
                 }
         except Exception as exc:
             logger.debug("Registry listing failed: %s", exc)

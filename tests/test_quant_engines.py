@@ -9,8 +9,10 @@ import pytest
 
 from research_pipeline.services.factor_engine import FactorExposureEngine
 from research_pipeline.services.benchmark_module import BenchmarkModule, BENCHMARK_CONSTITUENTS
-from research_pipeline.services.portfolio_optimisation import PortfolioOptimisationEngine, BlackLittermanInputs
-from research_pipeline.schemas.performance import FactorExposure
+from research_pipeline.services.portfolio_optimisation import (
+    PortfolioOptimisationEngine,
+    BlackLittermanInputs,
+)
 
 
 # ── Factor Exposure Engine ─────────────────────────────────────────────────
@@ -160,6 +162,7 @@ class TestVaREngine:
     def setup_method(self):
         try:
             from research_pipeline.services.var_engine import VaREngine
+
             self.engine = VaREngine()
             self.available = True
         except ImportError:
@@ -217,8 +220,12 @@ class TestVaREngine:
             pytest.skip("scipy not available")
         np.random.seed(42)
         returns = np.random.normal(0.001, 0.02, 252).tolist()
-        var_95 = self.engine.parametric_var("RUN-001", portfolio_returns=returns, confidence_level=0.95)
-        var_99 = self.engine.parametric_var("RUN-001", portfolio_returns=returns, confidence_level=0.99)
+        var_95 = self.engine.parametric_var(
+            "RUN-001", portfolio_returns=returns, confidence_level=0.95
+        )
+        var_99 = self.engine.parametric_var(
+            "RUN-001", portfolio_returns=returns, confidence_level=0.99
+        )
         assert var_99.var_pct > var_95.var_pct
 
 
@@ -229,11 +236,8 @@ class TestPortfolioOptimisation:
     def setup_method(self):
         self.engine = PortfolioOptimisationEngine()
         np.random.seed(42)
-        n = 5
         self.tickers = ["NVDA", "AVGO", "TSM", "EQIX", "CEG"]
-        self.returns = {
-            t: np.random.normal(0.001, 0.02, 60).tolist() for t in self.tickers
-        }
+        self.returns = {t: np.random.normal(0.001, 0.02, 60).tolist() for t in self.tickers}
 
     def test_minimum_variance(self):
         result = self.engine.compute_minimum_variance(

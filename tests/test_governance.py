@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from pathlib import Path
-
-import pytest
 
 from research_pipeline.schemas.governance import (
     CommitteeVote,
@@ -53,7 +49,9 @@ class TestMandateCompliance:
         assert result.is_compliant is False
         # TSM at 70% should violate single name limit
         violation_tickers = [v.description for v in result.violations]
-        assert any("TSM" in d for d in violation_tickers) or any("NVDA" in d for d in violation_tickers)
+        assert any("TSM" in d for d in violation_tickers) or any(
+            "NVDA" in d for d in violation_tickers
+        )
 
     def test_too_few_positions(self):
         weights = {"NVDA": 35.0, "AVGO": 35.0, "TSM": 30.0}
@@ -117,23 +115,17 @@ class TestESGService:
         assert "exclusion list" in reason.lower()
 
     def test_portfolio_compliance_clean(self):
-        result = self.svc.check_portfolio_esg_compliance(
-            tickers=["NVDA", "MSFT", "GOOGL"]
-        )
+        result = self.svc.check_portfolio_esg_compliance(tickers=["NVDA", "MSFT", "GOOGL"])
         assert result["compliant"] is True
 
     def test_portfolio_compliance_with_excluded(self):
-        result = self.svc.check_portfolio_esg_compliance(
-            tickers=["NVDA", "META"]
-        )
+        result = self.svc.check_portfolio_esg_compliance(tickers=["NVDA", "META"])
         assert result["compliant"] is False
         assert len(result["excluded_tickers"]) > 0
 
     def test_weighted_esg_scores(self):
         weights = {"NVDA": 50.0, "MSFT": 50.0}
-        result = self.svc.check_portfolio_esg_compliance(
-            tickers=["NVDA", "MSFT"], weights=weights
-        )
+        result = self.svc.check_portfolio_esg_compliance(tickers=["NVDA", "MSFT"], weights=weights)
         assert "portfolio_weighted_esg" in result
         assert result["portfolio_weighted_esg"]["composite"] > 0
 
@@ -157,9 +149,7 @@ class TestInvestmentCommittee:
             "completed_stages": 15,
             "failed_gates": [],
         }
-        mandate = MandateCheckResult(
-            run_id="RUN-001", mandate_id="M-001", is_compliant=True
-        )
+        mandate = MandateCheckResult(run_id="RUN-001", mandate_id="M-001", is_compliant=True)
         risk_summary = {"concentration_hhi": 1000, "max_single_position_weight": 12}
         review_result = {"status": "pass", "issues": []}
 
@@ -209,13 +199,16 @@ class TestInvestmentCommittee:
     def test_reject_mandate_violation(self):
         """Mandate violations should cause compliance rejection."""
         from research_pipeline.schemas.governance import MandateRule, MandateViolation
+
         gate_results = {"total_stages": 15, "completed_stages": 15, "failed_gates": []}
         rule = MandateRule(rule_id="R-001", rule_type="max_weight", threshold=15.0)
         mandate = MandateCheckResult(
             run_id="RUN-004",
             mandate_id="M-001",
             is_compliant=False,
-            violations=[MandateViolation(rule=rule, actual_value=20.0, description="NVDA exceeds 15%")],
+            violations=[
+                MandateViolation(rule=rule, actual_value=20.0, description="NVDA exceeds 15%")
+            ],
         )
 
         record = self.svc.evaluate_and_vote(
@@ -234,9 +227,7 @@ class TestInvestmentCommittee:
             run_id="RUN-005",
             gate_results=gate_results,
         )
-        has_conditions = any(
-            v.vote == CommitteeVote.APPROVE_WITH_CONDITIONS for v in record.votes
-        )
+        has_conditions = any(v.vote == CommitteeVote.APPROVE_WITH_CONDITIONS for v in record.votes)
         assert has_conditions is True
 
     def test_audit_trail_creation(self):
@@ -246,7 +237,7 @@ class TestInvestmentCommittee:
 
     def test_record_human_override(self):
         trail = self.svc.create_audit_trail("RUN-007")
-        entry = self.svc.record_human_override(
+        self.svc.record_human_override(
             audit_trail=trail,
             stage=11,
             original_status="fail",

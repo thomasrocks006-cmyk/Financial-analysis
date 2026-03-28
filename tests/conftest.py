@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -54,16 +53,88 @@ def sample_claim() -> dict:
 @pytest.fixture
 def sample_portfolio_positions() -> list[dict]:
     return [
-        {"ticker": "NVDA", "weight_pct": 12.0, "subtheme": "compute", "entry_quality": "strong", "thesis_integrity": "robust"},
-        {"ticker": "AVGO", "weight_pct": 10.0, "subtheme": "compute", "entry_quality": "strong", "thesis_integrity": "robust"},
-        {"ticker": "TSM", "weight_pct": 8.0, "subtheme": "compute", "entry_quality": "acceptable", "thesis_integrity": "moderate"},
-        {"ticker": "CEG", "weight_pct": 10.0, "subtheme": "power", "entry_quality": "strong", "thesis_integrity": "robust"},
-        {"ticker": "VST", "weight_pct": 8.0, "subtheme": "power", "entry_quality": "acceptable", "thesis_integrity": "moderate"},
-        {"ticker": "GEV", "weight_pct": 7.0, "subtheme": "power", "entry_quality": "acceptable", "thesis_integrity": "moderate"},
-        {"ticker": "PWR", "weight_pct": 10.0, "subtheme": "infrastructure", "entry_quality": "strong", "thesis_integrity": "robust"},
-        {"ticker": "ETN", "weight_pct": 9.0, "subtheme": "infrastructure", "entry_quality": "acceptable", "thesis_integrity": "moderate"},
-        {"ticker": "APH", "weight_pct": 8.0, "subtheme": "infrastructure", "entry_quality": "acceptable", "thesis_integrity": "moderate"},
-        {"ticker": "FCX", "weight_pct": 6.0, "subtheme": "materials", "entry_quality": "acceptable", "thesis_integrity": "moderate"},
-        {"ticker": "BHP", "weight_pct": 6.0, "subtheme": "materials", "entry_quality": "acceptable", "thesis_integrity": "moderate"},
-        {"ticker": "NXT", "weight_pct": 6.0, "subtheme": "infrastructure", "entry_quality": "acceptable", "thesis_integrity": "moderate"},
+        {
+            "ticker": "NVDA",
+            "weight_pct": 12.0,
+            "subtheme": "compute",
+            "entry_quality": "strong",
+            "thesis_integrity": "robust",
+        },
+        {
+            "ticker": "AVGO",
+            "weight_pct": 10.0,
+            "subtheme": "compute",
+            "entry_quality": "strong",
+            "thesis_integrity": "robust",
+        },
+        {
+            "ticker": "TSM",
+            "weight_pct": 8.0,
+            "subtheme": "compute",
+            "entry_quality": "acceptable",
+            "thesis_integrity": "moderate",
+        },
+        {
+            "ticker": "CEG",
+            "weight_pct": 10.0,
+            "subtheme": "power",
+            "entry_quality": "strong",
+            "thesis_integrity": "robust",
+        },
+        {
+            "ticker": "VST",
+            "weight_pct": 8.0,
+            "subtheme": "power",
+            "entry_quality": "acceptable",
+            "thesis_integrity": "moderate",
+        },
+        {
+            "ticker": "GEV",
+            "weight_pct": 7.0,
+            "subtheme": "power",
+            "entry_quality": "acceptable",
+            "thesis_integrity": "moderate",
+        },
+        {
+            "ticker": "PWR",
+            "weight_pct": 10.0,
+            "subtheme": "infrastructure",
+            "entry_quality": "strong",
+            "thesis_integrity": "robust",
+        },
+        {
+            "ticker": "ETN",
+            "weight_pct": 9.0,
+            "subtheme": "infrastructure",
+            "entry_quality": "acceptable",
+            "thesis_integrity": "moderate",
+        },
+        {
+            "ticker": "APH",
+            "weight_pct": 8.0,
+            "subtheme": "infrastructure",
+            "entry_quality": "acceptable",
+            "thesis_integrity": "moderate",
+        },
+        {
+            "ticker": "FCX",
+            "weight_pct": 6.0,
+            "subtheme": "materials",
+            "entry_quality": "acceptable",
+            "thesis_integrity": "moderate",
+        },
+        {
+            "ticker": "BHP",
+            "weight_pct": 6.0,
+            "subtheme": "materials",
+            "entry_quality": "acceptable",
+            "thesis_integrity": "moderate",
+        },
+        {
+            "ticker": "NXT",
+            "weight_pct": 6.0,
+            "subtheme": "infrastructure",
+            "entry_quality": "acceptable",
+            "thesis_integrity": "moderate",
+        },
     ]

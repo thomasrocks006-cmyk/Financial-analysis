@@ -13,48 +13,88 @@ from typing import Final
 
 AI_INFRASTRUCTURE_UNIVERSE: Final[list[str]] = [
     # AI chip designers & foundries
-    "NVDA", "AMD", "INTC", "AVGO", "MRVL",
+    "NVDA",
+    "AMD",
+    "INTC",
+    "AVGO",
+    "MRVL",
     # Cloud hyper-scalers with AI buildout
-    "MSFT", "GOOGL", "AMZN", "META",
+    "MSFT",
+    "GOOGL",
+    "AMZN",
+    "META",
     # AI-native software / platforms
-    "PLTR", "AI", "SNOW", "MDB",
+    "PLTR",
+    "AI",
+    "SNOW",
+    "MDB",
     # Power & cooling infrastructure
     "VST",
 ]
 
 GLOBAL_TECH_UNIVERSE: Final[list[str]] = AI_INFRASTRUCTURE_UNIVERSE + [
     # Expanded hyperscalers + pure-play cloud
-    "ORCL", "CRM", "NOW", "WDAY",
+    "ORCL",
+    "CRM",
+    "NOW",
+    "WDAY",
     # Semis & EDA tooling
-    "QCOM", "TXN", "ASML", "KLAC", "AMAT", "LRCX",
+    "QCOM",
+    "TXN",
+    "ASML",
+    "KLAC",
+    "AMAT",
+    "LRCX",
     # Networking
-    "ANET", "CSCO",
+    "ANET",
+    "CSCO",
     # AI hardware adjacencies
-    "ARM", "TSM",
+    "ARM",
+    "TSM",
     # Energy for AI data centres
-    "NEE", "AES", "CEG",
+    "NEE",
+    "AES",
+    "CEG",
 ]
 
 FIXED_INCOME_UNIVERSE: Final[list[str]] = [
     # US Treasuries
-    "TLT", "IEF", "SHV", "SGOV",
+    "TLT",
+    "IEF",
+    "SHV",
+    "SGOV",
     # Investment-grade credit
-    "LQD", "VCIT",
+    "LQD",
+    "VCIT",
     # High yield
-    "HYG", "JNK",
+    "HYG",
+    "JNK",
     # Inflation-linked
-    "TIP", "TIPS",
+    "TIP",
+    "TIPS",
     # International sovereign
     "BNDX",
 ]
 
 COMMODITY_UNIVERSE: Final[list[str]] = [
-    "GLD", "SLV", "PDBC", "USO", "UNG",
+    "GLD",
+    "SLV",
+    "PDBC",
+    "USO",
+    "UNG",
 ]
 
 ETF_BENCHMARK_UNIVERSE: Final[list[str]] = [
-    "SPY", "QQQ", "IWM", "EFA", "EEM",
-    "BOTZ", "AIQ", "SOXX", "XLK", "ROBO",
+    "SPY",
+    "QQQ",
+    "IWM",
+    "EFA",
+    "EEM",
+    "BOTZ",
+    "AIQ",
+    "SOXX",
+    "XLK",
+    "ROBO",
 ]
 
 # ── Thematic Sub-groups ───────────────────────────────────────────────────────
@@ -101,9 +141,7 @@ def get_universe(name: str) -> list[str]:
         KeyError: if the universe name is not registered.
     """
     if name not in _UNIVERSE_REGISTRY:
-        raise KeyError(
-            f"Unknown universe '{name}'. Available: {list(_UNIVERSE_REGISTRY)}"
-        )
+        raise KeyError(f"Unknown universe '{name}'. Available: {list(_UNIVERSE_REGISTRY)}")
     return list(_UNIVERSE_REGISTRY[name])
 
 

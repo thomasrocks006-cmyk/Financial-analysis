@@ -11,7 +11,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -19,21 +19,23 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ErrorPattern:
     """A captured red-team falsification or error pattern for future injection."""
+
     pattern_id: str
     ticker: str
     run_id: str
     captured_at: datetime
-    category: str          # "thesis_errors", "execution_risks", "valuation_gaps", "macro_risks"
-    assumption_text: str   # the bullish assumption that was challenged
-    falsification: str     # the specific disconfirmation path
-    severity: str          # "HIGH", "MEDIUM", "LOW"
-    was_realised: bool = False   # True if the risk materialised after the run
+    category: str  # "thesis_errors", "execution_risks", "valuation_gaps", "macro_risks"
+    assumption_text: str  # the bullish assumption that was challenged
+    falsification: str  # the specific disconfirmation path
+    severity: str  # "HIGH", "MEDIUM", "LOW"
+    was_realised: bool = False  # True if the risk materialised after the run
     notes: str = ""
 
 
 @dataclass
 class InjectedContext:
     """Context block assembled from memory + patterns for agent input."""
+
     ticker: str
     prior_thesis_summaries: list[str] = field(default_factory=list)
     prior_red_team_risks: list[str] = field(default_factory=list)
@@ -44,18 +46,22 @@ class InjectedContext:
 
     def to_prompt_block(self) -> str:
         """Format injected context as a prompt-ready block."""
-        if not any([
-            self.prior_thesis_summaries, self.prior_red_team_risks,
-            self.prior_factor_exposures, self.prior_valuation_targets,
-            self.relevant_errors,
-        ]):
+        if not any(
+            [
+                self.prior_thesis_summaries,
+                self.prior_red_team_risks,
+                self.prior_factor_exposures,
+                self.prior_valuation_targets,
+                self.relevant_errors,
+            ]
+        ):
             return ""
 
         lines = [f"=== INSTITUTIONAL MEMORY: {self.ticker} (from {self.run_count} prior runs) ==="]
 
         if self.prior_thesis_summaries:
             lines.append("\nPRIOR THESIS EVOLUTION:")
-            for t in self.prior_thesis_summaries[-3:]:    # last 3 only
+            for t in self.prior_thesis_summaries[-3:]:  # last 3 only
                 lines.append(f"  • {t}")
 
         if self.prior_red_team_risks:
@@ -92,6 +98,7 @@ class MemoryInjectionService:
         patterns_path: Path | None = None,
     ):
         from research_pipeline.services.research_memory import ResearchMemory
+
         self._memory = ResearchMemory(
             db_path=memory_store_path or Path("output/research_memory.db")
         )
@@ -145,9 +152,7 @@ class MemoryInjectionService:
         ]
         self._patterns_path.write_text(json.dumps(data, indent=2))
 
-    def capture_red_team_patterns(
-        self, run_id: str, red_team_output: dict[str, Any]
-    ) -> int:
+    def capture_red_team_patterns(self, run_id: str, red_team_output: dict[str, Any]) -> int:
         """Extract falsification paths from a red team output and save to library.
 
         Returns number of patterns captured.
@@ -164,20 +169,22 @@ class MemoryInjectionService:
             for test in assessment.get("section_2_falsification_tests", []):
                 if not isinstance(test, dict):
                     continue
-                pattern_id = f"P-{run_id}-{ticker}-{len(self._patterns)+1:04d}"
+                pattern_id = f"P-{run_id}-{ticker}-{len(self._patterns) + 1:04d}"
                 prob = test.get("current_probability", "MEDIUM").upper()
                 severity = "HIGH" if prob == "HIGH" else "MEDIUM" if prob == "MEDIUM" else "LOW"
-                self._patterns.append(ErrorPattern(
-                    pattern_id=pattern_id,
-                    ticker=ticker,
-                    run_id=run_id,
-                    captured_at=datetime.now(timezone.utc),
-                    category="thesis_errors",
-                    assumption_text=test.get("assumption", ""),
-                    falsification=test.get("test", ""),
-                    severity=severity,
-                    notes=test.get("evidence_trigger", ""),
-                ))
+                self._patterns.append(
+                    ErrorPattern(
+                        pattern_id=pattern_id,
+                        ticker=ticker,
+                        run_id=run_id,
+                        captured_at=datetime.now(timezone.utc),
+                        category="thesis_errors",
+                        assumption_text=test.get("assumption", ""),
+                        falsification=test.get("test", ""),
+                        severity=severity,
+                        notes=test.get("evidence_trigger", ""),
+                    )
+                )
                 captured += 1
 
         if captured > 0:
@@ -185,9 +192,7 @@ class MemoryInjectionService:
         logger.info("Captured %d error patterns from run %s", captured, run_id)
         return captured
 
-    def get_patterns_for_ticker(
-        self, ticker: str, max_patterns: int = 5
-    ) -> list[ErrorPattern]:
+    def get_patterns_for_ticker(self, ticker: str, max_patterns: int = 5) -> list[ErrorPattern]:
         """Retrieve relevant error patterns for a ticker."""
         ticker_patterns = [p for p in self._patterns if p.ticker == ticker]
         # Prioritise high-severity and recently realised risks
@@ -363,9 +368,7 @@ class MemoryInjectionService:
 
     # ── Phase 6.7: Performance Feedback Loop ────────────────────────────────
 
-    def compute_thesis_success_patterns(
-        self, threshold_days: int = 90
-    ) -> dict[str, Any]:
+    def compute_thesis_success_patterns(self, threshold_days: int = 90) -> dict[str, Any]:
         """Analyse prior theses to identify patterns associated with success.
 
         Returns a summary of what thesis characteristics correlated with

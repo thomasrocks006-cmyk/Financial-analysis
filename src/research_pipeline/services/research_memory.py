@@ -99,8 +99,7 @@ class ResearchMemory:
             """INSERT OR REPLACE INTO documents
                (doc_id, run_id, doc_type, ticker, title, content, metadata, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (doc_id, run_id, doc_type, ticker, title, content,
-             json.dumps(metadata or {}), now),
+            (doc_id, run_id, doc_type, ticker, title, content, json.dumps(metadata or {}), now),
         )
         conn.commit()
         logger.debug("Stored document %s (type=%s, ticker=%s)", doc_id, doc_type, ticker)
@@ -137,9 +136,7 @@ class ResearchMemory:
             title=title or f"Report {run_id}",
         )
 
-    def store_claim_ledger(
-        self, run_id: str, claims: list[dict[str, Any]]
-    ) -> None:
+    def store_claim_ledger(self, run_id: str, claims: list[dict[str, Any]]) -> None:
         """Store a claim ledger for future reference."""
         doc_id = f"{run_id}-claims"
         content = json.dumps(claims, indent=2, default=str)
@@ -203,9 +200,7 @@ class ResearchMemory:
     def get_document(self, doc_id: str) -> dict[str, Any] | None:
         """Retrieve a specific document by ID."""
         conn = self._get_conn()
-        row = conn.execute(
-            "SELECT * FROM documents WHERE doc_id = ?", (doc_id,)
-        ).fetchone()
+        row = conn.execute("SELECT * FROM documents WHERE doc_id = ?", (doc_id,)).fetchone()
         return dict(row) if row else None
 
     def get_run_documents(self, run_id: str) -> list[dict[str, Any]]:

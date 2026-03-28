@@ -74,7 +74,6 @@ Return a JSON array at the top-level. Example:
 }}"""
 
     def format_input(self, inputs: dict[str, Any]) -> str:
-        import json
         tickers = inputs.get("tickers", [])
         market_data = inputs.get("market_data", [])
         macro_context = inputs.get("macro_context_summary", "")
@@ -95,8 +94,6 @@ Return a JSON array at the top-level. Example:
                 if isinstance(md, dict) and md.get("ticker") in tickers:
                     price = md.get("price") or md.get("market_data", {}).get("price", "N/A")
                     cap = md.get("market_cap") or md.get("market_data", {}).get("market_cap", "N/A")
-                    parts.append(
-                        f"  {md.get('ticker','?')}: price={price} market_cap={cap}"
-                    )
+                    parts.append(f"  {md.get('ticker', '?')}: price={price} market_cap={cap}")
 
         return "\n".join(parts)

@@ -3,15 +3,11 @@
 from __future__ import annotations
 
 import tempfile
-from datetime import datetime, timezone
 from pathlib import Path
 
-import numpy as np
-import pytest
 
 from research_pipeline.services.performance_tracker import PerformanceTracker
 from research_pipeline.services.monitoring_engine import (
-    AlertSeverity,
     AlertType,
     MonitoringEngine,
 )
@@ -31,7 +27,6 @@ class TestPerformanceTracker:
         self.tracker = PerformanceTracker(storage_dir=self.tmpdir)
 
     def test_bhb_attribution(self):
-        now = datetime.now(timezone.utc)
         sector_map = {"NVDA": "compute", "AVGO": "compute", "CEG": "power", "EQIX": "infra"}
         attr = self.tracker.compute_bhb_attribution(
             run_id="RUN-001",
@@ -102,6 +97,7 @@ class TestPerformanceTracker:
 
     def test_snapshot_save_and_load(self):
         from research_pipeline.schemas.performance import PortfolioSnapshot
+
         snap = PortfolioSnapshot(
             run_id="RUN-001",
             variant_name="balanced",
@@ -270,8 +266,13 @@ class TestPositionSizing:
     def test_conviction_weighted_max_constraint(self):
         # Use enough tickers (>=7) so max 15% constraint is satisfiable (7*15=105>100)
         scores = {
-            "NVDA": 10.0, "AVGO": 5.0, "TSM": 4.0,
-            "EQIX": 3.0, "CEG": 2.0, "VST": 2.0, "PWR": 1.0,
+            "NVDA": 10.0,
+            "AVGO": 5.0,
+            "TSM": 4.0,
+            "EQIX": 3.0,
+            "CEG": 2.0,
+            "VST": 2.0,
+            "PWR": 1.0,
         }
         weights = self.engine.conviction_weighted(scores)
         assert abs(sum(weights.values()) - 100.0) < 0.5
@@ -351,6 +352,7 @@ class TestCacheLayer:
     def test_expired_entry(self):
         self.cache.set("ns", "key1", "value1", ttl_seconds=0)  # immediate expiry
         import time
+
         time.sleep(0.01)
         assert self.cache.get("ns", "key1") is None
 

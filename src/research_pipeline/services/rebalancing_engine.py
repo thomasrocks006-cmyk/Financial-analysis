@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -13,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 class RebalanceTrade(BaseModel):
     """A single rebalance trade."""
+
     ticker: str
     direction: str  # "buy" or "sell"
     current_weight_pct: float
@@ -26,6 +26,7 @@ class RebalanceTrade(BaseModel):
 
 class RebalanceProposal(BaseModel):
     """Full rebalance proposal with trade list and impact estimates."""
+
     run_id: str
     proposal_date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     trigger: str = "manual"  # "drift", "mandate_breach", "scheduled", "manual"
@@ -143,27 +144,35 @@ class RebalancingEngine:
 
             # Market impact estimate (square root model)
             impact_bps = 0.0
-            if volume_data and ticker in volume_data and current_prices and ticker in current_prices:
+            if (
+                volume_data
+                and ticker in volume_data
+                and current_prices
+                and ticker in current_prices
+            ):
                 adv_value = volume_data[ticker] * current_prices[ticker]
                 if adv_value > 0:
                     import numpy as np
+
                     participation = est_value / (adv_value * self.participation_rate)
                     impact_bps = float(10 * np.sqrt(participation) * 100)
 
             # Priority based on delta magnitude
             priority = "high" if abs(delta) > 5 else ("normal" if abs(delta) > 2 else "low")
 
-            trades.append(RebalanceTrade(
-                ticker=ticker,
-                direction=direction,
-                current_weight_pct=round(current, 2),
-                target_weight_pct=round(target, 2),
-                delta_weight_pct=round(delta, 2),
-                estimated_shares=round(est_shares, 0),
-                estimated_value=round(est_value, 2),
-                market_impact_bps=round(impact_bps, 2),
-                priority=priority,
-            ))
+            trades.append(
+                RebalanceTrade(
+                    ticker=ticker,
+                    direction=direction,
+                    current_weight_pct=round(current, 2),
+                    target_weight_pct=round(target, 2),
+                    delta_weight_pct=round(delta, 2),
+                    estimated_shares=round(est_shares, 0),
+                    estimated_value=round(est_value, 2),
+                    market_impact_bps=round(impact_bps, 2),
+                    priority=priority,
+                )
+            )
 
             total_turnover += abs(delta)
             total_impact += impact_bps * est_value

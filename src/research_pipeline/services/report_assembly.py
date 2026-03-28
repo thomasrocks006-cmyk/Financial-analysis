@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 from jinja2 import Environment, FileSystemLoader, BaseLoader
 
@@ -113,30 +111,42 @@ class ReportAssemblyService:
             return FinalReport(
                 run_id=run_id,
                 publication_status="blocked",
-                sections=[ReportSection(
-                    section_name="error",
-                    content=f"Report blocked: review status {review_result.status.value}",
-                    approved=False,
-                )],
+                sections=[
+                    ReportSection(
+                        section_name="error",
+                        content=f"Report blocked: review status {review_result.status.value}",
+                        approved=False,
+                    )
+                ],
             )
 
         report_sections = []
         for name in [
-            "executive_summary", "methodology", "valuation_appendix",
-            "risk_appendix", "self_audit_appendix", "claim_register_appendix",
+            "executive_summary",
+            "methodology",
+            "valuation_appendix",
+            "risk_appendix",
+            "self_audit_appendix",
+            "claim_register_appendix",
         ]:
             content = sections.get(name, "")
             if name == "self_audit_appendix" and not content:
                 content = self_audit_text
             if name == "claim_register_appendix" and not content:
                 content = claim_register_text
-            report_sections.append(ReportSection(
-                section_name=name,
-                content=content,
-                approved=True,
-            ))
+            report_sections.append(
+                ReportSection(
+                    section_name=name,
+                    content=content,
+                    approved=True,
+                )
+            )
 
-        status = "published" if review_result.status == PublicationStatus.PASS else "published_with_disclosure"
+        status = (
+            "published"
+            if review_result.status == PublicationStatus.PASS
+            else "published_with_disclosure"
+        )
 
         return FinalReport(
             run_id=run_id,

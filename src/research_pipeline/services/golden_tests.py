@@ -7,8 +7,6 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 
 from research_pipeline.schemas.registry import GoldenTest
-from research_pipeline.schemas.claims import Claim, ClaimStatus, EvidenceClass
-from research_pipeline.schemas.market_data import ReconciliationStatus
 
 logger = logging.getLogger(__name__)
 
@@ -33,61 +31,73 @@ class GoldenTestHarness:
         """Register built-in golden tests from the spec."""
 
         # ── Claim classification tests ─────────────────────────────────
-        self.add_test(GoldenTest(
-            test_id="GT-CLAIM-001",
-            category="claim_classification",
-            input_fixture={
-                "claim_text": "Revenue was $35.1B in Q3 FY2025",
-                "evidence_class": "primary_fact",
-                "source_tier": 1,
-            },
-            expected_output_rule="status == pass",
-        ))
+        self.add_test(
+            GoldenTest(
+                test_id="GT-CLAIM-001",
+                category="claim_classification",
+                input_fixture={
+                    "claim_text": "Revenue was $35.1B in Q3 FY2025",
+                    "evidence_class": "primary_fact",
+                    "source_tier": 1,
+                },
+                expected_output_rule="status == pass",
+            )
+        )
 
-        self.add_test(GoldenTest(
-            test_id="GT-CLAIM-002",
-            category="claim_classification",
-            input_fixture={
-                "claim_text": "Management expects 20% growth next year",
-                "evidence_class": "primary_fact",  # WRONG — should be mgmt_guidance
-                "source_tier": 1,
-            },
-            expected_output_rule="status == fail (guidance cannot be primary_fact)",
-        ))
+        self.add_test(
+            GoldenTest(
+                test_id="GT-CLAIM-002",
+                category="claim_classification",
+                input_fixture={
+                    "claim_text": "Management expects 20% growth next year",
+                    "evidence_class": "primary_fact",  # WRONG — should be mgmt_guidance
+                    "source_tier": 1,
+                },
+                expected_output_rule="status == fail (guidance cannot be primary_fact)",
+            )
+        )
 
-        self.add_test(GoldenTest(
-            test_id="GT-CLAIM-003",
-            category="claim_classification",
-            input_fixture={
-                "claim_text": "Core business fact about revenue",
-                "evidence_class": "primary_fact",
-                "source_tier": 3,  # Tier 3 not allowed for primary facts
-            },
-            expected_output_rule="status == fail (tier 3 insufficient for primary fact)",
-        ))
+        self.add_test(
+            GoldenTest(
+                test_id="GT-CLAIM-003",
+                category="claim_classification",
+                input_fixture={
+                    "claim_text": "Core business fact about revenue",
+                    "evidence_class": "primary_fact",
+                    "source_tier": 3,  # Tier 3 not allowed for primary facts
+                },
+                expected_output_rule="status == fail (tier 3 insufficient for primary fact)",
+            )
+        )
 
         # ── Gating tests ──────────────────────────────────────────────
-        self.add_test(GoldenTest(
-            test_id="GT-GATE-001",
-            category="gating",
-            input_fixture={"fail_claims": 1, "caveat_claims": 0},
-            expected_output_rule="publication_blocked == true",
-        ))
+        self.add_test(
+            GoldenTest(
+                test_id="GT-GATE-001",
+                category="gating",
+                input_fixture={"fail_claims": 1, "caveat_claims": 0},
+                expected_output_rule="publication_blocked == true",
+            )
+        )
 
-        self.add_test(GoldenTest(
-            test_id="GT-GATE-002",
-            category="gating",
-            input_fixture={"fail_claims": 0, "caveat_claims": 2},
-            expected_output_rule="publication_allowed == true (with disclosure)",
-        ))
+        self.add_test(
+            GoldenTest(
+                test_id="GT-GATE-002",
+                category="gating",
+                input_fixture={"fail_claims": 0, "caveat_claims": 2},
+                expected_output_rule="publication_allowed == true (with disclosure)",
+            )
+        )
 
         # ── Reconciliation tests ───────────────────────────────────────
-        self.add_test(GoldenTest(
-            test_id="GT-RECON-001",
-            category="reconciliation",
-            input_fixture={"fmp_price": 100.0, "finnhub_price": 103.0, "drift_pct": 3.0},
-            expected_output_rule="status == red (>2% threshold)",
-        ))
+        self.add_test(
+            GoldenTest(
+                test_id="GT-RECON-001",
+                category="reconciliation",
+                input_fixture={"fmp_price": 100.0, "finnhub_price": 103.0, "drift_pct": 3.0},
+                expected_output_rule="status == red (>2% threshold)",
+            )
+        )
 
     def add_test(self, test: GoldenTest) -> None:
         self.tests.append(test)
@@ -132,7 +142,7 @@ class GoldenTestHarness:
             if test.category == "claim_classification":
                 result = self.run_claim_classification_test(fixture)
                 if "status == pass" in test.expected_output_rule:
-                    passed = result      # good claim should be accepted (classifier returns True)
+                    passed = result  # good claim should be accepted (classifier returns True)
                 elif "status == fail" in test.expected_output_rule:
                     passed = not result  # bad claim should be rejected (classifier returns False)
                 else:
@@ -148,7 +158,11 @@ class GoldenTestHarness:
                 # Unknown category — fail by default so new categories must
                 # have real test functions before they can pass.
                 passed = False
-                logger.warning("Unknown golden test category '%s' for %s — marked FAIL", test.category, test.test_id)
+                logger.warning(
+                    "Unknown golden test category '%s' for %s — marked FAIL",
+                    test.category,
+                    test.test_id,
+                )
 
             test.last_run = datetime.now(timezone.utc)
             test.passed = passed
@@ -158,14 +172,14 @@ class GoldenTestHarness:
             else:
                 results["failed"] += 1
 
-            results["details"].append({
-                "test_id": test.test_id,
-                "category": test.category,
-                "passed": passed,
-                "rule": test.expected_output_rule,
-            })
+            results["details"].append(
+                {
+                    "test_id": test.test_id,
+                    "category": test.category,
+                    "passed": passed,
+                    "rule": test.expected_output_rule,
+                }
+            )
 
-        logger.info(
-            "Golden tests: %d/%d passed", results["passed"], results["total"]
-        )
+        logger.info("Golden tests: %d/%d passed", results["passed"], results["total"])
         return results

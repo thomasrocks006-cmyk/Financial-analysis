@@ -114,6 +114,7 @@ Return a single JSON object (not an array)."""
 
     def format_input(self, inputs: dict[str, Any]) -> str:
         import json
+
         sections = []
 
         if "factor_exposures" in inputs:
@@ -146,6 +147,7 @@ Return a single JSON object (not an array)."""
 
         if not sections:
             import json
+
             sections.append(json.dumps(inputs, indent=2, default=str))
 
         return "\n\n".join(sections)

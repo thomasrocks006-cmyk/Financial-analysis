@@ -7,7 +7,7 @@ from typing import Any
 
 from research_pipeline.schemas.claims import ClaimLedger
 from research_pipeline.schemas.market_data import DataQualityReport, ReconciliationReport
-from research_pipeline.schemas.portfolio import AssociateReviewResult, PublicationStatus
+from research_pipeline.schemas.portfolio import AssociateReviewResult
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,9 @@ logger = logging.getLogger(__name__)
 class GateResult:
     """Result of a stage gate check."""
 
-    def __init__(self, stage: int, passed: bool, reason: str = "", blockers: list[str] | None = None):
+    def __init__(
+        self, stage: int, passed: bool, reason: str = "", blockers: list[str] | None = None
+    ):
         self.stage = stage
         self.passed = passed
         self.reason = reason
@@ -65,7 +67,9 @@ class PipelineGates:
             blockers.append(f"Universe has {len(universe)} tickers, minimum {min_tickers}")
         if len(set(universe)) != len(universe):
             blockers.append("Duplicate tickers in universe")
-        return GateResult(stage=1, passed=len(blockers) == 0, reason="Universe check", blockers=blockers)
+        return GateResult(
+            stage=1, passed=len(blockers) == 0, reason="Universe check", blockers=blockers
+        )
 
     # ── Stage 2: Data Ingestion ────────────────────────────────────────
     @staticmethod
@@ -82,7 +86,9 @@ class PipelineGates:
         for r in ingest_results:
             if r.get("error"):
                 blockers.append(f"{r['ticker']}: {r['error']}")
-        return GateResult(stage=2, passed=len(blockers) == 0, reason="Ingestion check", blockers=blockers)
+        return GateResult(
+            stage=2, passed=len(blockers) == 0, reason="Ingestion check", blockers=blockers
+        )
 
     # ── Stage 3: Reconciliation ────────────────────────────────────────
     @staticmethod
@@ -94,7 +100,9 @@ class PipelineGates:
             for r in reds:
                 div_str = f"{r.divergence_pct:.1f}%" if r.divergence_pct is not None else "N/A"
                 blockers.append(f"RED: {r.ticker} {r.field_name} — divergence {div_str}")
-        return GateResult(stage=3, passed=len(blockers) == 0, reason="Reconciliation check", blockers=blockers)
+        return GateResult(
+            stage=3, passed=len(blockers) == 0, reason="Reconciliation check", blockers=blockers
+        )
 
     # ── Stage 4: Data QA & Lineage ─────────────────────────────────────
     @staticmethod
@@ -104,7 +112,9 @@ class PipelineGates:
         if not report.is_passing():
             for issue in report.issues:
                 blockers.append(issue)
-        return GateResult(stage=4, passed=len(blockers) == 0, reason="Data QA check", blockers=blockers)
+        return GateResult(
+            stage=4, passed=len(blockers) == 0, reason="Data QA check", blockers=blockers
+        )
 
     # ── Stage 5: Evidence Librarian ────────────────────────────────────
     @staticmethod
@@ -115,7 +125,9 @@ class PipelineGates:
             blockers.append("Claim ledger is empty")
         if ledger.has_unresolved_fails():
             blockers.append(f"{ledger.fail_count} FAIL claims must be resolved before proceeding")
-        return GateResult(stage=5, passed=len(blockers) == 0, reason="Evidence check", blockers=blockers)
+        return GateResult(
+            stage=5, passed=len(blockers) == 0, reason="Evidence check", blockers=blockers
+        )
 
     # ── Stage 6: Sector Analysis ───────────────────────────────────────
     @staticmethod
@@ -129,7 +141,9 @@ class PipelineGates:
             blockers.append(f"Only {four_box_count}/{expected_count} four-box outputs received")
         if unsupported_claims > 0:
             blockers.append(f"{unsupported_claims} unsupported claims rejected")
-        return GateResult(stage=6, passed=len(blockers) == 0, reason="Sector analysis check", blockers=blockers)
+        return GateResult(
+            stage=6, passed=len(blockers) == 0, reason="Sector analysis check", blockers=blockers
+        )
 
     # ── Stage 7: Valuation & Modelling ─────────────────────────────────
     @staticmethod
@@ -143,7 +157,9 @@ class PipelineGates:
             blockers.append(f"Only {valuation_cards_count}/{expected_count} valuation cards")
         if missing_methodology_tags > 0:
             blockers.append(f"{missing_methodology_tags} targets missing methodology tag")
-        return GateResult(stage=7, passed=len(blockers) == 0, reason="Valuation check", blockers=blockers)
+        return GateResult(
+            stage=7, passed=len(blockers) == 0, reason="Valuation check", blockers=blockers
+        )
 
     # ── Stage 8: Macro & Political ─────────────────────────────────────
     @staticmethod
@@ -156,8 +172,12 @@ class PipelineGates:
         if not regime_memo_present:
             blockers.append("Macro regime memo missing")
         if political_assessments_count < expected_count:
-            blockers.append(f"Only {political_assessments_count}/{expected_count} political assessments")
-        return GateResult(stage=8, passed=len(blockers) == 0, reason="Macro/political check", blockers=blockers)
+            blockers.append(
+                f"Only {political_assessments_count}/{expected_count} political assessments"
+            )
+        return GateResult(
+            stage=8, passed=len(blockers) == 0, reason="Macro/political check", blockers=blockers
+        )
 
     # ── Stage 9: Quant Risk & Scenario ─────────────────────────────────
     @staticmethod
@@ -193,7 +213,9 @@ class PipelineGates:
             blockers.append(f"Only {assessments_count}/{expected_count} red team assessments")
         if not all_have_min_falsifications:
             blockers.append("Not all names have minimum 3 falsification tests")
-        return GateResult(stage=10, passed=len(blockers) == 0, reason="Red team check", blockers=blockers)
+        return GateResult(
+            stage=10, passed=len(blockers) == 0, reason="Red team check", blockers=blockers
+        )
 
     # ── Stage 11: Associate Review / Publish Gate ──────────────────────
     @staticmethod
@@ -221,7 +243,9 @@ class PipelineGates:
         if constraint_violations:
             for v in constraint_violations:
                 blockers.append(f"Constraint violation: {v}")
-        return GateResult(stage=12, passed=len(blockers) == 0, reason="Portfolio check", blockers=blockers)
+        return GateResult(
+            stage=12, passed=len(blockers) == 0, reason="Portfolio check", blockers=blockers
+        )
 
     # ── Stage 13: Report Assembly ──────────────────────────────────────
     @staticmethod
@@ -234,4 +258,6 @@ class PipelineGates:
             blockers.append("Report not generated")
         if not all_sections_approved:
             blockers.append("Not all report sections approved")
-        return GateResult(stage=13, passed=len(blockers) == 0, reason="Report assembly check", blockers=blockers)
+        return GateResult(
+            stage=13, passed=len(blockers) == 0, reason="Report assembly check", blockers=blockers
+        )

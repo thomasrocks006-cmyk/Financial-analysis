@@ -96,9 +96,7 @@ class ScenarioStressEngine:
         if custom_scenarios:
             self.scenarios.update(custom_scenarios)
 
-    def apply_scenario(
-        self, scenario_key: str, tickers: list[str]
-    ) -> list[ScenarioResult]:
+    def apply_scenario(self, scenario_key: str, tickers: list[str]) -> list[ScenarioResult]:
         """Apply a scenario to a list of tickers."""
         scenario = self.scenarios.get(scenario_key)
         if not scenario:
@@ -125,13 +123,15 @@ class ScenarioStressEngine:
             elif abs(impact) >= 8:
                 severity = "moderate"
 
-            results.append(ScenarioResult(
-                ticker=ticker,
-                scenario_name=scenario.name,
-                impact_description=scenario.description,
-                estimated_impact_pct=round(impact, 1),
-                severity=severity,
-            ))
+            results.append(
+                ScenarioResult(
+                    ticker=ticker,
+                    scenario_name=scenario.name,
+                    impact_description=scenario.description,
+                    estimated_impact_pct=round(impact, 1),
+                    severity=severity,
+                )
+            )
         return results
 
     def run_all_scenarios(self, tickers: list[str]) -> list[ScenarioResult]:
@@ -156,8 +156,7 @@ class ScenarioStressEngine:
         for key in self.scenarios:
             results = self.apply_scenario(key, tickers)
             weighted_impact = sum(
-                (r.estimated_impact_pct or 0) * weights.get(r.ticker, 0) / 100
-                for r in results
+                (r.estimated_impact_pct or 0) * weights.get(r.ticker, 0) / 100 for r in results
             )
             summary[self.scenarios[key].name] = round(weighted_impact, 2)
         return summary

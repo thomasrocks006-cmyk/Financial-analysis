@@ -9,7 +9,6 @@ Covers:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import warnings
 from pathlib import Path
@@ -54,6 +53,7 @@ def s6_config() -> PipelineConfig:
 
 def _ingest_row(ticker: str) -> dict:
     from datetime import datetime, timezone
+
     return {
         "ticker": ticker,
         "source": "fmp",
@@ -103,129 +103,207 @@ def _esg_entry(ticker: str) -> dict:
 
 def _patch_all_agents(engine: PipelineEngine) -> None:
     """Patch all agents including the new ESG agent added in session 6."""
-    engine.orchestrator_agent.run = AsyncMock(return_value=_ar(
-        "orchestrator", {"status": "proceed", "universe": S6_UNIVERSE}
-    ))
-    engine.evidence_agent.run = AsyncMock(return_value=_ar(
-        "evidence_librarian",
-        {"claims": [{"claim_id": "C1", "ticker": "NVDA",
-                     "claim_text": "NVDA Q4 revenue $18B",
-                     "evidence_class": "primary_fact",
-                     "source_id": "SRC-1", "confidence": "high",
-                     "status": "pass"}],
-         "sources": [{"source_id": "SRC-1", "source_type": "filing",
-                      "tier": 1, "url": None, "notes": "10-K"}]},
-    ))
-    engine.compute_analyst.run = AsyncMock(return_value=_ar(
-        "sector_analyst_compute",
-        {"sector_outputs": [_sector_out(t) for t in S6_UNIVERSE]},
-    ))
-    engine.power_analyst.run = AsyncMock(return_value=_ar(
-        "sector_analyst_power", {"sector_outputs": []}
-    ))
-    engine.infra_analyst.run = AsyncMock(return_value=_ar(
-        "sector_analyst_infrastructure", {"sector_outputs": []}
-    ))
+    engine.orchestrator_agent.run = AsyncMock(
+        return_value=_ar("orchestrator", {"status": "proceed", "universe": S6_UNIVERSE})
+    )
+    engine.evidence_agent.run = AsyncMock(
+        return_value=_ar(
+            "evidence_librarian",
+            {
+                "claims": [
+                    {
+                        "claim_id": "C1",
+                        "ticker": "NVDA",
+                        "claim_text": "NVDA Q4 revenue $18B",
+                        "evidence_class": "primary_fact",
+                        "source_id": "SRC-1",
+                        "confidence": "high",
+                        "status": "pass",
+                    }
+                ],
+                "sources": [
+                    {
+                        "source_id": "SRC-1",
+                        "source_type": "filing",
+                        "tier": 1,
+                        "url": None,
+                        "notes": "10-K",
+                    }
+                ],
+            },
+        )
+    )
+    engine.compute_analyst.run = AsyncMock(
+        return_value=_ar(
+            "sector_analyst_compute",
+            {"sector_outputs": [_sector_out(t) for t in S6_UNIVERSE]},
+        )
+    )
+    engine.power_analyst.run = AsyncMock(
+        return_value=_ar("sector_analyst_power", {"sector_outputs": []})
+    )
+    engine.infra_analyst.run = AsyncMock(
+        return_value=_ar("sector_analyst_infrastructure", {"sector_outputs": []})
+    )
     # ACT-S6-2: ESG analyst mock
-    engine.esg_analyst_agent.run = AsyncMock(return_value=_ar(
-        "esg_analyst",
-        {"esg_scores": [_esg_entry(t) for t in S6_UNIVERSE],
-         "parse_violations": []},
-    ))
-    engine.valuation_agent.run = AsyncMock(return_value=_ar(
-        "valuation_analyst",
-        {"valuations": [{"ticker": "NVDA", "date": "2026-01-01",
-                         "section_5_scenarios": [{
-                             "case": "base", "probability_pct": 50,
-                             "revenue_cagr": "20%", "exit_multiple": "30x",
-                             "exit_multiple_rationale": "sector median",
-                             "implied_return_1y": "15%",
-                             "implied_return_3y": "50% [HOUSE VIEW]",
-                             "key_assumption": "data center demand",
-                             "what_breaks_it": "capex cut",
-                         }],
-                         "entry_quality": "ACCEPTABLE",
-                         "methodology_tag": "HOUSE VIEW"}]},
-    ))
-    engine.macro_agent.run = AsyncMock(return_value=_ar(
-        "macro_strategist",
-        {"regime": "expansion", "rate_outlook": "neutral",
-         "usd_outlook": "stable", "equity_risk_premium": 5.0},
-    ))
-    engine.political_agent.run = AsyncMock(return_value=_ar(
-        "political_risk", {"risk_level": "low", "key_risks": []}
-    ))
-    engine.red_team_agent.run = AsyncMock(return_value=_ar(
-        "red_team_analyst",
-        {"assessments": [{"ticker": "NVDA",
-                          "falsification_tests": ["FT-1", "FT-2", "FT-3"],
-                          "required_tests": {}}]},
-    ))
-    engine.reviewer_agent.run = AsyncMock(return_value=_ar(
-        "associate_reviewer",
-        {"status": "pass", "issues": [], "methodology_tags_complete": True,
-         "dates_complete": True, "claim_mapping_complete": True},
-    ))
-    engine.pm_agent.run = AsyncMock(return_value=_ar(
-        "portfolio_manager",
-        {"variants": [
-            {"name": "balanced", "positions": [
-                {"ticker": "NVDA", "weight_pct": 34.0},
-                {"ticker": "AVGO", "weight_pct": 33.0},
-                {"ticker": "TSM",  "weight_pct": 33.0},
-            ]},
-            {"name": "higher_return", "positions": [
-                {"ticker": "NVDA", "weight_pct": 50.0},
-                {"ticker": "AVGO", "weight_pct": 30.0},
-                {"ticker": "TSM",  "weight_pct": 20.0},
-            ]},
-            {"name": "lower_volatility", "positions": [
-                {"ticker": "NVDA", "weight_pct": 25.0},
-                {"ticker": "AVGO", "weight_pct": 40.0},
-                {"ticker": "TSM",  "weight_pct": 35.0},
-            ]},
-        ]},
-    ))
-    engine.quant_analyst_agent.run = AsyncMock(return_value=_ar(
-        "quant_research_analyst",
-        {"risk_signal": "neutral",
-         "primary_concern": "concentration",
-         "recommended_action": "monitor",
-         "section_1_factor_interpretation": {"dominant_factors": ["momentum"]},
-         "section_2_risk_assessment": {"var_95_commentary": "moderate"},
-         "section_3_benchmark_divergence": {
-             "etf_differentiation_score": 60,
-             "etf_replication_risk": False,
-             "tracking_error_commentary": "high active share",
-             "active_bets_narrative": "NVDA+12%",
-             "information_ratio_signal": "IR=0.7",
-             "etf_overlap_summary": "60% differentiated",
-         },
-         "section_4_construction_signal": {
-             "factor_tilt_recommendation": "maintain",
-             "concentration_recommendation": "trim NVDA",
-             "benchmark_recommendation": "differentiated",
-             "constructive_changes": [],
-         },
-         "analyst_confidence": "medium",
-         "data_quality_note": "test"},
-    ))
-    engine.fixed_income_agent.run = AsyncMock(return_value=_ar(
-        "fixed_income_analyst",
-        {"yield_curve_regime": "normal",
-         "10y_yield_context": "4.3% neutral",
-         "cost_of_capital_trend": "stable",
-         "rate_sensitivity_score": 5.0,
-         "key_risks": [],
-         "offsetting_factors": [],
-         "sector_rotation_read": "neutral",
-         "methodology_note": "test"},
-    ))
+    engine.esg_analyst_agent.run = AsyncMock(
+        return_value=_ar(
+            "esg_analyst",
+            {"esg_scores": [_esg_entry(t) for t in S6_UNIVERSE], "parse_violations": []},
+        )
+    )
+    engine.valuation_agent.run = AsyncMock(
+        return_value=_ar(
+            "valuation_analyst",
+            {
+                "valuations": [
+                    {
+                        "ticker": "NVDA",
+                        "date": "2026-01-01",
+                        "section_5_scenarios": [
+                            {
+                                "case": "base",
+                                "probability_pct": 50,
+                                "revenue_cagr": "20%",
+                                "exit_multiple": "30x",
+                                "exit_multiple_rationale": "sector median",
+                                "implied_return_1y": "15%",
+                                "implied_return_3y": "50% [HOUSE VIEW]",
+                                "key_assumption": "data center demand",
+                                "what_breaks_it": "capex cut",
+                            }
+                        ],
+                        "entry_quality": "ACCEPTABLE",
+                        "methodology_tag": "HOUSE VIEW",
+                    }
+                ]
+            },
+        )
+    )
+    engine.macro_agent.run = AsyncMock(
+        return_value=_ar(
+            "macro_strategist",
+            {
+                "regime": "expansion",
+                "rate_outlook": "neutral",
+                "usd_outlook": "stable",
+                "equity_risk_premium": 5.0,
+            },
+        )
+    )
+    engine.political_agent.run = AsyncMock(
+        return_value=_ar("political_risk", {"risk_level": "low", "key_risks": []})
+    )
+    engine.red_team_agent.run = AsyncMock(
+        return_value=_ar(
+            "red_team_analyst",
+            {
+                "assessments": [
+                    {
+                        "ticker": "NVDA",
+                        "falsification_tests": ["FT-1", "FT-2", "FT-3"],
+                        "required_tests": {},
+                    }
+                ]
+            },
+        )
+    )
+    engine.reviewer_agent.run = AsyncMock(
+        return_value=_ar(
+            "associate_reviewer",
+            {
+                "status": "pass",
+                "issues": [],
+                "methodology_tags_complete": True,
+                "dates_complete": True,
+                "claim_mapping_complete": True,
+            },
+        )
+    )
+    engine.pm_agent.run = AsyncMock(
+        return_value=_ar(
+            "portfolio_manager",
+            {
+                "variants": [
+                    {
+                        "name": "balanced",
+                        "positions": [
+                            {"ticker": "NVDA", "weight_pct": 34.0},
+                            {"ticker": "AVGO", "weight_pct": 33.0},
+                            {"ticker": "TSM", "weight_pct": 33.0},
+                        ],
+                    },
+                    {
+                        "name": "higher_return",
+                        "positions": [
+                            {"ticker": "NVDA", "weight_pct": 50.0},
+                            {"ticker": "AVGO", "weight_pct": 30.0},
+                            {"ticker": "TSM", "weight_pct": 20.0},
+                        ],
+                    },
+                    {
+                        "name": "lower_volatility",
+                        "positions": [
+                            {"ticker": "NVDA", "weight_pct": 25.0},
+                            {"ticker": "AVGO", "weight_pct": 40.0},
+                            {"ticker": "TSM", "weight_pct": 35.0},
+                        ],
+                    },
+                ]
+            },
+        )
+    )
+    engine.quant_analyst_agent.run = AsyncMock(
+        return_value=_ar(
+            "quant_research_analyst",
+            {
+                "risk_signal": "neutral",
+                "primary_concern": "concentration",
+                "recommended_action": "monitor",
+                "section_1_factor_interpretation": {"dominant_factors": ["momentum"]},
+                "section_2_risk_assessment": {"var_95_commentary": "moderate"},
+                "section_3_benchmark_divergence": {
+                    "etf_differentiation_score": 60,
+                    "etf_replication_risk": False,
+                    "tracking_error_commentary": "high active share",
+                    "active_bets_narrative": "NVDA+12%",
+                    "information_ratio_signal": "IR=0.7",
+                    "etf_overlap_summary": "60% differentiated",
+                },
+                "section_4_construction_signal": {
+                    "factor_tilt_recommendation": "maintain",
+                    "concentration_recommendation": "trim NVDA",
+                    "benchmark_recommendation": "differentiated",
+                    "constructive_changes": [],
+                },
+                "analyst_confidence": "medium",
+                "data_quality_note": "test",
+            },
+        )
+    )
+    engine.fixed_income_agent.run = AsyncMock(
+        return_value=_ar(
+            "fixed_income_analyst",
+            {
+                "yield_curve_regime": "normal",
+                "10y_yield_context": "4.3% neutral",
+                "cost_of_capital_trend": "stable",
+                "rate_sensitivity_score": 5.0,
+                "key_risks": [],
+                "offsetting_factors": [],
+                "sector_rotation_read": "neutral",
+                "methodology_note": "test",
+            },
+        )
+    )
 
     # Deterministic services: mandate OK, IC approved
     from research_pipeline.schemas.governance import (
-        CommitteeRecord, CommitteeVote, MandateCheckResult,
+        CommitteeRecord,
+        CommitteeVote,
+        MandateCheckResult,
     )
+
     engine.mandate_engine.check_compliance = MagicMock(
         return_value=MandateCheckResult(
             run_id="S6-TEST", mandate_id="test-mandate", is_compliant=True
@@ -233,8 +311,10 @@ def _patch_all_agents(engine: PipelineEngine) -> None:
     )
     engine.investment_committee.evaluate_and_vote = MagicMock(
         return_value=CommitteeRecord(
-            record_id="IC-S6", run_id="S6-TEST",
-            outcome=CommitteeVote.APPROVE, quorum_met=True,
+            record_id="IC-S6",
+            run_id="S6-TEST",
+            outcome=CommitteeVote.APPROVE,
+            quorum_met=True,
             minutes="Approved — session 6 test",
         )
     )
@@ -243,6 +323,7 @@ def _patch_all_agents(engine: PipelineEngine) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 # ACT-S6-1: SelfAuditPacket wiring
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestSelfAuditPacketWiring:
     """Verify that run_full_pipeline attaches a SelfAuditPacket to the result."""
@@ -279,8 +360,13 @@ class TestSelfAuditPacketWiring:
 
         packet = result.get("audit_packet") or {}
         mandatory = [
-            "run_id", "generated_at", "gates_passed", "gates_failed",
-            "agents_succeeded", "agents_failed", "publication_quality_score",
+            "run_id",
+            "generated_at",
+            "gates_passed",
+            "gates_failed",
+            "agents_succeeded",
+            "agents_failed",
+            "publication_quality_score",
         ]
         for field in mandatory:
             assert field in packet, f"SelfAuditPacket missing field: {field}"
@@ -300,7 +386,9 @@ class TestSelfAuditPacketWiring:
         packet = result.get("audit_packet") or {}
         gates_passed = packet.get("gates_passed", [])
         assert len(gates_passed) > 0, "gates_passed should be non-empty after a successful run"
-        assert all(isinstance(g, int) for g in gates_passed), "gates_passed should be int stage numbers"
+        assert all(isinstance(g, int) for g in gates_passed), (
+            "gates_passed should be int stage numbers"
+        )
 
     @pytest.mark.asyncio
     async def test_audit_packet_persisted_to_disk(self, s6_settings, s6_config):
@@ -350,6 +438,7 @@ class TestSelfAuditPacketWiring:
 
         # Minimal gate_results
         from research_pipeline.pipeline.gates import GateResult
+
         engine.gate_results = {
             0: GateResult(stage=0, passed=True),
             1: GateResult(stage=1, passed=True),
@@ -368,6 +457,7 @@ class TestSelfAuditPacketWiring:
 # ─────────────────────────────────────────────────────────────────────────────
 # ACT-S6-2: EsgAnalystAgent
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestEsgAnalystAgent:
     """Unit tests for EsgAnalystAgent.parse_output() validation and clamping."""
@@ -489,6 +579,7 @@ class TestEsgAnalystAgent:
     def test_empty_scores_raises(self, agent):
         """Empty esg_scores array should raise StructuredOutputError."""
         from research_pipeline.agents.base_agent import StructuredOutputError
+
         raw = json.dumps({"esg_scores": []})
         with pytest.raises(StructuredOutputError):
             agent.parse_output(raw)
@@ -496,6 +587,7 @@ class TestEsgAnalystAgent:
     def test_invalid_root_type_raises(self, agent):
         """Non-list, non-dict root should raise StructuredOutputError."""
         from research_pipeline.agents.base_agent import StructuredOutputError
+
         raw = '"just a string"'
         with pytest.raises((StructuredOutputError, Exception)):
             agent.parse_output(raw)
@@ -521,12 +613,12 @@ class TestEsgAnalystAgent:
 # ACT-S6-3: PDF export smoke test
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class TestPDFExportRoute:
     """Smoke tests for the _generate_report_pdf helper in app.py."""
 
     def _load_pdf_fn(self, tmp_path: Path):
         """Load _generate_report_pdf by partial source execution."""
-        import sys
         src_path = Path(__file__).resolve().parents[1] / "src" / "frontend" / "app.py"
         if not src_path.exists():
             pytest.skip("app.py not found")
@@ -555,7 +647,7 @@ class TestPDFExportRoute:
         if fn_start == -1:
             pytest.skip("_generate_report_pdf not found in app.py")
         fn_end = src_text.find("\n\n\n", fn_start)
-        fn_source = src_text[fn_start:fn_end if fn_end != -1 else fn_start + 5000]
+        fn_source = src_text[fn_start : fn_end if fn_end != -1 else fn_start + 5000]
         exec(textwrap.dedent(fn_source), namespace)  # noqa: S102
         return namespace["_generate_report_pdf"]
 
@@ -603,14 +695,16 @@ class TestPDFExportRoute:
         run_id = "UNIQUE-RUN-XYZ-99"
         result = fn(run_id, ["NVDA"], "# Report\n\nContent.")
         # PDF text in fpdf2 is embedded as UTF-8; run_id should appear in raw bytes
-        assert run_id.encode("latin-1", errors="replace") in result or \
-               run_id.encode("utf-8", errors="replace") in result, \
-            "run_id should appear in the PDF binary content"
+        assert (
+            run_id.encode("latin-1", errors="replace") in result
+            or run_id.encode("utf-8", errors="replace") in result
+        ), "run_id should appear in the PDF binary content"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ACT-S6-4: pipeline_runner deprecation warning
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class TestPipelineRunnerDeprecation:
     """Verify that importing pipeline_runner emits a DeprecationWarning."""
@@ -631,7 +725,8 @@ class TestPipelineRunnerDeprecation:
                 pytest.skip("frontend.pipeline_runner not on path")
 
         dep_warnings = [
-            w for w in caught
+            w
+            for w in caught
             if issubclass(w.category, DeprecationWarning)
             and "pipeline_runner" in str(w.message).lower()
         ]
@@ -654,10 +749,7 @@ class TestPipelineRunnerDeprecation:
             except ImportError:
                 pytest.skip("frontend.pipeline_runner not on path")
 
-        dep_warnings = [
-            w for w in caught
-            if issubclass(w.category, DeprecationWarning)
-        ]
+        dep_warnings = [w for w in caught if issubclass(w.category, DeprecationWarning)]
         if not dep_warnings:
             pytest.skip("No DeprecationWarning captured")
 

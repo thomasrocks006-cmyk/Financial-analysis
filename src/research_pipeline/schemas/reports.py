@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 class StockCard(BaseModel):
     """A complete stock card for the final report."""
+
     ticker: str
     company_name: str
     subtheme: str
@@ -24,6 +25,7 @@ class StockCard(BaseModel):
 
 class ReportSection(BaseModel):
     """A section of the final assembled report."""
+
     section_name: str
     content: str = ""
     approved: bool = False
@@ -32,6 +34,7 @@ class ReportSection(BaseModel):
 
 class FinalReport(BaseModel):
     """The assembled final report package."""
+
     run_id: str
     title: str = "AI Infrastructure Investment Research"
     date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -48,6 +51,7 @@ class FinalReport(BaseModel):
 
 class DiffSummary(BaseModel):
     """Monitoring diff between two snapshots."""
+
     ticker: str
     field: str
     previous_value: Optional[float] = None
@@ -59,6 +63,7 @@ class DiffSummary(BaseModel):
 
 class ScenarioResult(BaseModel):
     """Result of a stress scenario for one name."""
+
     ticker: str
     scenario_name: str
     impact_description: str = ""
@@ -76,6 +81,7 @@ class RiskPacket(BaseModel):
     (model_dump() of VaRResult / DrawdownAnalysis) so this schema has no
     cross-package import dependency.
     """
+
     run_id: str
     date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     correlation_matrix: dict[str, dict[str, float]] = {}
@@ -85,10 +91,11 @@ class RiskPacket(BaseModel):
     scenario_results: list[ScenarioResult] = []
     drawdown_risk_summary: str = ""
     # Action 6 — VaR / drawdown from VaREngine embedded at build time
-    var_analysis: Optional[dict[str, Any]] = None     # VaRResult.model_dump()
+    var_analysis: Optional[dict[str, Any]] = None  # VaRResult.model_dump()
     drawdown_analysis: Optional[dict[str, Any]] = None  # DrawdownAnalysis.model_dump()
-    var_method: str = ""                              # "parametric" | "historical"
-    confidence_level: Optional[float] = None          # e.g. 0.95
+    var_method: str = ""  # "parametric" | "historical"
+    confidence_level: Optional[float] = None  # e.g. 0.95
+
     # Convenience read-only properties
     @property
     def var_pct(self) -> Optional[float]:
@@ -105,6 +112,7 @@ class RiskPacket(BaseModel):
 
 # ── StockCard Adapter (ISS-4) ──────────────────────────────────────────────
 
+
 def build_stock_card_from_pipeline_outputs(
     ticker: str,
     valuation_card: Any,  # ValuationCard from Stage 7
@@ -113,16 +121,16 @@ def build_stock_card_from_pipeline_outputs(
     weight_in_balanced: float | None = None,
 ) -> StockCard:
     """Adapter to build StockCard for final report from pipeline stage outputs.
-    
+
     Required by: ARC-2 (real stock cards in Stage 13), ISS-4 (typed adapter).
-    
+
     Args:
         ticker: Stock ticker symbol
         valuation_card: ValuationCard from Stage 7 (valuation agent)
         four_box: FourBoxOutput from Stage 6 (sector analyst)
         red_team: RedTeamAssessment from Stage 10 (red team agent)
         weight_in_balanced: Recommended weight from Stage 12 (PM agent)
-    
+
     Returns:
         Fully populated StockCard for inclusion in FinalReport.
     """
@@ -130,22 +138,22 @@ def build_stock_card_from_pipeline_outputs(
     company_name = ticker
     if four_box and hasattr(four_box, "company_name"):
         company_name = four_box.company_name
-    
+
     # Extract subtheme from four_box analyst role
     subtheme = "AI Infrastructure"
     if four_box and hasattr(four_box, "analyst_role"):
         role_map = {
             "compute": "AI Compute & Chips",
             "power_energy": "Power & Energy",
-            "infrastructure": "Cloud & Data Center"
+            "infrastructure": "Cloud & Data Center",
         }
         subtheme = role_map.get(four_box.analyst_role, "AI Infrastructure")
-    
+
     # Build four-box summary
     four_box_summary = ""
     if four_box:
         four_box_summary = f"Judgment: {getattr(four_box, 'box4_analyst_judgment', '')[:200]}"
-    
+
     # Build valuation summary
     valuation_summary = ""
     if valuation_card:
@@ -158,18 +166,20 @@ def build_stock_card_from_pipeline_outputs(
                 valuation_summary = f"Current: ${current:.2f}, Implied: ${implied_price:.2f}"
                 if upside is not None:
                     valuation_summary += f" (upside: {upside:+.1f}%)"
-        
+
         # Add entry quality
         entry_qual = getattr(valuation_card, "entry_quality", "acceptable")
         if entry_qual:
             valuation_summary += f" | Entry: {entry_qual}"
-    
+
     # Entry quality string
-    entry_quality = str(getattr(valuation_card, "entry_quality", "acceptable")) if valuation_card else "unknown"
-    
+    entry_quality = (
+        str(getattr(valuation_card, "entry_quality", "acceptable")) if valuation_card else "unknown"
+    )
+
     # Thesis integrity (placeholder until we have a real source)
     thesis_integrity = "Under review"
-    
+
     # Collect key risks from both four-box and valuation
     key_risks = []
     if four_box and hasattr(four_box, "key_risks"):
@@ -178,7 +188,7 @@ def build_stock_card_from_pipeline_outputs(
         for scenario in getattr(valuation_card, "scenarios", [])[:2]:
             if hasattr(scenario, "name"):
                 key_risks.append(scenario.name)
-    
+
     # Red team summary
     red_team_summary = ""
     if red_team:
@@ -188,7 +198,7 @@ def build_stock_card_from_pipeline_outputs(
             results = red_team.stress_test_results
             if results:
                 red_team_summary = f"{len(results)} stress tests performed"
-    
+
     return StockCard(
         ticker=ticker,
         company_name=company_name,
