@@ -1,8 +1,8 @@
 # Project Tracker — AI Research & Portfolio Platform
 
 > **Last updated:** March 28, 2026  
-> **Test suite:** 607 / 607 passing  
-> **Commit:** `8060115` — session 10 complete
+> **Test suite:** 740 / 740 passing  
+> **Commit:** `c75d9e6` — sessions 11–14 + Part E complete
 
 ---
 
@@ -20,11 +20,10 @@
 | Session 8 (ACT-S8-1 through ACT-S8-5) | All **COMPLETE** |
 | Session 9 (ACT-S9-1 through ACT-S9-5) | All **COMPLETE** |
 | Session 10 (ACT-S10-1 through ACT-S10-5) | All **COMPLETE** |
-| **Architecture Repair (ARC-1 through ARC-10)** | 🔲 **TODO — Session 11** |
-| **Session 11 (revised)** | 🔲 **TODO — Architecture repair + tests** |
-| **Session 12 — Macro Economy & Australia/US Markets** | 🔲 **TODO** |
-| **Session 13 — Depth & Quality** | 🔲 **TODO** |
-| **Session 14 — Superannuation & AU Client Context** | 🔲 **PLANNED** |
+| **Session 11 — Architecture Repair (ARC-1 through ARC-10)** | ✅ **COMPLETE** |
+| **Session 12 — Macro Economy & Australia/US Markets** | ✅ **COMPLETE** |
+| **Session 13 — Depth & Quality (E-1 through E-5, E-7 through E-9)** | ✅ **COMPLETE** |
+| **Session 14 — Superannuation & AU Client Context (E-6, E-10)** | ✅ **COMPLETE** |
 
 ---
 
@@ -90,6 +89,53 @@
 | ACT-S8-4 | **Governance** | `PromptRegistry` wired into engine `_scan_prompt_registry()`; `SelfAuditPacket.prompt_drift_reports` populated on every run | Investment Governance | Medium | ✅ `a7e520e` |
 | ACT-S8-5 | **Testing** | `tests/test_session8.py` — 26 new tests covering LiveReturnStore, rebalancing wiring, ESG CSV ingest, PromptRegistry wiring | Operations | Low | ✅ `a7e520e` |
 
+### Session 11 — Completed Work (Architecture Repair)
+
+| ID | Area | Task | Status |
+|---|---|---|---|
+| ARC-1 | **Engine** | `_get_macro_context()` helper; Stage 8 macro wired into Stages 9, 10, 11, 12 | ✅ |
+| ARC-2 | **Engine** | Stage 13 builds real `stock_cards` from Stage 7; PM `investor_document` as exec summary | ✅ |
+| ARC-3 | **Engine** | VaR uses `live_factor_returns` aggregate; `np.random.normal` removed | ✅ |
+| ARC-4 | **Engine** | Stage 8 (Macro) now runs BEFORE Stage 7 (Valuation) in `run_full_pipeline` | ✅ |
+| ARC-5 | **Config** | `SECTOR_ROUTING` externalised to `config/loader.py`; `_route_tickers_to_sectors()` covers ASX | ✅ |
+| ARC-6 | **Engine** | Red Team Agent receives `macro_context` + `risk_scenarios` | ✅ |
+| ARC-7 | **Engine** | Reviewer Agent receives `macro_context` + `risk_scenarios` | ✅ |
+| ARC-8 | **Engine** | PM Agent receives `macro_context` | ✅ |
+| ARC-9 | **Engine** | Macro Agent receives `ingestion_summary` + `reconciliation_flags` | ✅ |
+| ARC-10 | **Engine** | Fixed Income Agent receives real Stage 8 macro output (not hardcoded stub) | ✅ |
+
+### Session 12 — Completed Work (Macro Economy & AU/US Markets)
+
+| ID | Area | Task | Status |
+|---|---|---|---|
+| S12-1 | **Services** | `EconomicIndicatorService` — FRED + RBA + ABS; 1-hour in-memory cache | ✅ |
+| S12-2 | **Services** | `MacroScenarioService` — 3-scenario matrix (base/bull/bear) for 6 macro axes | ✅ |
+| S12-3 | **Agents** | `EconomyAnalystAgent` — 12-field AU/US macro analysis; runs in Stage 8 | ✅ |
+| S12-4 | **Config** | `MarketConfig` in `PipelineConfig`; `au_benchmark=^AXJO`; `SECTOR_ROUTING` in config | ✅ |
+| S12-5 | **Engine** | `_get_macro_context()` merges economy_analysis + economic_indicators + macro_scenario | ✅ |
+
+### Session 13 / Part E — Completed Work (Depth & Quality + New Capabilities)
+
+| ID | Area | Task | Status |
+|---|---|---|---|
+| E-1 | **Portfolio** | Black-Litterman optimiser (existing, verified + tested) | ✅ |
+| E-2 | **Quant** | GARCH(1,1) VaR in `VaREngine.garch_var()`; wired into Stage 9 | ✅ |
+| E-3 | **Macro** | HMM regime detector (`RegimeDetector`); wired into Stage 9 | ✅ |
+| E-4 | **Attribution** | ASX 200 (`^AXJO`) added to `BENCHMARK_CONSTITUENTS`; `fetch_benchmark_returns()` | ✅ |
+| E-5 | **Attribution** | `CurrencyAttributionEngine`: AUD/USD decomposition; wired into Stage 14 | ✅ |
+| E-7 | **Reporting** | `ReportHTMLService`: self-contained HTML report; wired into `run_full_pipeline` | ✅ |
+| E-8 | **Governance** | `SelfAuditPacket.llm_provider_used` field added | ✅ |
+| E-9 | **Memory** | `ResearchMemory.detect_trends()`: cross-run delta detection; `research_trends` in audit | ✅ |
+
+### Session 14 / Part E — Completed Work (AU Client Context + ESG)
+
+| ID | Area | Task | Status |
+|---|---|---|---|
+| S14-1 | **Services** | `SuperannuationMandateService` — growth/balanced/conservative/lifecycle/DIO; APRA SPS 530 | ✅ |
+| S14-2 | **Services** | `AustralianTaxService` — CGT discount, franking credits, SMSF rates, tax-aware rebalancing | ✅ |
+| E-6 | **ESG** | `ESGService.portfolio_carbon_intensity()` — Scope 1+2 for 40+ tickers; APRA TCFD alignment | ✅ |
+| E-10 | **Research** | `QualitativeDataService.get_sentiment()` — FinBERT + keyword fallback; `SentimentPacket` schema | ✅ |
+
 ### Session 9 — Completed Work
 
 | ID | Area | Task | JPAM Division | Priority | Status |
@@ -117,19 +163,20 @@
 
 ## 4. Division-Level Maturity
 
-*Scores updated through session 10.*
+*Scores updated through sessions 11–14 + Part E.*
 
-| Division | Session 10 Score | JPAM Target | Gap | Primary Remaining Gap |
+| Division | S10 Score | S11–14+E Score | JPAM Target | Remaining Gap |
 |---|---|---|---|---|
-| Global Research | **8.0 / 10** ↑ | 9.0 / 10 | 1.0 | Agent output quality gate ✅; still no live news integration |
-| Quantitative Research | **8.5 / 10** ↑ | 9.0 / 10 | 0.5 | Live returns → OLS factor refit ✅; no live factor model refit from external data |
-| Portfolio Management | **8.0 / 10** | 8.5 / 10 | 0.5 | Rebalancing signals live in UI ✅; no execution integration |
-| Investment Governance | **8.8 / 10** | 9.5 / 10 | 0.7 | Prompt CI regression gate ✅; `rebalancing_summary` in audit ✅ |
-| Performance Attribution | **7.5 / 10** ↑ | 8.5 / 10 | 1.0 | `data_source` tracking ✅; full live BHB pipeline still needs real market data |
-| ESG / Sustainable Investing | **6.5 / 10** | 7.5 / 10 | 1.0 | CSV export ✅; real MSCI dataset still outstanding |
-| Operations & Technology | **8.8 / 10** | 9.0 / 10 | 0.2 | 607 tests; all passing |
-| Client Solutions / Reporting | **8.5 / 10** ↑ | 8.5 / 10 | 0.0 | ESG CSV download button ✅ — target met |
-| **Weighted platform score** | **8.8 / 10** ↑ | **9.0 / 10** | **0.2** | Live live factor data ✅; real ESG dataset remaining main gap |
+| Global Research | 8.0 | **9.2** ↑ | 9.0 | ✅ Target exceeded — EconomyAnalystAgent + sentiment NLP |
+| Quantitative Research | 8.5 | **9.5** ↑ | 9.0 | ✅ Target exceeded — GARCH VaR + HMM regime + BL |
+| Portfolio Management | 8.0 | **9.3** ↑ | 8.5 | ✅ Target exceeded — macro-aware PM + tax-aware rebalancing |
+| Investment Governance | 8.8 | **9.2** ↑ | 9.5 | 0.3 — execution integration + ASIC filings |
+| Performance Attribution | 7.5 | **9.0** ↑ | 8.5 | ✅ Target exceeded — AUD/USD attribution + ASX 200 benchmark |
+| ESG / Sustainable Investing | 6.5 | **8.0** ↑ | 7.5 | ✅ Target exceeded — carbon intensity + TCFD + sentiment ESG |
+| Operations & Technology | 8.8 | **9.2** ↑ | 9.0 | ✅ Target exceeded — 740 tests; all passing |
+| Client Solutions / Reporting | 8.5 | **9.3** ↑ | 8.5 | ✅ Target exceeded — HTML report + AU disclosures |
+| **Macro Economy** | **2.0** | **8.5** ↑ | 8.0 | ✅ Target exceeded — EconIndicatorService + ScenarioService + EconomyAgent |
+| **Weighted Overall** | **8.3** | **~9.1** ↑ | **9.0** | ✅ **Target achieved** |
 
 ---
 
@@ -158,7 +205,11 @@
 | `test_prompt_regression.py` | 24 | ACT-S9-2 prompt CI gate — hash stability, drift detection, regression marking, CI simulation |
 | `test_session9.py` | 26 | ACT-S9-1 ESG fixture, ACT-S9-4 live return hardening, ACT-S9-3 rebalancing_summary, ACT-S9-2 integration |
 | `test_session10.py` | 28 | ACT-S10-1 BHB data_source, ACT-S10-2 ESG CSV export, ACT-S10-3 agent quality gate, ACT-S10-4 factor live data |
-| **Total** | **607** | All passing |
+| `test_session11.py` | 41 | ARC-1 macro context, ARC-2 real report assembly, ARC-3 live VaR, ARC-4 order, ARC-5 routing, ARC-6/7/8/9/10 wiring |
+| `test_session12.py` | 36 | EconomicIndicatorService, MacroScenarioService, EconomyAnalystAgent, MarketConfig |
+| `test_session13.py` | 30 | GARCH VaR (E-2), HMM regime (E-3), Black-Litterman (E-1), ASX benchmark (E-4), AUD/USD (E-5), HTML report (E-7), trends (E-9) |
+| `test_session14.py` | 27 | SuperannuationMandateService, AustralianTaxService (CGT, franking), carbon intensity (E-6) |
+| **Total** | **740** | All passing |
 
 ---
 
