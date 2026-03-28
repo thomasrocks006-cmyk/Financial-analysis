@@ -897,22 +897,32 @@ These are concrete defects in the current code — not design gaps but bugs or u
 
 **Session 8 achieved state:** Weighted platform score 8.0 → **8.3**; Performance Attribution 4.0 → **5.5/10** (live data path built); ESG 5.0 → **5.5/10** (CSV ingest available); Portfolio Management 7.5 → **8.0/10** (rebalancing signals in UI); prompt drift tracking wired ✅; 529 tests passing.
 
-### 12.10 Session 9 Work Plan
+### 12.10 Session 9 Completed Work
 
-Priority order for next session:
+| ID | Task | File(s) | JPAM Division | Status |
+|---|---|---|---|---|
+| ACT-S9-1 | `tests/fixtures/esg_sample.csv` — 20-ticker MSCI-style ESG fixture; verified round-trip via `ESGService.load_from_csv()`; adds INTC, QCOM, ORCL, CRM, SNOW | `tests/fixtures/esg_sample.csv`, `services/esg_service.py` | ESG / Sustainable Investing | ✅ `93f5ba5` |
+| ACT-S9-2 | `tests/test_prompt_regression.py` — 24 CI regression tests; `check_all_drift()` detects accidental prompt changes; regression marking lifecycle; all 14 agents gated | `services/prompt_registry.py`, `tests/` | Operations | ✅ `93f5ba5` |
+| ACT-S9-3 | `SelfAuditPacket.rebalancing_summary: dict` — populated in `_emit_audit_packet` from `stage_outputs[12]`; keys: `trade_count`, `total_turnover_pct`, `estimated_total_impact_bps`; Observability panel updated | `schemas/governance.py`, `engine.py`, `app.py` | Investment Governance | ✅ `93f5ba5` |
+| ACT-S9-4 | `LiveReturnStore._download_individual()` — per-ticker yfinance fallback when batch fails; `_get_returns()` blends live data for available tickers with synthetic for failed ones | `services/live_return_store.py`, `engine.py` | Performance Attribution | ✅ `93f5ba5` |
+| ACT-S9-5 | 26 new tests — `TestESGFixtureCsvIngest` (9), `TestLiveReturnStoreHardening` (6), `TestRebalancingSummaryAuditPacket` (7), `TestPromptRegressionIntegration` (4) | `tests/test_session9.py` | Operations | ✅ `93f5ba5` |
+
+**Session 9 achieved state:** Weighted platform score 8.3 → **8.5**; ESG 5.5 → **6.5/10** (fixture CSV verified); Performance Attribution 5.5 → **6.0/10** (ticker-level fallback); Investment Governance 8.5 → **8.8/10**; 579 tests passing.
+
+### 12.11 Session 10 Work Plan
 
 | ID | Task | File(s) | JPAM Division | Effort |
 |---|---|---|---|---|
-| ACT-S9-1 | **Real ESG dataset** — load an actual MSCI/Sustainalytics-format CSV into `ESGService.load_from_csv()`; include sample fixture CSV in `tests/fixtures/`; raises ESG 5.5 → 7.0 | `services/esg_service.py`, `tests/fixtures/` | ESG / Sustainable Investing | Medium |
-| ACT-S9-2 | **Prompt A/B regression tests** — use `PromptRegistry.check_all_drift()` in CI; add `tests/test_prompt_regression.py`; flag agents whose hash changes unexpectedly | `services/prompt_registry.py`, `tests/` | Operations | Medium |
-| ACT-S9-3 | **Rebalancing in SelfAuditPacket** — persist `rebalance_proposal` summary (turnover, trade count) as `SelfAuditPacket.rebalancing_summary`; surface in Governance tab | `schemas/governance.py`, `engine.py`, `app.py` | Investment Governance | Low |
-| ACT-S9-4 | **Attribution accuracy hardening** — handle partial yfinance failures gracefully (ticker-level fallback, not full-universe fallback); improve BHB accuracy reporting metric | `services/live_return_store.py`, `engine.py` | Performance Attribution | Medium |
-| ACT-S9-5 | **Tests** — session 9: ESG fixture round-trip, prompt regression, rebalancing in audit packet | `tests/test_session9.py` | Operations | Low |
+| ACT-S10-1 | **Live BHB attribution accuracy** — use `LiveReturnStore` data directly in `_compute_bhb_attribution`; add `data_source` field (`"live"` vs `"synthetic"`) to attribution output | `engine.py` | Performance Attribution | Medium |
+| ACT-S10-2 | **ESG compliance CSV export** — `ESGService.to_csv()` export method; Streamlit download button in ESG panel; raises Client Solutions 8.0 → 8.5 | `services/esg_service.py`, `app.py` | Client Solutions / Reporting | Low |
+| ACT-S10-3 | **Agent output quality gate** — post-processing validation in `BaseAgent.parse_output` checks key fields non-empty before accepting parsed result; raises Global Research 7.5 → 8.0 | `agents/base_agent.py` | Global Research | Medium |
+| ACT-S10-4 | **Factor model live data** — `FactorExposureEngine` uses `LiveReturnStore` for market beta; raises Quantitative Research 8.0 → 8.5 | `services/risk_engine.py` | Quantitative Research | Medium |
+| ACT-S10-5 | **Tests** — session 10: live BHB data_source, ESG CSV export, agent output validation, factor live wiring | `tests/test_session10.py` | Operations | Low |
 
-**Session 9 target state:** Weighted platform score 8.3 → 8.6+; ESG 5.5 → 7.0/10 (real fixture data); Performance Attribution 5.5 → 7.0/10 (granular fallback); prompt drift in CI.
+**Session 10 target state:** Weighted platform score 8.5 → 8.8+; Performance Attribution 6.0 → 7.5/10; Global Research 7.5 → 8.0/10; Quantitative Research 8.0 → 8.5/10.
 
 ---
 
-*Document updated: session 8 — ACT-S8-1 (LiveReturnStore + `_get_returns` wired), ACT-S8-2 (RebalancingEngine signals in Stage 12 + Streamlit panel), ACT-S8-3 (ESGService.load_from_csv), ACT-S8-4 (PromptRegistry → SelfAuditPacket.prompt_drift_reports), ACT-S8-5 (26 new tests). Test count: 529 passing. Session 9 plan in §12.10.*  
-*Document updated: March 29, 2026 — Session 8 complete, session 9 plan added.*  
+*Document updated: session 9 — ACT-S9-1 (ESG fixture CSV), ACT-S9-2 (prompt regression CI gate), ACT-S9-3 (rebalancing_summary in SelfAuditPacket), ACT-S9-4 (ticker-level live fallback), ACT-S9-5 (26 tests). Test count: 579 passing. Session 10 plan in §12.11.*
+*Document updated: March 29, 2026 — Session 9 complete, session 10 plan added.*
 *See ROADMAP.md for the complete 7-phase build plan.*

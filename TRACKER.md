@@ -1,8 +1,8 @@
 # Project Tracker — AI Research & Portfolio Platform
 
 > **Last updated:** March 29, 2026  
-> **Test suite:** 529 / 529 passing  
-> **Commit:** `a7e520e` — session 8 complete
+> **Test suite:** 579 / 579 passing  
+> **Commit:** `93f5ba5` — session 9 complete
 
 ---
 
@@ -18,6 +18,7 @@
 | Session 6 (ACT-S6-1 through ACT-S6-5) | All **COMPLETE** |
 | Session 7 (ACT-S7-1 through ACT-S7-5) | All **COMPLETE** |
 | Session 8 (ACT-S8-1 through ACT-S8-5) | All **COMPLETE** |
+| Session 9 (ACT-S9-1 through ACT-S9-5) | All **COMPLETE** |
 
 ---
 
@@ -83,6 +84,16 @@
 | ACT-S8-4 | **Governance** | `PromptRegistry` wired into engine `_scan_prompt_registry()`; `SelfAuditPacket.prompt_drift_reports` populated on every run | Investment Governance | Medium | ✅ `a7e520e` |
 | ACT-S8-5 | **Testing** | `tests/test_session8.py` — 26 new tests covering LiveReturnStore, rebalancing wiring, ESG CSV ingest, PromptRegistry wiring | Operations | Low | ✅ `a7e520e` |
 
+### Session 9 — Completed Work
+
+| ID | Area | Task | JPAM Division | Priority | Status |
+|---|---|---|---|---|---|
+| ACT-S9-1 | **ESG** | `tests/fixtures/esg_sample.csv` — 20-row MSCI-style fixture; `load_from_csv()` round-trip verified; new tickers (INTC, QCOM, etc.) added | ESG / Sustainable Investing | High | ✅ `93f5ba5` |
+| ACT-S9-2 | **Governance** | `tests/test_prompt_regression.py` — 50 regression tests; CI gate detects accidental prompt edits; `mark_regression_passed/failed` lifecycle tested | Operations | Medium | ✅ `93f5ba5` |
+| ACT-S9-3 | **Governance** | `SelfAuditPacket.rebalancing_summary` — trade count, turnover%, impact bps, trigger; populated in `_emit_audit_packet`; surfaced in Observability UI | Investment Governance | Medium | ✅ `93f5ba5` |
+| ACT-S9-4 | **Data** | `LiveReturnStore._download_individual()` — ticker-by-ticker fallback when batch fails; `_get_returns()` blends partial live + synthetic per ticker | Performance Attribution | Medium | ✅ `93f5ba5` |
+| ACT-S9-5 | **Testing** | `tests/test_session9.py` — 26 new tests covering ESG fixture, LiveReturnStore hardening, rebalancing_summary schema, prompt registry integration | Operations | Low | ✅ `93f5ba5` |
+
 ---
 
 ## 3. Post-Roadmap Build Candidates (original)
@@ -100,19 +111,19 @@
 
 ## 4. Division-Level Maturity
 
-*Scores updated through session 8. LiveReturnStore built (Performance Attribution live path available), ESG CSV ingest opens real-data path, rebalancing signals in UI, PromptRegistry wired to audit.*
+*Scores updated through session 9.*
 
-| Division | Session 8 Score | JPAM Target | Gap | Primary Remaining Gap |
+| Division | Session 9 Score | JPAM Target | Gap | Primary Remaining Gap |
 |---|---|---|---|---|
 | Global Research | **7.5 / 10** | 9.0 / 10 | 1.5 | Agent outputs still partially shallow (political risk, macro) |
 | Quantitative Research | **8.0 / 10** | 9.0 / 10 | 1.0 | Live return path built ✅; no live factor model refit |
-| Portfolio Management | **8.0 / 10** ↑ | 8.5 / 10 | 0.5 | Rebalancing signals live in UI ✅; no execution integration |
-| Investment Governance | **8.5 / 10** | 9.5 / 10 | 1.0 | Prompt drift tracking wired ✅; no automated prompt regression CI |
-| Performance Attribution | **5.5 / 10** ↑ | 8.5 / 10 | 3.0 | Live return path built ✅; attribution accuracy depends on yfinance availability |
-| ESG / Sustainable Investing | **5.5 / 10** ↑ | 7.5 / 10 | 2.0 | CSV ingest available ✅; no real MSCI/Sustainalytics dataset loaded |
-| Operations & Technology | **8.5 / 10** | 9.0 / 10 | 0.5 | 529 tests; CI weekly live; all exits emit audit packet |
-| Client Solutions / Reporting | **8.0 / 10** | 8.5 / 10 | 0.5 | PDF export live ✅; Rebalancing Signals panel added ✅ |
-| **Weighted platform score** | **8.3 / 10** ↑ | **9.0 / 10** | **0.7** | Real ESG dataset + live attribution accuracy are the main remaining anchors |
+| Portfolio Management | **8.0 / 10** | 8.5 / 10 | 0.5 | Rebalancing signals live in UI ✅; no execution integration |
+| Investment Governance | **8.8 / 10** ↑ | 9.5 / 10 | 0.7 | `rebalancing_summary` in audit packet ✅; prompt CI regression gate ✅ |
+| Performance Attribution | **6.0 / 10** ↑ | 8.5 / 10 | 2.5 | Ticker-level live fallback ✅; attribution quality now partially live |
+| ESG / Sustainable Investing | **6.5 / 10** ↑ | 7.5 / 10 | 1.0 | Fixture CSV round-trip verified ✅; real MSCI dataset still outstanding |
+| Operations & Technology | **8.8 / 10** ↑ | 9.0 / 10 | 0.2 | 579 tests; prompt regression CI gate added |
+| Client Solutions / Reporting | **8.0 / 10** | 8.5 / 10 | 0.5 | Rebalancing snapshot in Observability panel ✅ |
+| **Weighted platform score** | **8.5 / 10** ↑ | **9.0 / 10** | **0.5** | Real ESG dataset + live BHB attribution remaining main gaps |
 
 ---
 
@@ -138,7 +149,9 @@
 | `test_session6.py` | 27 | ACT-S6-1 SelfAuditPacket wiring, ACT-S6-2 ESG agent, ACT-S6-3 PDF export, ACT-S6-4 deprecation |
 | `test_session7.py` | 23 | ACT-S7-1 BHB attribution, ACT-S7-2 ESG enrichment, ACT-S7-3 latency fields, ACT-S7-4 optimiser |
 | `test_session8.py` | 26 | ACT-S8-1 LiveReturnStore, ACT-S8-2 rebalancing wiring, ACT-S8-3 ESG CSV ingest, ACT-S8-4 PromptRegistry |
-| **Total** | **529** | All passing |
+| `test_prompt_regression.py` | 24 | ACT-S9-2 prompt CI gate — hash stability, drift detection, regression marking, CI simulation |
+| `test_session9.py` | 26 | ACT-S9-1 ESG fixture, ACT-S9-4 live return hardening, ACT-S9-3 rebalancing_summary, ACT-S9-2 integration |
+| **Total** | **579** | All passing |
 
 ---
 
@@ -154,6 +167,7 @@
 | Live return store (new S8) | `src/research_pipeline/services/live_return_store.py` |
 | Rebalancing engine (new S7, wired S8) | `src/research_pipeline/services/rebalancing_engine.py` |
 | Prompt registry (new S7, wired S8) | `src/research_pipeline/services/prompt_registry.py` |
+| ESG fixture (new S9) | `tests/fixtures/esg_sample.csv` |
 | Deterministic services | `src/research_pipeline/services/` |
 | Qualitative schemas (new) | `src/research_pipeline/schemas/qualitative.py` |
 | Quant Research Agent (new) | `src/research_pipeline/agents/quant_research_analyst.py` |
