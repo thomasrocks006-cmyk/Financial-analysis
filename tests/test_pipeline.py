@@ -50,3 +50,41 @@ class TestPipelineEngine:
         ]
         for gate_name in expected_gates:
             assert hasattr(PipelineGates, gate_name), f"Missing gate: {gate_name}"
+
+    def test_engine_has_new_services(self):
+        """Verify new quantitative, governance, and monitoring services are wired."""
+        import tempfile
+        from pathlib import Path
+
+        from research_pipeline.config.loader import PipelineConfig, load_pipeline_config
+        from research_pipeline.config.settings import Settings
+
+        # Construct a minimal Settings object for instantiation check
+        tmpdir = Path(tempfile.mkdtemp())
+        settings = Settings(
+            storage_dir=tmpdir,
+            prompts_dir=tmpdir / "prompts",
+            reports_dir=tmpdir / "reports",
+        )
+        config = load_pipeline_config()
+        engine = PipelineEngine(settings=settings, config=config)
+
+        # Quantitative Research Division
+        assert hasattr(engine, "factor_engine")
+        assert hasattr(engine, "benchmark_module")
+        assert hasattr(engine, "var_engine")
+        assert hasattr(engine, "portfolio_optimisation")
+        assert hasattr(engine, "position_sizing")
+
+        # Governance & Compliance Division
+        assert hasattr(engine, "mandate_engine")
+        assert hasattr(engine, "esg_service")
+        assert hasattr(engine, "investment_committee")
+        assert hasattr(engine, "audit_exporter")
+
+        # Performance & Monitoring Division
+        assert hasattr(engine, "performance_tracker")
+        assert hasattr(engine, "monitoring_engine")
+        assert hasattr(engine, "rebalancing_engine")
+        assert hasattr(engine, "cache")
+        assert hasattr(engine, "quota_manager")

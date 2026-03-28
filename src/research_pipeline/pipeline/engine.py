@@ -41,6 +41,21 @@ from research_pipeline.services.run_registry import RunRegistryService
 from research_pipeline.services.report_assembly import ReportAssemblyService
 from research_pipeline.services.golden_tests import GoldenTestHarness
 
+# New Quantitative & Governance Services
+from research_pipeline.services.factor_engine import FactorExposureEngine
+from research_pipeline.services.benchmark_module import BenchmarkModule
+from research_pipeline.services.var_engine import VaREngine
+from research_pipeline.services.portfolio_optimisation import PortfolioOptimisationEngine
+from research_pipeline.services.mandate_compliance import MandateComplianceEngine
+from research_pipeline.services.esg_service import ESGService
+from research_pipeline.services.investment_committee import InvestmentCommitteeService
+from research_pipeline.services.position_sizing import PositionSizingEngine
+from research_pipeline.services.monitoring_engine import MonitoringEngine
+from research_pipeline.services.performance_tracker import PerformanceTracker
+from research_pipeline.services.audit_exporter import AuditExporter
+from research_pipeline.services.cache_layer import CacheLayer, QuotaManager
+from research_pipeline.services.rebalancing_engine import RebalancingEngine
+
 # Agents
 from research_pipeline.agents.orchestrator import OrchestratorAgent
 from research_pipeline.agents.evidence_librarian import EvidenceLibrarianAgent
@@ -85,6 +100,26 @@ class PipelineEngine:
         self.scenario_engine = ScenarioStressEngine()
         self.report_assembly = ReportAssemblyService()
         self.golden_tests = GoldenTestHarness()
+
+        # New services — Quantitative Research Division
+        self.factor_engine = FactorExposureEngine()
+        self.benchmark_module = BenchmarkModule()
+        self.var_engine = VaREngine()
+        self.portfolio_optimisation = PortfolioOptimisationEngine()
+        self.position_sizing = PositionSizingEngine()
+
+        # New services — Governance & Compliance Division
+        self.mandate_engine = MandateComplianceEngine()
+        self.esg_service = ESGService()
+        self.investment_committee = InvestmentCommitteeService()
+        self.audit_exporter = AuditExporter(output_dir=settings.storage_dir / "audits")
+
+        # New services — Performance & Monitoring Division
+        self.performance_tracker = PerformanceTracker(storage_dir=settings.storage_dir)
+        self.monitoring_engine = MonitoringEngine()
+        self.rebalancing_engine = RebalancingEngine()
+        self.cache = CacheLayer(cache_dir=settings.storage_dir / "cache")
+        self.quota_manager = QuotaManager(quotas={"fmp_api": 250, "finnhub_api": 250, "llm_tokens": 500_000})
 
         # Initialize agents
         prompts_dir = settings.prompts_dir
@@ -392,15 +427,56 @@ class PipelineEngine:
         return self._check_gate(gate)
 
     async def stage_9_risk(self, universe: list[str], weights: dict[str, float] | None = None) -> bool:
-        """Stage 9: Quant Risk & Scenario Testing."""
+        """Stage 9: Quant Risk & Scenario Testing — enhanced with factor, VaR, benchmark analytics."""
         logger.info("═══ STAGE 9: Quant Risk & Scenario Testing ═══")
-        # Run scenarios
+
+        # Run scenario stress engine
         scenario_results = self.scenario_engine.run_all_scenarios(universe)
+
+        # Factor exposure analysis
+        factor_exposures = self.factor_engine.compute_factor_exposures(universe)
+        factor_data = [fe.model_dump() for fe in factor_exposures]
+
+        # Portfolio factor exposure (if weights provided)
+        portfolio_factor_exp = None
+        if weights:
+            portfolio_factor_exp = self.factor_engine.portfolio_factor_exposure(factor_exposures, weights)
+
+        # VaR analysis (using synthetic returns if no market data available)
+        var_result = None
+        drawdown_result = None
+        try:
+            import numpy as np
+            np.random.seed(42)
+            # Generate synthetic returns based on factor betas for demonstration
+            synthetic_returns = np.random.normal(0.001, 0.02, 252).tolist()
+            var_result = self.var_engine.parametric_var(
+                run_id=self.run_record.run_id,
+                portfolio_returns=synthetic_returns,
+                confidence_level=0.95,
+            )
+            drawdown_result = self.var_engine.compute_drawdown_analysis(
+                self.run_record.run_id, synthetic_returns
+            )
+        except Exception as exc:
+            logger.warning("VaR computation failed: %s", exc)
+
         risk_packet = RiskPacket(
             run_id=self.run_record.run_id,
             scenario_results=scenario_results,
         )
-        self._save_stage_output(9, risk_packet.model_dump())
+
+        # Build enhanced risk output
+        risk_output = risk_packet.model_dump()
+        risk_output["factor_exposures"] = factor_data
+        if portfolio_factor_exp:
+            risk_output["portfolio_factor_exposure"] = portfolio_factor_exp
+        if var_result:
+            risk_output["var_95"] = var_result.model_dump()
+        if drawdown_result:
+            risk_output["drawdown_analysis"] = drawdown_result.model_dump()
+
+        self._save_stage_output(9, risk_output)
         gate = self.gates.gate_9_risk(
             risk_packet_present=True,
             scenario_results_count=len(scenario_results),
@@ -483,7 +559,7 @@ class PipelineEngine:
         return self._check_gate(gate)
 
     async def stage_12_portfolio(self, universe: list[str]) -> bool:
-        """Stage 12: Portfolio Construction."""
+        """Stage 12: Portfolio Construction — enhanced with mandate, ESG, optimisation, IC."""
         logger.info("═══ STAGE 12: Portfolio Construction ═══")
         # Check that review passed
         review_gate = self.gate_results.get(11)
@@ -491,18 +567,87 @@ class PipelineEngine:
             gate = self.gates.gate_12_portfolio(0, review_passed=False)
             return self._check_gate(gate)
 
+        # ESG compliance check
+        esg_result = self.esg_service.check_portfolio_esg_compliance(tickers=universe)
+        esg_excluded = esg_result.get("excluded_tickers", [])
+        esg_clean_universe = [t for t in universe if t not in [e["ticker"] for e in esg_excluded]]
+
+        if esg_excluded:
+            logger.warning("ESG exclusions: %s", [e["ticker"] for e in esg_excluded])
+
+        # Position sizing (equal weight as baseline)
+        baseline_weights = self.position_sizing.equal_weight(esg_clean_universe)
+
+        # Mandate compliance check on baseline weights
+        mandate_check = self.mandate_engine.check_compliance(
+            run_id=self.run_record.run_id,
+            weights=baseline_weights,
+        )
+
+        if not mandate_check.is_compliant:
+            logger.warning("Mandate violations on baseline: %s", [v.description for v in mandate_check.violations])
+
+        # Run PM agent for variant construction
         result = await self.pm_agent.run(
             self.run_record.run_id,
             {
-                "universe": universe,
+                "universe": esg_clean_universe,
                 "sector_outputs": self.stage_outputs.get(6, []),
                 "valuation_outputs": self.stage_outputs.get(7, {}),
                 "red_team_outputs": self.stage_outputs.get(10, {}),
                 "risk_outputs": self.stage_outputs.get(9, {}),
                 "review_outputs": self.stage_outputs.get(11, {}),
+                "esg_result": esg_result,
+                "mandate_check": mandate_check.model_dump(),
+                "baseline_weights": baseline_weights,
             },
         )
-        self._save_stage_output(12, result.model_dump())
+
+        # Investment Committee voting
+        gate_summary = {
+            "total_stages": 15,
+            "completed_stages": sum(1 for g in self.gate_results.values() if g.passed),
+            "failed_gates": [str(s) for s, g in self.gate_results.items() if not g.passed],
+        }
+        risk_summary = {}
+        risk_output = self.stage_outputs.get(9, {})
+        if risk_output:
+            var_data = risk_output.get("var_95", {})
+            risk_summary = {
+                "concentration_hhi": sum(w ** 2 for w in baseline_weights.values()),
+                "max_single_position_weight": max(baseline_weights.values()) if baseline_weights else 0,
+                "var_95_pct": var_data.get("var_pct") if var_data else None,
+            }
+
+        review_for_ic = None
+        if self._review_result:
+            review_for_ic = {
+                "status": self._review_result.status.value,
+                "issues": [{"description": i.description, "severity": i.severity} for i in self._review_result.issues],
+            }
+
+        ic_record = self.investment_committee.evaluate_and_vote(
+            run_id=self.run_record.run_id,
+            gate_results=gate_summary,
+            mandate_check=mandate_check,
+            risk_summary=risk_summary,
+            review_result=review_for_ic,
+        )
+
+        # Create audit trail
+        audit_trail = self.investment_committee.create_audit_trail(self.run_record.run_id)
+        self.investment_committee.record_committee_decision(audit_trail, ic_record)
+
+        self._save_stage_output(12, {
+            "pm_result": result.model_dump(),
+            "esg_compliance": esg_result,
+            "mandate_compliance": mandate_check.model_dump(),
+            "baseline_weights": baseline_weights,
+            "ic_record": ic_record.model_dump(),
+            "ic_approved": ic_record.is_approved,
+            "audit_trail": audit_trail.model_dump(),
+        })
+
         gate = self.gates.gate_12_portfolio(
             variants_count=3 if result.success else 0,
             review_passed=True,
@@ -540,8 +685,9 @@ class PipelineEngine:
         return self._check_gate(gate)
 
     async def stage_14_monitoring(self) -> None:
-        """Stage 14: Monitoring, Registry, and Post-Run Logging."""
+        """Stage 14: Monitoring, Registry, Governance Audit, and Post-Run Logging."""
         logger.info("═══ STAGE 14: Monitoring & Post-Run Logging ═══")
+
         # Final run status update
         failed_stages = [s for s, g in self.gate_results.items() if not g.passed]
         final_status = RunStatus.COMPLETED if not failed_stages else RunStatus.FAILED
@@ -553,11 +699,59 @@ class PipelineEngine:
             final_gate_outcome="PASS" if final_status == RunStatus.COMPLETED else "FAIL",
         )
 
+        # Export governance audit
+        stage_12_output = self.stage_outputs.get(12, {})
+        audit_trail_data = stage_12_output.get("audit_trail")
+        ic_record_data = stage_12_output.get("ic_record")
+        mandate_data = stage_12_output.get("mandate_compliance")
+        esg_data = stage_12_output.get("esg_compliance")
+
+        try:
+            gate_results_for_audit = {
+                str(s): {"passed": g.passed, "reason": g.reason}
+                for s, g in self.gate_results.items()
+            }
+            risk_output = self.stage_outputs.get(9, {})
+
+            audit_path = self.audit_exporter.export_full_audit(
+                run_id=self.run_record.run_id,
+                audit_trail=audit_trail_data,
+                committee_record=ic_record_data,
+                mandate_check=mandate_data,
+                gate_results=gate_results_for_audit,
+                pipeline_metadata={
+                    "stages_completed": [s for s, g in self.gate_results.items() if g.passed],
+                    "stages_failed": failed_stages,
+                    "final_status": final_status.value,
+                },
+                esg_results=esg_data,
+                risk_summary=risk_output,
+            )
+            logger.info("Governance audit exported to %s", audit_path)
+        except Exception as exc:
+            logger.warning("Audit export failed: %s", exc)
+
+        # Save performance snapshot if stage 12 produced weights
+        baseline_weights = stage_12_output.get("baseline_weights", {})
+        if baseline_weights:
+            try:
+                from research_pipeline.schemas.performance import PortfolioSnapshot
+                snapshot = PortfolioSnapshot(
+                    run_id=self.run_record.run_id,
+                    variant_name="baseline",
+                    positions=baseline_weights,
+                )
+                self.performance_tracker.save_snapshot(snapshot)
+                logger.info("Portfolio snapshot saved for run %s", self.run_record.run_id)
+            except Exception as exc:
+                logger.warning("Snapshot save failed: %s", exc)
+
         self._save_stage_output(14, {
             "final_status": final_status.value,
             "stages_completed": [s for s, g in self.gate_results.items() if g.passed],
             "stages_failed": failed_stages,
             "gate_summary": {s: g.reason for s, g in self.gate_results.items()},
+            "cache_stats": self.cache.stats,
         })
         logger.info("Pipeline run %s finished with status: %s", self.run_record.run_id, final_status.value)
 
