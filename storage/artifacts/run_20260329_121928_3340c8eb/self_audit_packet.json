@@ -1,0 +1,39 @@
+{
+  "run_id": "run_20260329_121928_3340c8eb",
+  "generated_at": "2026-03-29T12:19:28.153166Z",
+  "total_claims": 0,
+  "tier1_claims": 0,
+  "tier2_claims": 0,
+  "tier3_claims": 0,
+  "tier4_claims": 0,
+  "pass_claims": 0,
+  "caveat_claims": 0,
+  "fail_claims": 0,
+  "methodology_tags_present": false,
+  "dates_complete": false,
+  "source_hygiene_score": 0.0,
+  "agents_succeeded": [],
+  "agents_failed": [],
+  "total_retries": 0,
+  "gates_passed": [],
+  "gates_failed": [
+    0
+  ],
+  "tickers_with_red_team": [],
+  "min_falsification_tests": 0,
+  "ic_approved": null,
+  "ic_vote_breakdown": {},
+  "mandate_compliant": null,
+  "esg_exclusions": [],
+  "stage_latencies_ms": {
+    "stage_0": 7.5,
+    "stage_14": 5.0
+  },
+  "total_pipeline_duration_s": 0.01,
+  "prompt_drift_reports": [],
+  "rebalancing_summary": {},
+  "publication_quality_score": 6.5,
+  "blockers": [
+    "Configuration check"
+  ]
+}

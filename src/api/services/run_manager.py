@@ -218,6 +218,62 @@ class RunManager:
         total = run.result.get("total_duration_s", 0)
         return {"stage_latencies_ms": timings, "total_pipeline_duration_s": total}
 
+    def get_quant(self, run_id: str) -> dict[str, Any]:
+        """Return structured quant analytics from stage outputs 6, 9, 12, 14."""
+        run = self._runs.get(run_id)
+        if run is None or run.result is None:
+            return {}
+
+        result = run.result
+        stage_outputs = result.get("stage_outputs", {})
+
+        def _so(n: int) -> dict[str, Any]:
+            """Extract a stage output dict, tolerating both int and str keys."""
+            out = stage_outputs.get(n, stage_outputs.get(str(n), {}))
+            return out if isinstance(out, dict) else {}
+
+        risk_out = _so(9)
+        portfolio_out = _so(12)
+        stage14_out = _so(14)
+        stage6_out = _so(6)
+
+        # ── ESG from Stage 6 ──────────────────────────────────────────────
+        esg_out = stage6_out.get("esg_output") or {}
+        esg_parsed = esg_out.get("parsed_output") or {} if isinstance(esg_out, dict) else {}
+        esg_scores = esg_parsed.get("esg_scores", []) if isinstance(esg_parsed, dict) else []
+
+        return {
+            "run_id": run_id,
+            # Market risk
+            "var_analysis": risk_out.get("var_analysis") or risk_out.get("var_95") or {},
+            "drawdown_analysis": risk_out.get("drawdown_analysis") or {},
+            "portfolio_volatility": risk_out.get("portfolio_volatility") or 0,
+            "var_method": risk_out.get("var_method") or "",
+            "confidence_level": risk_out.get("confidence_level") or 0.95,
+            # ETF overlap
+            "etf_overlap": risk_out.get("etf_overlap") or {},
+            "etf_differentiation_score": risk_out.get("etf_differentiation_score"),
+            # Factor exposures
+            "factor_exposures": risk_out.get("factor_exposures") or [],
+            "portfolio_factor_exposure": risk_out.get("portfolio_factor_exposure") or {},
+            # Fixed income context
+            "fixed_income_context": risk_out.get("fixed_income_context") or {},
+            # IC record
+            "ic_record": portfolio_out.get("ic_record") or {},
+            # Mandate compliance
+            "mandate_compliance": portfolio_out.get("mandate_compliance") or {},
+            # Portfolio weights
+            "baseline_weights": portfolio_out.get("baseline_weights") or {},
+            # Optimisation
+            "optimisation_results": portfolio_out.get("optimisation_results") or {},
+            # Rebalancing
+            "rebalance_proposal": portfolio_out.get("rebalance_proposal"),
+            # BHB performance attribution
+            "attribution": stage14_out.get("attribution") or {},
+            # ESG
+            "esg_scores": esg_scores,
+        }
+
     def get_provenance(self, run_id: str) -> dict[str, Any]:
         """Return the provenance packet for a completed run."""
         run = self._runs.get(run_id)

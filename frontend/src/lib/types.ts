@@ -199,3 +199,37 @@ export const STAGE_LABELS: Record<number, string> = {
 };
 
 export const STAGE_COUNT = 15;
+
+/* ── Session 18: Quant Analytics types ──────────────────────────────── */
+
+export interface QuantData {
+  run_id: string;
+  // Market risk (Stage 9)
+  var_analysis: Record<string, number>;
+  drawdown_analysis: Record<string, number>;
+  portfolio_volatility: number;
+  var_method: string;
+  confidence_level: number;
+  // ETF overlap (Stage 9)
+  etf_overlap: Record<string, unknown>;
+  etf_differentiation_score: number | null;
+  // Factor exposures (Stage 9)
+  factor_exposures: Array<Record<string, unknown>>;
+  portfolio_factor_exposure: Record<string, number>;
+  // Fixed income context (Stage 9)
+  fixed_income_context: Record<string, unknown>;
+  // IC record (Stage 12)
+  ic_record: Record<string, unknown>;
+  // Mandate compliance (Stage 12)
+  mandate_compliance: Record<string, unknown>;
+  // Portfolio weights (Stage 12)
+  baseline_weights: Record<string, number>;
+  // Optimisation (Stage 12)
+  optimisation_results: Record<string, unknown>;
+  // Rebalancing (Stage 12)
+  rebalance_proposal: Record<string, unknown> | null;
+  // BHB attribution (Stage 14)
+  attribution: Record<string, unknown>;
+  // ESG (Stage 6)
+  esg_scores: Array<Record<string, unknown>>;
+}

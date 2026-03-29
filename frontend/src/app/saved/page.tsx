@@ -1,14 +1,29 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { listSavedRuns } from "@/lib/api";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { listSavedRuns, deleteSavedRun } from "@/lib/api";
 import { formatTimestamp, formatNumber } from "@/lib/utils";
-import { FileText, Download, Clock, CheckCircle2, XCircle } from "lucide-react";
+import { FileText, Download, Clock, CheckCircle2, XCircle, Trash2 } from "lucide-react";
 
 export default function SavedRunsPage() {
+  const queryClient = useQueryClient();
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+
   const { data, isLoading } = useQuery({
     queryKey: ["saved-runs"],
     queryFn: listSavedRuns,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (runId: string) => deleteSavedRun(runId),
+    onMutate: (runId) => setDeletingId(runId),
+    onSettled: () => {
+      setDeletingId(null);
+      setConfirmId(null);
+      queryClient.invalidateQueries({ queryKey: ["saved-runs"] });
+    },
   });
 
   const runs = data?.runs || [];
@@ -67,20 +82,45 @@ export default function SavedRunsPage() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="flex items-center gap-1 text-xs text-[var(--text-muted)]">
-                    <Clock className="h-3 w-3" />
-                    {formatTimestamp(run.completed_at)}
-                  </span>
-                  {run.md_path && (
-                    <a
-                      href={`/api/v1/saved-runs/${run.run_id}`}
-                      className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)] px-2 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-2)]"
-                    >
-                      <Download className="h-3 w-3" />
-                      JSON
-                    </a>
-                  )}
-                </div>
+                    <span className="flex items-center gap-1 text-xs text-[var(--text-muted)]">
+                      <Clock className="h-3 w-3" />
+                      {formatTimestamp(run.completed_at)}
+                    </span>
+                    {run.md_path && (
+                      <a
+                        href={`/api/v1/saved-runs/${run.run_id}`}
+                        className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)] px-2 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-2)]"
+                      >
+                        <Download className="h-3 w-3" />
+                        JSON
+                      </a>
+                    )}
+                    {confirmId === run.run_id ? (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => deleteMutation.mutate(run.run_id)}
+                          disabled={deletingId === run.run_id}
+                          className="rounded-lg bg-red-500/10 px-2 py-1 text-xs font-medium text-red-400 hover:bg-red-500/20 disabled:opacity-50"
+                        >
+                          {deletingId === run.run_id ? "Deleting…" : "Confirm delete"}
+                        </button>
+                        <button
+                          onClick={() => setConfirmId(null)}
+                          className="rounded-lg border border-[var(--border)] px-2 py-1 text-xs text-[var(--text-muted)] hover:bg-[var(--surface-2)]"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmId(run.run_id)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)] px-2 py-1 text-xs text-[var(--text-muted)] hover:border-red-500/50 hover:text-red-400"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        Delete
+                      </button>
+                    )}
+                  </div>
               </div>
             ))
           )}

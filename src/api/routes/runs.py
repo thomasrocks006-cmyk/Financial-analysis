@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from research_pipeline.schemas.run_request import RunRequest
 from api.services.run_manager import ApiRunStatus, RunManager
@@ -316,6 +316,68 @@ async def get_provenance(
     return {"run_id": run_id, "provenance": provenance}
 
 
+# ── GET /runs/{run_id}/report/pdf — download PDF report ──────────────────────
+
+@router.get("/{run_id}/report/pdf", summary="Download the research report as a PDF")
+async def get_report_pdf(
+    run_id: str,
+    manager: RunManager = Depends(get_run_manager),
+) -> Response:
+    """Generate and return the report as a PDF using fpdf2.
+
+    Returns 404 if the run is unknown, 202 if still in progress,
+    and 503 if fpdf2 is not installed.
+    """
+    run = manager.get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
+    if run.status in (ApiRunStatus.QUEUED, ApiRunStatus.RUNNING):
+        return JSONResponse(
+            status_code=status.HTTP_202_ACCEPTED,
+            content={"run_id": run_id, "status": run.status, "message": "Run in progress"},
+        )
+
+    result = run.result or {}
+    report_md = result.get("final_report_md") or result.get("report") or ""
+    tickers = result.get("tickers") or run.request.universe or []
+    run_label = run.request.run_label or ""
+
+    from api.services.pdf_service import generate_report_pdf  # noqa: PLC0415
+    pdf_bytes = generate_report_pdf(run_id, tickers, report_md, run_label)
+
+    if not pdf_bytes:
+        raise HTTPException(
+            status_code=503,
+            detail="PDF generation unavailable — install fpdf2 to enable this feature.",
+        )
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="report_{run_id}.pdf"'},
+    )
+
+
+# ── GET /runs/{run_id}/quant — quant analytics ────────────────────────────────
+
+@router.get("/{run_id}/quant", summary="Get quant analytics (VaR, ETF overlap, factor exposures, attribution)")
+async def get_quant(
+    run_id: str,
+    manager: RunManager = Depends(get_run_manager),
+) -> dict[str, Any]:
+    """Return structured quant analytics extracted from stage outputs 6, 9, 12, 14."""
+    run = manager.get_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
+    if run.status in (ApiRunStatus.QUEUED, ApiRunStatus.RUNNING):
+        return JSONResponse(
+            status_code=status.HTTP_202_ACCEPTED,
+            content={"run_id": run_id, "status": run.status, "message": "Run in progress"},
+        )
+    quant = manager.get_quant(run_id)
+    return {"run_id": run_id, "quant": quant}
+
+
 # ── Saved runs endpoints (disk-persisted runs) ──────────────────────────────
 
 saved_router = APIRouter(prefix="/saved-runs", tags=["saved-runs"])
@@ -343,5 +405,20 @@ async def load_saved_run(
         if data is None:
             raise HTTPException(status_code=404, detail=f"Saved run not found: {run_id}")
         return data
+    except ImportError:
+        raise HTTPException(status_code=503, detail="Storage module not available")
+
+
+@saved_router.delete("/{run_id}", summary="Delete a saved run from disk")
+async def delete_saved_run(
+    run_id: str,
+) -> dict[str, Any]:
+    """Delete a saved run's files from disk and remove it from the run registry."""
+    try:
+        from frontend.storage import delete_run  # noqa: PLC0415
+        deleted = delete_run(run_id)
+        if not deleted:
+            raise HTTPException(status_code=404, detail=f"Saved run not found: {run_id}")
+        return {"deleted": True, "run_id": run_id}
     except ImportError:
         raise HTTPException(status_code=503, detail="Storage module not available")

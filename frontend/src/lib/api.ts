@@ -12,6 +12,7 @@ import type {
   SavedRun,
   Artifact,
   ProvenancePacket,
+  QuantData,
 } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
@@ -139,6 +140,31 @@ export async function loadSavedRun(
   runId: string
 ): Promise<Record<string, unknown>> {
   return fetchJSON(`${API_PREFIX}/saved-runs/${runId}`);
+}
+
+export async function deleteSavedRun(
+  runId: string
+): Promise<{ deleted: boolean; run_id: string }> {
+  return fetchJSON(`${API_PREFIX}/saved-runs/${runId}`, { method: "DELETE" });
+}
+
+// ── Quant Analytics ─────────────────────────────────────────────────────
+
+export async function getQuant(
+  runId: string
+): Promise<{ run_id: string; quant: QuantData }> {
+  return fetchJSON(`${API_PREFIX}/runs/${runId}/quant`);
+}
+
+// ── PDF Report Download ──────────────────────────────────────────────────
+
+export async function downloadReportPdf(runId: string): Promise<Blob> {
+  const res = await fetch(`${API_PREFIX}/runs/${runId}/report/pdf`);
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`API ${res.status}: ${body}`);
+  }
+  return res.blob();
 }
 
 // ── SSE event stream ────────────────────────────────────────────────────
