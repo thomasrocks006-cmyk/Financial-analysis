@@ -1,8 +1,8 @@
 # Project Tracker — AI Research & Portfolio Platform
 
-> **Last updated:** March 28, 2026  
-> **Test suite:** 667 / 667 passing  
-> **Commit:** `2b6a360` — session 11 complete
+> **Last updated:** March 29, 2026  
+> **Test suite:** 941 / 941 passing (+ 6 pre-existing errors in session 7/8)  
+> **Commit:** see below — sessions 16 + 17 complete
 
 ---
 
@@ -33,8 +33,11 @@
 | **Phase 2 — engine event stream** | ✅ **COMPLETE — `7a62757`** |
 | **Phase 3 — unified storage + RunRequest** | ✅ **COMPLETE — `7a62757`** |
 | **Phase 4 — FastAPI layer (Session 15)** | ✅ **COMPLETE — `7a62757`** |
-| **Phase 5 + 6 — Next.js UI + charts (Session 16)** | 🔲 **PLANNED** |
-| **Phase 7 — traceability (Session 17)** | 🔲 **PLANNED** |
+| **Phase 5 + 6 — Next.js UI + charts (Session 16)** | ✅ **COMPLETE** |
+| **Phase 7 — traceability (Session 17)** | ✅ **COMPLETE** |
+| **Session 15 — FastAPI Event-Streaming API** | ✅ **COMPLETE — `7a62757`** |
+| **Session 16 — Premium Next.js Frontend** | ✅ **COMPLETE** |
+| **Session 17 — Traceability & Provenance** | ✅ **COMPLETE** |
 
 ---
 
@@ -620,8 +623,8 @@ An independent review of the current Streamlit frontend scored:
 | Session | Scope | Test target |
 |---|---|---|
 | Session 15 | FastAPI event-streaming API layer | API contract tests ~+25 | ✅ `7a62757` — 47 tests, 904 total |
-| Session 16 | Next.js premium UI build | Component + integration tests ~+20 |
-| Session 17 | Traceability, provenance, explainability | E2E + traceability tests ~+15 |
+| Session 16 | Next.js premium UI build | Component + integration tests ~+20 | ✅ 39 tests, 941 total |
+| Session 17 | Traceability, provenance, explainability | E2E + traceability tests ~+15 | ✅ 29 tests, 941 total |
 
 ### Phase map layered with existing sessions
 
@@ -672,6 +675,53 @@ An independent review of the current Streamlit frontend scored:
 | Phase 2 — engine event stream | ✅ `7a62757` |
 | Phase 3 — storage + RunRequest | ✅ `7a62757` |
 | Phase 4 — FastAPI layer | ✅ `7a62757` |
-| Phase 5 — Next.js UI | 🔲 |
+| Phase 5 — Next.js UI | ✅ |
+| Phase 6 — Visual analytics | ✅ |
+| Phase 7 — Traceability | ✅ |
+
+---
+
+## Session 16 — Premium Next.js Frontend + Backend Expansion
+
+### Deliverables
+1. **Pipeline adapter truthfulness** — `src/frontend/pipeline_adapter.py` rewritten with truthful `elapsed_secs`, `raw_text`, `token_log`, `audit_packet`; fires `running` + `done` callbacks
+2. **FastAPI API expansion** — 6 → 15 endpoints: `/report`, `/stages`, `/stages/{n}`, `/audit`, `/timings`, `/artifacts`, `/provenance`, `/saved-runs`, `/saved-runs/{id}`
+3. **RunManager** — 4 new methods: `get_stages()`, `get_audit_packet()`, `get_timings()`, `get_provenance()`
+4. **Storage fixes** — `token_log` + `audit_packet` persisted; `_mirror_to_registry()` run_id overwrite; `delete_run()` cascades to registry
+5. **Next.js 16** frontend scaffolded at `frontend/` — TypeScript, TailwindCSS 4, Zustand 5, React Query 5, Recharts 2, Lucide icons
+6. **7 pages**: Dashboard, New Run (theme quick-select), Runs List, Run Detail (5-tab view: Live Tracker, Report, Audit & Quality, Provenance, Stage Detail), Saved Runs, Settings
+7. **8 components**: Sidebar, TopBar, PipelineTracker (animated 15-stage vertical timeline), LiveEventFeed (auto-scroll SSE), MetricCard, TimingChart, 3 Provenance components
+8. **Complete API client** (typed, 15 functions) + SSE `createEventStream` + Zustand store processing all 11 event types
+
+### Files created
+- `frontend/` — Full Next.js project (package.json, tsconfig, next.config, postcss, .env.local)
+- `frontend/src/lib/` — types.ts, api.ts, utils.ts, store.ts
+- `frontend/src/components/` — providers, sidebar, top-bar, pipeline-tracker, live-event-feed, metric-card, timing-chart
+- `frontend/src/app/` — layout, globals.css, 7 page routes
+
+### Tests
+- `tests/test_session16.py`: 39 tests — route validation, RunManager methods, SSE helper, event schema, frontend structure
+
+---
+
+## Session 17 — Traceability & Provenance
+
+### Deliverables
+1. **ProvenanceCard schema** — per-stage lineage: inputs consumed, outputs produced, gate outcome, assumptions, agent/model, timing
+2. **ReportSectionProvenance schema** — maps report sections to source stages, agents, data sources, confidence levels, methodology tags
+3. **ProvenancePacket schema** — aggregates all cards + report sections with completeness % tracking
+4. **ProvenanceService** — builds stage cards from engine state (STAGE_INPUTS, STAGE_OUTPUTS, STAGE_ASSUMPTIONS for all 15 stages), parses report sections, saves to disk
+5. **Engine integration** — `_save_stage_output()` auto-builds provenance cards; `run_full_pipeline()` builds + persists full provenance packet
+6. **API endpoint** — `GET /runs/{run_id}/provenance` returns the complete provenance packet
+7. **Frontend** — 3 provenance components: ProvenanceCard (expandable with inputs/outputs/gate/assumptions), ReportProvenancePanel (section-level traceability), ProvenancePanel (full page with completeness bar)
+8. **Run detail Provenance tab** — 5th tab in the run detail page, loads provenance via React Query
+
+### Files created
+- `src/research_pipeline/schemas/provenance.py` — DataSource, StageOutput, ProvenanceCard, ReportSectionProvenance, ProvenancePacket
+- `src/research_pipeline/services/provenance_service.py` — ProvenanceService with STAGE_INPUTS/OUTPUTS/ASSUMPTIONS
+- `frontend/src/components/provenance/` — provenance-card.tsx, report-provenance.tsx, provenance-panel.tsx
+
+### Tests
+- `tests/test_session17.py`: 29 tests — schema validation, service logic, stage metadata coverage, engine integration, confidence assessment, section mapping
 | Phase 6 — visual analytics | 🔲 |
 | Phase 7 — traceability | 🔲 |
