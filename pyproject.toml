@@ -21,6 +21,9 @@ dependencies = [
     "typer>=0.9",
     "jinja2>=3.1",
     "sqlalchemy>=2.0",
+    # Session 15: FastAPI event-streaming API layer
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
 ]
 
 [project.optional-dependencies]

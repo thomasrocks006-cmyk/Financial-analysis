@@ -113,6 +113,10 @@ from research_pipeline.services.superannuation_mandate import SuperannuationMand
 from research_pipeline.services.australian_tax_service import AustralianTaxService
 from research_pipeline.services.report_assembly import build_au_disclosures
 
+# Session 15: Event stream contract (Phase 2)
+from typing import Awaitable, Callable
+from research_pipeline.schemas.events import PipelineEvent
+
 logger = logging.getLogger(__name__)
 
 
@@ -213,6 +217,11 @@ class PipelineEngine:
         # Session 14: AU client context services
         self.super_mandate_svc = SuperannuationMandateService()
         self.tax_svc = AustralianTaxService()
+
+        # Session 15: optional event callback — async (event) -> None
+        # Set by the FastAPI RunManager before calling run_full_pipeline().
+        self._event_callback: Optional[Callable[[PipelineEvent], Awaitable[None]]] = None
+
         self.run_record: Optional[RunRecord] = None
         self.gate_results: dict[int, GateResult] = {}
         self.stage_outputs: dict[int, Any] = {}
@@ -481,13 +490,33 @@ class PipelineEngine:
         else:
             logger.info("Prompt drift scan: %d agents checked, 0 changed", len(drift_reports))
 
-    async def _timed_stage(self, stage_num: int, coro) -> bool:  # ACT-S7-3
-        """Await a stage coroutine and record its wall-clock duration."""
+    async def _emit(self, event: PipelineEvent) -> None:
+        """Deliver a PipelineEvent to the registered callback, if any."""
+        if self._event_callback is not None:
+            try:
+                await self._event_callback(event)
+            except Exception:  # never let event delivery crash the pipeline
+                pass
+
+    async def _timed_stage(self, stage_num: int, coro) -> bool:  # ACT-S7-3 + Session 15
+        """Await a stage coroutine, record its wall-clock duration, and emit stage events."""
+        run_id = self.run_record.run_id if self.run_record else "unknown"
+        await self._emit(PipelineEvent.stage_started(run_id, stage_num))
         _t = time.monotonic()
         try:
-            return await coro
-        finally:
-            self._stage_timings[stage_num] = round((time.monotonic() - _t) * 1000, 1)
+            result = await coro
+            duration_ms = round((time.monotonic() - _t) * 1000, 1)
+            self._stage_timings[stage_num] = duration_ms
+            if result:
+                await self._emit(PipelineEvent.stage_completed(run_id, stage_num, duration_ms))
+            else:
+                await self._emit(PipelineEvent.stage_failed(run_id, stage_num))
+            return result
+        except Exception as exc:
+            duration_ms = round((time.monotonic() - _t) * 1000, 1)
+            self._stage_timings[stage_num] = duration_ms
+            await self._emit(PipelineEvent.stage_failed(run_id, stage_num, reason=str(exc)))
+            raise
 
     def _generate_synthetic_returns(
         self,
@@ -1710,8 +1739,20 @@ class PipelineEngine:
         logger.info("Pipeline run %s finished with status: %s", self.run_record.run_id, final_status.value)
 
     # ── Full pipeline execution ────────────────────────────────────────
-    async def run_full_pipeline(self, universe: list[str]) -> dict[str, Any]:
-        """Execute the full 15-stage pipeline end-to-end."""
+    async def run_full_pipeline(
+        self,
+        universe: list[str],
+        event_callback: Optional[Callable[[PipelineEvent], Awaitable[None]]] = None,
+    ) -> dict[str, Any]:
+        """Execute the full 15-stage pipeline end-to-end.
+
+        Session 15 (Phase 2): ``event_callback`` is an async coroutine that
+        receives every ``PipelineEvent`` as the run progresses.  Pass ``None``
+        (default) for a no-op, fully backward-compatible execution.
+        """
+        if event_callback is not None:
+            self._event_callback = event_callback
+        run_start = time.monotonic()
         logger.info("╔══════════════════════════════════════════════╗")
         logger.info("║  AI Infrastructure Research Pipeline v8      ║")
         logger.info("║  Starting full pipeline run                  ║")
@@ -1728,7 +1769,12 @@ class PipelineEngine:
         if not await self._timed_stage(0, self.stage_0_bootstrap(universe)):
             await self._timed_stage(14, self.stage_14_monitoring())
             _ap = self._emit_audit_packet(universe)
+            _run_id = self.run_record.run_id if self.run_record else "unknown"
+            await self._emit(PipelineEvent.pipeline_failed(_run_id, blocked_at=0))
             return {"status": "failed", "blocked_at": 0, "run_id": self.run_record.run_id, "audit_packet": _ap.model_dump(mode="json") if _ap else None}
+
+        # Session 15 Phase 2: emit pipeline_started now that run_record is guaranteed set
+        await self._emit(PipelineEvent.pipeline_started(self.run_record.run_id, universe))
 
         # Stage 1: Universe
         if not await self._timed_stage(1, self.stage_1_universe(universe)):
@@ -1844,6 +1890,10 @@ class PipelineEngine:
 
         # ── ACT-S6-1 / ACT-S7-3: Build and attach SelfAuditPacket ─────────────
         audit_packet = self._emit_audit_packet(universe)
+
+        # Session 15 Phase 2: emit pipeline_completed
+        _pipeline_total_ms = round((time.monotonic() - run_start) * 1000, 1)
+        await self._emit(PipelineEvent.pipeline_completed(self.run_record.run_id, _pipeline_total_ms))
 
         return {
             "status": "completed",
