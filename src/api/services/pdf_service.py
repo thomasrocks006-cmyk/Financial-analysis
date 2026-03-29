@@ -145,7 +145,7 @@ def generate_report_pdf(
             pdf.multi_cell(CONTENT_W, 5, f"  * {_safe(_strip_md(stripped[2:]))}")
         else:
             pdf.set_font("Helvetica", "", 9)
-            pdf.multi_cell(CONTENT_W, 5, _strip_md(stripped))
+            pdf.multi_cell(CONTENT_W, 5, _safe(_strip_md(stripped)))
             pdf.ln(1)
 
     try:
