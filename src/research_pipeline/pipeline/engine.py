@@ -67,6 +67,15 @@ from research_pipeline.services.etf_overlap_engine import ETFOverlapEngine
 from research_pipeline.services.observability import ObservabilityService
 from research_pipeline.services.report_formats import ReportFormatService
 
+# Session 19 / DSQ-1: Qualitative data service — closes the biggest live evidence gap
+from research_pipeline.services.qualitative_data_service import QualitativeDataService
+
+# Session 19 / DSQ-2: SEC API service — Tier 1 primary US filing data
+from research_pipeline.services.sec_api_service import SECApiService
+
+# Session 19 / DSQ-3: Benzinga service — Tier 2 finance-native news + analyst ratings
+from research_pipeline.services.benzinga_service import BenzingaService
+
 # Agents
 from research_pipeline.agents.orchestrator import OrchestratorAgent
 from research_pipeline.agents.evidence_librarian import EvidenceLibrarianAgent
@@ -227,6 +236,25 @@ class PipelineEngine:
 
         # Session 17: Provenance service — builds per-stage lineage cards
         self._provenance: Optional[ProvenanceService] = None  # initialised in run_full_pipeline
+
+        # Session 19 / DSQ-1: Qualitative data service (news, transcripts, filings,
+        # insider activity, analyst actions, sentiment — 7 sources per ticker).
+        self.qualitative_svc = QualitativeDataService(
+            fmp_key=settings.api_keys.fmp_api_key,
+            finnhub_key=settings.api_keys.finnhub_api_key,
+        )
+
+        # Session 19 / DSQ-2: SEC API service — Tier 1 primary US filing data.
+        # Gracefully no-ops when SEC_API_KEY is absent.
+        self.sec_api_svc = SECApiService(
+            api_key=settings.api_keys.sec_api_key,
+        )
+
+        # Session 19 / DSQ-3: Benzinga service — Tier 2 finance-native news + ratings.
+        # Gracefully no-ops when BENZINGA_API_KEY is absent.
+        self.benzinga_svc = BenzingaService(
+            api_key=settings.api_keys.benzinga_api_key,
+        )
 
         self.run_record: Optional[RunRecord] = None
         self.gate_results: dict[int, GateResult] = {}
@@ -685,9 +713,58 @@ class PipelineEngine:
         return self._check_gate(gate)
 
     async def stage_2_ingestion(self, universe: list[str]) -> bool:
-        """Stage 2: Data Ingestion from FMP + Finnhub."""
+        """Stage 2: Data Ingestion from FMP + Finnhub + SEC API + Benzinga.
+
+        DSQ-2 / DSQ-3 (Session 19): SEC API filing index and Benzinga rating
+        changes are collected here so downstream stages (5, 10) can consume
+        structured primary-source and finance-event data without re-fetching.
+        Both services degrade gracefully when API keys are absent.
+        """
         logger.info("═══ STAGE 2: Data Ingestion ═══")
+
+        # Core quantitative ingestion (FMP + Finnhub + yfinance fallback)
         results = await self.ingestor.ingest_universe(universe)
+
+        # DSQ-2: SEC API — filing index per ticker (10-K, 10-Q, 8-K, Form 4)
+        # Runs concurrently after FMP/Finnhub; failures are contained per-ticker.
+        try:
+            sec_packages = await self.sec_api_svc.fetch_universe(universe)
+            for ticker_data in results:
+                if isinstance(ticker_data, dict):
+                    ticker = ticker_data.get("ticker", "")
+                    pkg = sec_packages.get(ticker)
+                    if pkg:
+                        ticker_data["sec_filings"] = [
+                            f.to_dict() for f in pkg.recent_filings
+                        ]
+                        ticker_data["sec_8k_events"] = pkg.eight_k_events
+                        ticker_data["sec_insider_transactions"] = pkg.insider_transactions
+                        if pkg.coverage_gaps:
+                            ticker_data["sec_coverage_gaps"] = pkg.coverage_gaps
+        except Exception as exc:
+            logger.warning("SEC API stage_2 enrichment failed: %s", exc)
+
+        # DSQ-3: Benzinga — analyst rating changes + earnings calendar
+        # Adverse ratings (downgrades) are surfaced for Stage 10 Red Team use.
+        try:
+            benzinga_packages = await self.benzinga_svc.fetch_universe(universe)
+            for ticker_data in results:
+                if isinstance(ticker_data, dict):
+                    ticker = ticker_data.get("ticker", "")
+                    pkg = benzinga_packages.get(ticker)
+                    if pkg:
+                        ticker_data["benzinga_rating_changes"] = [
+                            r.to_dict() for r in pkg.rating_changes
+                        ]
+                        ticker_data["benzinga_adverse_ratings"] = [
+                            r.to_dict() for r in pkg.adverse_ratings
+                        ]
+                        ticker_data["benzinga_earnings_events"] = pkg.earnings_events
+                        if pkg.coverage_gaps:
+                            ticker_data["benzinga_coverage_gaps"] = pkg.coverage_gaps
+        except Exception as exc:
+            logger.warning("Benzinga stage_2 enrichment failed: %s", exc)
+
         gate = self.gates.gate_2_ingestion(results, universe)
         self._save_stage_output(2, results)
         return self._check_gate(gate)
@@ -778,11 +855,88 @@ class PipelineEngine:
         return self._check_gate(gate)
 
     async def stage_5_evidence(self, universe: list[str]) -> bool:
-        """Stage 5: Evidence Librarian builds claim ledger."""
+        """Stage 5: Evidence Librarian builds claim ledger.
+
+        Session 19 (DSQ-1/2/3): This stage now receives a rich multi-source
+        evidence pack:
+          - DSQ-1: QualitativeDataService — news, transcripts, FMP filing
+                   metadata, insider activity, analyst actions, sentiment
+          - DSQ-2: SECApiService — 10-K/Q section text (MD&A, Risk Factors,
+                   Business description) as Tier 1 primary-source content
+          - DSQ-3: BenzingaService — finance-native news + analyst rating
+                   changes for additional qualitative grounding
+
+        All three services degrade gracefully; failures are logged and recorded
+        in coverage_gaps but never block the stage.
+        """
         logger.info("═══ STAGE 5: Evidence Librarian ═══")
+
+        # DSQ-1: Fetch qualitative data (news, transcripts, filings, insider,
+        # analyst actions, sentiment) for all universe tickers concurrently.
+        # Failures are absorbed inside QualitativeDataService — coverage_gaps
+        # records what was unavailable so the agent can flag it.
+        try:
+            qual_packages_raw = await self.qualitative_svc.ingest_universe(universe)
+            qualitative_data = {
+                ticker: pkg.model_dump()
+                for ticker, pkg in qual_packages_raw.items()
+            }
+            total_signals = sum(
+                len(pkg.news_items or []) + len(pkg.sec_filings or []) +
+                len(pkg.analyst_actions or []) + len(pkg.press_releases or [])
+                for pkg in qual_packages_raw.values()
+            )
+            logger.info(
+                "Qualitative data ingested: %d signal items across %d tickers",
+                total_signals, len(universe),
+            )
+        except Exception as _qual_exc:
+            logger.warning("Qualitative ingestion failed — continuing without it: %s", _qual_exc)
+            qualitative_data = {t: {"ticker": t, "coverage_gaps": [f"ingest_error: {_qual_exc}"]} for t in universe}
+
+        # DSQ-2: SEC API — fetch 10-K/Q section text (MD&A, Risk Factors, Business)
+        # as Tier 1 primary-source content for the Evidence Librarian.
+        # These are the most authoritative inputs available for US-listed names.
+        sec_evidence: dict[str, Any] = {}
+        try:
+            sec_pkgs = await self.sec_api_svc.fetch_universe(universe)
+            for ticker, pkg in sec_pkgs.items():
+                if pkg.has_primary_content or pkg.eight_k_events or pkg.insider_transactions:
+                    sec_evidence[ticker] = pkg.to_dict()
+            if sec_evidence:
+                logger.info(
+                    "SEC API primary content fetched for %d/%d tickers",
+                    len(sec_evidence), len(universe),
+                )
+        except Exception as _sec_exc:
+            logger.warning("SEC API evidence fetch failed — continuing without it: %s", _sec_exc)
+
+        # DSQ-3: Benzinga — news + rating changes for evidence enrichment.
+        # Adverse ratings (downgrades) from Stage 2 are already in stage_outputs[2];
+        # here we fetch the full Benzinga news pack for evidence-layer consumption.
+        benzinga_evidence: dict[str, Any] = {}
+        try:
+            benz_pkgs = await self.benzinga_svc.fetch_universe(universe)
+            for ticker, pkg in benz_pkgs.items():
+                if pkg.has_content:
+                    benzinga_evidence[ticker] = pkg.to_dict()
+            if benzinga_evidence:
+                logger.info(
+                    "Benzinga evidence fetched for %d/%d tickers",
+                    len(benzinga_evidence), len(universe),
+                )
+        except Exception as _benz_exc:
+            logger.warning("Benzinga evidence fetch failed — continuing without it: %s", _benz_exc)
+
         result = await self.evidence_agent.run(
             self.run_record.run_id,
-            {"tickers": universe, "market_data": self.stage_outputs.get(2, [])},
+            {
+                "tickers": universe,
+                "market_data": self.stage_outputs.get(2, []),
+                "qualitative_data": qualitative_data,       # DSQ-1: FMP/Finnhub qualitative
+                "sec_primary_content": sec_evidence,         # DSQ-2: Tier 1 SEC filing sections
+                "benzinga_evidence": benzinga_evidence,      # DSQ-3: Tier 2 finance-native news
+            },
         )
         self._save_stage_output(5, result.model_dump())
 

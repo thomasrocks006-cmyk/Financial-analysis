@@ -255,14 +255,20 @@ class MarketDataIngestor:
             (self.fetch_fmp_quote,             "fmp_quote"),
             (self.fetch_fmp_price_targets,      "fmp_targets"),
             (self.fetch_fmp_analyst_estimates,  "fmp_estimates"),
+            (self.fetch_fmp_ratios,             "fmp_ratios"),   # DSQ-13: ROE, ROIC, FCF yield, margins
         ]:
             try:
                 value = await fetch_fn(ticker)
-                result[key] = (
-                    [e.model_dump() for e in value]
-                    if isinstance(value, list)
-                    else value.model_dump()
-                )
+                if isinstance(value, list):
+                    result[key] = [
+                        e.model_dump() if hasattr(e, "model_dump") else e
+                        for e in value
+                    ]
+                elif hasattr(value, "model_dump"):
+                    result[key] = value.model_dump()
+                else:
+                    # Plain dict (e.g. fetch_fmp_ratios) — store as-is
+                    result[key] = value
             except Exception as exc:
                 code = getattr(getattr(exc, "response", None), "status_code", "ERR")
                 result["errors"][key] = f"{code}: {exc}"

@@ -17,6 +17,7 @@
 6. [Additional Findings from Code Inspection](#6-additional-findings-from-code-inspection)
 7. [Master Scorecard](#7-master-scorecard)
 8. [Upgrade Blueprint: 7.8 → 9.0](#8-upgrade-blueprint-78--90)
+9. [Data Sourcing Critical Analysis + New API Evaluation](#9-data-sourcing-critical-analysis--new-api-evaluation)
 
 ---
 
@@ -903,6 +904,314 @@ Ranked by: **Impact / Effort ratio** (highest first)
 | P3: Cross-sector synthesis | +0.2 | 8.7 |
 | P4: Doc/config fidelity | +0.2 | 8.9 |
 | P5–P8: Advanced improvements | +0.3 | **9.2** |
+
+---
+
+## 9. Data Sourcing Critical Analysis + New API Evaluation
+
+> **Scope:** Synthesis of two independent data-source analyses (Document A: deep qualitative sourcing walkthrough; Document B: code-grounded stage-by-stage sourcing map) plus independent evaluation. New API assessment: Benzinga, NewsAPI, SEC API (sec-api.io dv2).
+> **Date:** March 2026
+
+---
+
+### 9.1 Cross-Comparison of the Two Sourcing Reviews
+
+Before merging them, it is worth being honest about where each review was stronger and where each fell short.
+
+**Where Document A was stronger**
+- Delivered the most complete end-to-end sourcing map covering all 14 stages explicitly
+- Named the architectural mismatch between the Evidence Librarian's prompt (which cites Reuters, Bloomberg, SEC filings as sources) and the actual retrieval layer that feeds it (which does not retrieve any of those) — this is the most important single observation in either document
+- Identified the sector-native alt-data gap for the AI infra vertical specifically: GPU lead times, hyperscaler capex, interconnection queues, wafer/memory pricing — generic equity research tools cannot generate differentiated AI infra insight; you need vertical data
+- Provided a structured 5-priority upgrade hierarchy that maps coherently to effort and ROI
+- Most useful for strategic planning and stakeholder communication
+
+**Where Document B was stronger**
+- Grounded every claim in specific file paths and line numbers: `engine.py` lines 780-786, `market_data_ingestor.py` lines 231-298 — reviewable and verifiable against the actual repo
+- Identified the precise CLI-vs-Streamlit path divergence: the rich `QualitativeDataService` is wired to the Streamlit runner (`pipeline_runner.py`) but is NOT called in `ResearchPipelineEngine`; the headless engine only passes `market_data` into Stage 5
+- Noted that `fetch_fmp_ratios` exists in `market_data_ingestor.py` but is not called in `ingest_ticker` — meaning ratio-rich fundamentals that appear to be "available" are actually absent from the default Stage 2 bundle
+- Most useful for implementation work and debugging
+
+**Where both reviews agreed (high-confidence findings)**
+
+| Finding | Both Agreed | Confidence |
+|---|---|---|
+| The biggest bottleneck is data quality, not LLM reasoning quality | ✓ | **Very high** |
+| QualitativeDataService exists but is not wired into the live engine | ✓ | **Very high — code-confirmed** |
+| Stage 5 Evidence Librarian is structurally underfed | ✓ | **Very high** |
+| FMP/Finnhub are aggregator-tier, not primary-source tier | ✓ | **Very high** |
+| AU macro coverage is mostly synthetic outside RBA cash rate | ✓ | **High** |
+| Qualitative ingestion is API-based, not open web-scraping | ✓ | **High** |
+| Direct SEC/EDGAR primary document layer is the #1 missing piece | ✓ | **High** |
+
+**Where both reviews fell short (independent assessment adds these)**
+
+| Gap | Severity | What was missed |
+|---|---|---|
+| `FINNHUB_API_KEY` is absent from `.env.example` | High — blocks new developers cold | Identified in `PROJECT_ISSUES_ASSESSMENT.md` ISS-7 but not in either sourcing review |
+| ASX/international tickers have no equivalent of SEC API | High | SEC API only covers US filings; ASX-listed names (XRO, WTC, ALU, etc.) remain on FMP/yfinance with no primary document path |
+| Synthetic return contamination is not surfaced to the user | High | When `LiveReturnStore` falls back to synthetic returns, portfolio optimisation and VaR figures can be partially fictional — this is not flagged in outputs |
+| ESG is decorative in portfolio construction | Medium | `ESGService` uses `source="heuristic_profiles"` — any ESG-driven mandate enforcement in Stage 12 is based on invented scores, not live data |
+| Political risk stage is entirely ungrounded | Medium | Stage 8's `PoliticalRiskAnalystAgent` receives only `{"tickers": universe}` — it has no news feed, no regulatory data, no geopolitical events; it is operating purely on training-cutoff knowledge |
+| Rate limit and quota stacking is not architecturally managed | Medium | Adding three more APIs (Benzinga, NewsAPI, SEC) without a unified rate-limit budget and retry/fallback registry will degrade reliability under load |
+| Article extraction layer does not exist | Medium | If NewsAPI or Benzinga provide article URLs, there is currently no service in the codebase that fetches, cleans, and chunks article body text for the evidence stage |
+| No data freshness tracking per field | Medium | The QA service checks timestamps but does not track field-level freshness — a PE ratio sourced 10 days ago and an earnings transcript from 6 months ago are treated with equal recency in the evidence ledger |
+
+---
+
+### 9.2 Definitive Picture of the Live Sourcing Stack
+
+The honest, code-verified state of the live pipeline as of March 2026:
+
+**Quantitative — what actually runs in Stage 2**
+
+| Source | What is fetched | Quality tier |
+|---|---|---|
+| FMP `/quote` | Price, market cap, EV, PE, forwardPE, EV/EBITDA, dividend yield | Tier 3 — aggregator API |
+| FMP `/analyst-estimates` | EPS estimate avg, revenue estimate avg, analyst count | Tier 3 — street consensus |
+| FMP `/price-target-consensus` | Target low / median / high / mean | Tier 3 — street consensus |
+| Finnhub `/quote` | Spot price cross-check | Tier 3 — aggregator API |
+| Finnhub `/stock/recommendation` | Buy/hold/sell distribution | Tier 3 — street consensus |
+| Finnhub `/stock/price-target` | Target low / median / high, analyst count | Tier 3 — street consensus |
+| yfinance | Price fallback only, when both above fail | Tier 5 — last resort |
+
+Note: `fetch_fmp_ratios` in `market_data_ingestor.py` is **not called in `ingest_ticker`** — ratio-rich fundamentals (ROE, ROIC, FCF yield, debt/equity etc.) are only fetched in the Streamlit path, not the headless engine. This is a silent data gap.
+
+**Qualitative — the wiring split**
+
+| Path | Gets QualitativeDataService | What Stage 5 actually receives |
+|---|---|---|
+| Streamlit frontend (`pipeline_runner.py`) | Yes — full qualitative package injected | Transcripts, filings metadata, news, insider, sentiment |
+| Headless CLI / API (`ResearchPipelineEngine`) | **No** — not called | Only `tickers` + Stage 2 `market_data` |
+
+This means every run through the API or CLI — which is the production path used by downstream systems — is running on a qualitatively hollow evidence stage.
+
+**Macro — what actually runs in Stage 8**
+
+| Source | What is fetched | Coverage |
+|---|---|---|
+| FRED | Fed funds, CPI, PCE, unemployment, 10Y/2Y yields | US — good |
+| RBA | Cash rate only (HTML scrape + regex) | AU — shallow |
+| ABS | Mentioned in module docstring | **Not actually fetched — synthetic fallback** |
+| Political risks | Only `{"tickers": universe}` passed | **Entirely model training-cutoff knowledge** |
+
+---
+
+### 9.3 Independent Accuracy Assessment
+
+The pipeline does not measure absolute data accuracy. It measures cross-provider **agreement**, which is a much weaker property.
+
+**What Stage 3 reconciliation actually checks**
+- FMP price vs Finnhub price
+- FMP target low/median/high vs Finnhub target low/median/high
+
+That is the complete extent of active validation. For everything else — fundamentals, estimates, sector financials, transcripts, insider data — there is no cross-verification mechanism in place.
+
+**Confidence ratings (independent assessment)**
+
+| Data area | Confidence | Rationale |
+|---|---|---|
+| US macro (FRED feeds) | High | FRED is a direct official data source |
+| Quote prices (FMP + Finnhub agreement) | Medium-high | Two aggregators agreeing on price is a reasonable sanity check |
+| Consensus price targets | Medium | Both sources reflect street consensus but methodology varies by aggregator |
+| FMP fundamentals (income statement, cash flow) | Medium | API aggregators introduce mapping delays and restatement lag |
+| Analyst estimate snapshots | Medium | Point-in-time integrity issues; restatements not tracked |
+| Company profile / sector / ratios | Medium | May lag corporate actions, name changes, reclassifications |
+| Qualitative evidence (live headless engine) | **Very low** | Stage 5 does not receive qualitative data in live engine path |
+| AU macro outside RBA cash rate | **Low** | ABS not actually fetched; synthetic filldowns |
+| Political risk analysis | **Very low** | No live data feed; entirely training-cutoff dependent |
+| ESG scores | **Negligible** | Heuristic profiles; not live data |
+| Risk/VaR when synthetic returns used | Low | Portfolio math on invented returns is not meaningful |
+
+The current data quality ceiling is: **usable for structured quantitative overview; not suitable for high-conviction institutional investment decisions without manual primary-source verification at the investment stage.**
+
+---
+
+### 9.4 New API Evaluation: Benzinga, NewsAPI, SEC API
+
+#### SEC API (sec-api.io) — MUST ADD
+
+**What it is:** Developer-friendly wrapper around SEC EDGAR with structured JSON output, section extraction, XBRL parsing, and real-time filing alerts.
+
+**Why it is the highest-priority addition**
+The single largest architectural gap in the evidence layer is the absence of primary document grounding. The Evidence Librarian prompt explicitly references "SEC filings" as a source — but the live engine only has FMP's filing metadata links, not filing content. This is the definition of a grounding mismatch.
+
+SEC API directly fixes this:
+
+| Capability | Impact on pipeline | Priority stage |
+|---|---|---|
+| 10-K / 10-Q section extraction (MD&A, Risk Factors, Business) | Stage 5 Evidence Librarian gets primary-source text instead of aggregator facts | **Stage 5** |
+| 8-K real-time material event detection | Stage 2 event backbone; feed adverse events to Stage 10 Red Team | **Stage 2, Stage 10** |
+| XBRL structured financials | Cross-validate FMP fundamental figures against audited EDGAR facts | **Stage 3 reconciliation** |
+| Form 3/4/5 insider trading | Replace FMP insider aggregation with primary SEC source | **Stage 5, Stage 10** |
+| Filing search by ticker, date, form type | Automated latest-filing indexing for every universe ticker | **Stage 2** |
+
+**Limitations to be aware of**
+- US-listed companies only — zero benefit for ASX-listed tickers (XRO, WTC, ALU, etc.)
+- Free tier is rate-limited; production use at scale will require a paid plan
+- 10-K/10-Q documents are large; you need a chunking/section parser to make them prompt-safe
+- Fundamentals from XBRL require normalization to match FMP field names
+
+**Verdict: Must implement. Resolves the most fundamental evidentiary weakness in the engine.**
+
+---
+
+#### Benzinga — STRONGLY RECOMMENDED
+
+**What it is:** Finance-native news, events, analyst ratings, earnings data, and (depending on subscription) transcript feeds. More signal-dense than general news APIs for equity research workflows.
+
+**Why it is the best qualitative-layer upgrade available without institutional platforms**
+
+Compared with the current FMP/Finnhub news:
+
+| Capability | Over FMP/Finnhub | Notes |
+|---|---|---|
+| Finance-native headline quality | Higher specificity, less noise | Benzinga editorial is equity-focused |
+| Analyst rating change feed | Much better structured | Upgrade/downgrade/initiation with price targets, analyst firm, reason |
+| Earnings event calendar | Better coverage and timing | More complete than Finnhub's earnings calendar |
+| Real-time catalyst detection | Better | Benzinga specialises in intraday catalyst coverage |
+| Transcript access | Depends on subscription | Pro tier includes transcripts; verify before relying on this |
+
+**How it fits in the pipeline**
+
+- **Stage 2:** Replace FMP/Finnhub as the primary news and ratings-change source. Keep FMP/Finnhub for quantitative data (quotes, targets, estimates) but demote their news/events role.
+- **Stage 5:** Feed Benzinga news, analyst actions, and catalysts into the Evidence Librarian's qualitative pack alongside SEC API filing sections.
+- **Stage 10:** Feed adverse Benzinga signals — downgrade clusters, negative catalyst events, miss-and-lower patterns — to the Red Team agent for adversarial grounding.
+
+**Limitations**
+- Still an aggregator, not a primary source — rating changes are sourced from the analyst firms via Benzinga, not directly
+- Transcript quality depends entirely on tier and coverage completeness; do not assume full coverage
+- Adding without quality filtering will increase noise: implement source-ranking before injecting into prompts
+
+**Verdict: Strong yes. Best available finance-event layer at non-institutional cost. Second priority after SEC API.**
+
+---
+
+#### NewsAPI — CONDITIONAL APPROVAL
+
+**What it is:** Aggregated news metadata (headline, summary, source, URL, timestamp) from ~150,000 publishers. Not finance-specialised.
+
+**Why it is the most mixed of the three**
+
+The fundamental problem is the **discovery-vs-depth tradeoff**. NewsAPI is optimised for breadth and recency, not finance-specific signal quality.
+
+| What it does well | What it does poorly |
+|---|---|
+| Macro / geopolitical / regulatory discovery | Company-level financial specificity |
+| Publisher diversity and recency | Signal-to-noise ratio for equity research |
+| Covering export controls, chip policy, data centre regulation | Full article text (free tier is metadata + truncated description only) |
+| AI infrastructure sector context (power grid, tariffs, AI regulation) | Cross-company comparison without deduplication |
+
+**For this project specifically**, NewsAPI has genuine value in Stage 8 (Macro/Political), which currently has no qualified news feed at all. For topics like:
+- US chip export controls and BIS regulations
+- Data centre power permitting and grid interconnection policy
+- AI regulation (EU AI Act, Executive Orders, G7 AI frameworks)
+- Energy transition policy (IRA, FERC, DOE loan programs)
+- Geopolitical events affecting semiconductor supply chains
+
+...NewsAPI would be a real upgrade over the current "training cutoff knowledge only" political risk stage.
+
+**The mandatory preconditions for NewsAPI to add value rather than noise:**
+1. **Publisher allowlist** — restrict to: Reuters, AP, Bloomberg, FT, WSJ, The Economist, MIT Tech Review, Ars Technica, The Information, Semafor, Protocol. Block low-quality and aggregator-of-aggregator sources.
+2. **Article fetch/extraction layer** — NewsAPI gives you a URL and a few sentences. Without a service that fetches the article, extracts clean body text, and strips navigation/ads, you are injecting headlines into prompts, not analysis.
+3. **Topic/entity filtering** — run incoming articles through keyword + entity matching before storing them; do not pass raw broad queries to the evidence stage.
+4. **Free tier note** — the standard free tier returns 100 requests/day and only 1-month historical lookback. At production scale this will hit limits quickly.
+
+**Verdict: Conditionally yes. Do not wire it in until the publisher allowlist, article extraction, and entity filtering layers exist. Without those, it degrades evidence quality rather than improving it.**
+
+---
+
+### 9.5 Recommended Post-Addition Source Hierarchy
+
+With SEC API, Benzinga, and NewsAPI added and properly wired:
+
+| Tier | Sources | Use in pipeline |
+|---|---|---|
+| **Tier 1 — Primary truth** | SEC API (10-K/Q/8-K sections, XBRL, Form 4), direct company IR pages | Stage 5, Stage 7 valuation assumptions, Stage 10 red team |
+| **Tier 2 — Finance event/news** | Benzinga (ratings, events, catalysts, transcripts), Finnhub (event calendar, earnings) | Stage 2, Stage 5, Stage 10 |
+| **Tier 3 — Structured market data** | FMP, Finnhub | Stage 2, Stage 3, Stage 7 |
+| **Tier 4 — Broad macro/discovery** | NewsAPI (allowlisted), FRED | Stage 8 macro/political |
+| **Tier 5 — Fallback only** | yfinance, synthetic fills | Stage 9 only when Tier 1–3 unavailable; always flagged |
+
+FMP and Finnhub should be permanently demoted from their current de-facto Tier 1 position. They should remain as Tier 3 structured data aggregators — useful, but never the sole ground truth for a claim.
+
+---
+
+### 9.6 What Is Still Missing After These Three APIs
+
+Even with SEC API + Benzinga + NewsAPI added, the following gaps remain material:
+
+**1. Transcript quality remains uncertain**
+Benzinga may provide transcripts on premium tiers, but coverage and completeness must be verified. If it falls short, transcript access remains the single highest-alpha qualitative gap. The best non-institutional options are Quartr (free tier available for listed companies) and direct issuer IR page scraping.
+
+**2. ASX / non-US tickers have no primary document path**
+SEC API covers EDGAR only. For Australian-listed tickers, the equivalent would be direct ASX announcement fetching (ASX has a public announcements API at `data.asx.com.au`) or ASIC filings. This is currently completely unaddressed.
+
+**3. Sector-native AI infrastructure data is still absent**
+This project analyses AI infrastructure names. Generic news and SEC filings do not contain:
+- GPU/HBM pricing and lead time data (TrendForce, Omdia)
+- Hyperscaler capex disaggregation (must be extracted from filings/transcripts)
+- Data centre power availability and interconnection queues (FERC EQIS, ISO/RTO public data)
+- Semiconductor equipment order books (SEMI, WSTS — some data is free)
+
+These would create genuinely differentiated insight. EIA and FERC data are **free and publicly available** and should be added regardless of budget.
+
+**4. Earnings transcript depth**
+Even with a transcript source, the current codebase truncates transcript content for prompt size. A proper transcript pipeline would:
+- Parse guidance statements into structured JSON
+- Tag capex commentary, margin language, demand commentary, supply constraints
+- Track guidance revisions quarter-over-quarter
+This is a future implementation task, not an API access problem.
+
+**5. No article fetch/extraction service**
+`NewsAPI` and `Benzinga` both return article URLs. Without a service that fetches, cleans, and chunks full article text, you are injecting headlines into the Evidence Librarian, not evidence. This service needs to be built regardless of which news APIs are added.
+
+---
+
+### 9.7 Stage-by-Stage Integration Map — New APIs
+
+| Stage | Current sources | Additions required | Source of addition |
+|---|---|---|---|
+| Stage 2 — Data Ingestion | FMP, Finnhub, yfinance | SEC API: latest filing index, 8-K events per ticker; Benzinga: rating changes, earnings calendar | SEC API, Benzinga |
+| Stage 3 — Reconciliation | FMP vs Finnhub (price + targets) | Add: FMP fundamentals vs SEC API XBRL facts cross-check | SEC API |
+| Stage 5 — Evidence Librarian | `market_data` only (headless) | **Must add:** SEC API filing sections (10-K/Q MD&A, Risk Factors, 8-K events, Form 4); Benzinga news/ratings; allowlisted NewsAPI headlines | All three |
+| Stage 6 — Sector Analysis | FMP sector data, heuristic ESG | SEC API 10-K Business section for strategic context; Benzinga analyst revision pattern | SEC API, Benzinga |
+| Stage 7 — Valuation | Stage 2 + 6 + 8 outputs | SEC API XBRL for audited fundamental validation; Benzinga guidance/estimate revision signal | SEC API, Benzinga |
+| Stage 8 — Macro/Political | FRED, RBA, synthetic | NewsAPI allowlisted macro/policy feed for export controls, AI regulation, grid policy, geopolitics | NewsAPI |
+| Stage 10 — Red Team | Prior stage outputs only | SEC API adverse filings (8-K risk events, restatements, material changes); Benzinga downgrade/negative catalyst feed | SEC API, Benzinga |
+| Stage 12 — Portfolio | Prior outputs, heuristic ESG | SEC API Form 4 for insider selling signals on Position Sizing | SEC API |
+
+---
+
+### 9.8 Implementation Priority Order
+
+Based on the analysis above, the recommended implementation sequence:
+
+**Immediate (maximum ROI, minimum risk)**
+1. **Wire `QualitativeDataService` into `ResearchPipelineEngine` Stage 5** — this is a code change only, zero new API required, and closes the biggest live gap immediately
+2. **Add `FINNHUB_API_KEY` to `.env.example`** — this has been an open issue (ISS-7) and blocks developer onboarding
+3. **Integrate SEC API** — add `SECApiService`, wire into Stage 2 (filing index) and Stage 5 (section extraction)
+4. **Integrate Benzinga** — add `BenzingaService`, wire into Stage 2 (events) and Stage 5 (news/ratings)
+
+**Second phase (quality deepening)**
+5. **Wire NewsAPI** — only after publisher allowlist, article extraction layer, and entity filter are implemented
+6. **Build article fetch/extraction service** — prerequisite for any URL-returning news source to add evidence value
+7. **Add ASX announcement fetching** — for AU-listed ticker parity with SEC API coverage
+8. **Expand Stage 3 reconciliation** — add XBRL vs FMP fundamental cross-checks
+
+**Third phase (differentiation)**
+9. **Add EIA and FERC public data** — free sources for power/grid context; high AI infra thesis relevance
+10. **Implement transcript parsing pipeline** — guidance extraction, tagged commentary, quarter-over-quarter revision tracking
+11. **Tag and flag all synthetic data** — surface contamination to the user and downstream agents
+
+---
+
+### 9.9 Blunt Assessment
+
+Both sourcing reviews were technically accurate in their core findings. Neither was wrong. The delta is that Document A was better for strategic communication while Document B was better for implementation work. Both converged on the same priority: **close the QualitativeDataService-to-engine gap first, then go primary sources.**
+
+My independent assessment adds one further priority that neither document highlighted clearly: **the political risk stage is operating entirely on training data with no external grounding whatsoever.** In a portfolio with significant regulatory exposure (AI export controls, chip sanctions, data centre permitting, utility regulation), this is a material analysis risk, not just a data quality footnote. NewsAPI, even in filtered form, would represent a genuine improvement in Stage 8 quality specifically.
+
+The three new APIs should all be implemented. The order should be: SEC API first, Benzinga second, NewsAPI third with prerequisites built first.
 
 ---
 

@@ -1,0 +1,63 @@
+{
+  "run_id": "run_20260329_160725_b33054ee",
+  "universe": [
+    "NVDA"
+  ],
+  "agent_versions": {
+    "orchestrator": "v8.0-c4dd1ef2",
+    "evidence_librarian": "v8.0-50f6d391",
+    "sector_analyst_compute": "v8.0-8e620a70",
+    "sector_analyst_power_energy": "v8.0-5404f2aa",
+    "sector_analyst_infrastructure": "v8.0-a2dda8f7",
+    "valuation_analyst": "v8.0-7924ea40",
+    "macro_strategist": "v8.0-8c1bbdb8",
+    "political_risk_analyst": "v8.0-38a19428",
+    "red_team_analyst": "v8.0-b70a0812",
+    "associate_reviewer": "v8.0-8e8562da",
+    "portfolio_manager": "v8.0-f5e353fa"
+  },
+  "golden_tests": {
+    "total": 6,
+    "passed": 6,
+    "failed": 0,
+    "details": [
+      {
+        "test_id": "GT-CLAIM-001",
+        "category": "claim_classification",
+        "passed": true,
+        "rule": "status == pass"
+      },
+      {
+        "test_id": "GT-CLAIM-002",
+        "category": "claim_classification",
+        "passed": true,
+        "rule": "status == fail (guidance cannot be primary_fact)"
+      },
+      {
+        "test_id": "GT-CLAIM-003",
+        "category": "claim_classification",
+        "passed": true,
+        "rule": "status == fail (tier 3 insufficient for primary fact)"
+      },
+      {
+        "test_id": "GT-GATE-001",
+        "category": "gating",
+        "passed": true,
+        "rule": "publication_blocked == true"
+      },
+      {
+        "test_id": "GT-GATE-002",
+        "category": "gating",
+        "passed": true,
+        "rule": "publication_allowed == true (with disclosure)"
+      },
+      {
+        "test_id": "GT-RECON-001",
+        "category": "reconciliation",
+        "passed": true,
+        "rule": "status == red (>2% threshold)"
+      }
+    ]
+  },
+  "api_keys_status": "missing: ['FMP_API_KEY', 'FINNHUB_API_KEY', 'ANTHROPIC_API_KEY or OPENAI_API_KEY or GOOGLE_API_KEY (at least one LLM key required)']"
+}

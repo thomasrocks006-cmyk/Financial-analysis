@@ -16,6 +16,9 @@ class APIKeys:
     anthropic_api_key: str = ""
     openai_api_key: str = ""  # optional — only needed if using OpenAI models
     google_api_key: str = ""  # optional — only needed if using Google Gemini models
+    # Session 19 / DSQ-2+3: new primary and finance-event API keys
+    sec_api_key: str = ""      # sec-api.io — Tier 1 primary US filings
+    benzinga_api_key: str = "" # Benzinga — Tier 2 finance-native news + ratings
 
     @classmethod
     def from_env(cls) -> "APIKeys":
@@ -25,6 +28,8 @@ class APIKeys:
             anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
             openai_api_key=os.getenv("OPENAI_API_KEY", ""),
             google_api_key=os.getenv("GOOGLE_API_KEY", ""),
+            sec_api_key=os.getenv("SEC_API_KEY", ""),
+            benzinga_api_key=os.getenv("BENZINGA_API_KEY", ""),
         )
 
     def validate(self) -> list[str]:

@@ -1,8 +1,8 @@
 # Project Tracker — AI Research & Portfolio Platform
 
 > **Last updated:** March 29, 2026  
-> **Test suite:** 941 / 941 passing (+ 6 pre-existing errors in session 7/8)  
-> **Commit:** see below — sessions 16 + 17 complete
+> **Test suite:** 1004 / 1004 passing (+ 18 pre-existing errors — no regressions)  
+> **Commit:** `f021327` — Session 18 complete; Session 19 planned
 
 ---
 
@@ -38,6 +38,8 @@
 | **Session 15 — FastAPI Event-Streaming API** | ✅ **COMPLETE — `7a62757`** |
 | **Session 16 — Premium Next.js Frontend** | ✅ **COMPLETE** |
 | **Session 17 — Traceability & Provenance** | ✅ **COMPLETE** |
+| **Session 18 — PDF Export, Quant Analytics, Saved-Run Delete** | ✅ **COMPLETE — `f021327`** |
+| **Session 19 — Data Sourcing Quality & New API Integration** | 🔲 **PLANNED — next session** |
 
 ---
 
@@ -678,6 +680,80 @@ An independent review of the current Streamlit frontend scored:
 | Phase 5 — Next.js UI | ✅ |
 | Phase 6 — Visual analytics | ✅ |
 | Phase 7 — Traceability | ✅ |
+
+---
+
+## Session 18 — PDF Export, Quant Analytics, Saved-Run Delete
+
+**Date:** March 29, 2026  
+**Commit:** `f5e3558` → `f021327`  
+**Tests:** 1004 passing, 18 pre-existing errors (no regressions introduced)  
+**Source doc:** `SESSION_18_SUMMARY.md`
+
+### Deliverables
+1. **`src/api/services/pdf_service.py`** — NEW: fpdf2-based PDF generator; handles markdown → clean PDF with headings, bullets, disclaimers; unicode normalisation to prevent encoding exceptions
+2. **`src/api/services/run_manager.py`** — Extended: `get_quant(run_id)` method extracting analytics from Stages 6, 9, 12, 14
+3. **`src/api/routes/runs.py`** — 3 new endpoints (now 18 total): `GET /runs/{id}/report/pdf`, `GET /runs/{id}/quant`, `DELETE /saved-runs/{id}`
+4. **`frontend/src/lib/types.ts`** — `QuantData` interface (32 fields)
+5. **`frontend/src/lib/api.ts`** — 3 new client functions: `deleteSavedRun`, `getQuant`, `downloadReportPdf`
+6. **`frontend/src/components/quant/quant-panel.tsx`** — NEW 659-line Quant Analytics panel with 9 sub-sections (VaR, drawdown, ETF overlap, factor exposures, ESG, BHB attribution, rebalancing, IC record, mandate compliance)
+7. **`frontend/src/app/saved-runs/page.tsx`** — Delete confirmation modal with toast feedback
+8. **`frontend/src/app/runs/[runId]/page.tsx`** — 6th tab: Quant Analytics; PDF download button
+
+### Tests
+- `tests/test_session18.py`: 38 tests — PDF service, quant extraction, API endpoint routing, delete cascade, frontend component structure
+
+---
+
+## Session 19 — Data Sourcing Quality & New API Integration
+
+**Date:** Planned — next session  
+**Commit:** TBD  
+**Source doc:** `IMPROVEMENTS.md` Part M  
+**New API keys in `.env`:** `SEC_API_KEY`, `BENZINGA_API_KEY`, `NEWS_API_KEY`
+
+### Context
+Two independent sourcing analyses (cross-compared in `BACKEND_ARCHITECTURE_ASSESSMENT.md` §9) confirmed the platform's biggest quality gap: `QualitativeDataService` is not wired into `ResearchPipelineEngine` (headless path). Every API/CLI/Next.js run receives zero qualitative evidence in Stage 5. This session closes that gap and integrates three new primary-source APIs.
+
+### Planned Deliverables (DSQ-1 through DSQ-16)
+
+| ID | Task | Effort |
+|---|---|---|
+| DSQ-1 | Wire `QualitativeDataService` into `ResearchPipelineEngine` Stage 5 | Low |
+| DSQ-2 | `SECApiService` — sec-api.io wrapper (filings index, section extraction, 8-K events, Form 4, XBRL) | Medium |
+| DSQ-3 | Wire SEC API into Stage 2 data ingestion bundle | Medium |
+| DSQ-4 | Wire SEC API into Stage 5 Evidence Librarian evidence pack | High |
+| DSQ-5 | `BenzingaService` — analyst ratings, earnings catalysts, finance-native news, adverse signals | Medium |
+| DSQ-6 | Wire Benzinga into Stage 2 (analyst ratings + earnings calendar) | Medium |
+| DSQ-7 | Wire Benzinga into Stage 5 (qualitative evidence pack) | Medium |
+| DSQ-8 | Wire Benzinga adverse signals into Stage 10 Red Team | Low |
+| DSQ-9 | `ArticleExtractionService` — URL → clean article body (prerequisite for NewsAPI) | Medium |
+| DSQ-10 | `NewsApiService` with publisher allowlist | Medium |
+| DSQ-11 | Wire NewsAPI into Stage 8 Macro/Political (allowlisted policy/regulatory topics only) | Low |
+| DSQ-12 | Stage 3 XBRL vs FMP fundamental cross-check in reconciliation | Medium |
+| DSQ-13 | Wire `fetch_fmp_ratios` into `ingest_ticker()` (silent gap) | Low |
+| DSQ-14 | Synthetic data contamination tagging in `RiskPacket` + `SelfAuditPacket` | Medium |
+| DSQ-15 | `tests/test_session19.py` — 40+ tests covering all DSQ items | Medium |
+| DSQ-16 | Wire all 3 new API keys into `PipelineConfig` + `configs/pipeline.yaml` allowlist | Low |
+
+### New Files
+- `src/research_pipeline/services/sec_api_service.py`
+- `src/research_pipeline/services/benzinga_service.py`
+- `src/research_pipeline/services/news_api_service.py`
+- `src/research_pipeline/services/article_extraction_service.py`
+- `tests/test_session19.py`
+
+### Acceptance Criteria
+- `QualitativeDataService` called from `run_full_pipeline()` before Stage 5
+- Stage 5 prompt contains `qualitative_data` key with real content in a live run
+- All 3 new API keys resolved from environment in `PipelineConfig`
+- All 4 new service classes instantiable with live keys
+- 40+ new tests added; all passing
+- Synthetic returns flagged in `RiskPacket.returns_data_source`
+
+### Expected Test Count After Session 19
+- Current: **1004 passing**
+- Projected: **~1044 passing** (+40)
 
 ---
 

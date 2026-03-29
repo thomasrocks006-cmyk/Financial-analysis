@@ -68,6 +68,7 @@ Judgment is separated from governance. Portfolio management is separated from ri
 | Market data ingestion (FMP + Finnhub) | Working, serial | 7.5/10 |
 | Consensus reconciliation | Working | 7.0/10 |
 | Data QA & lineage | Working | 6.5/10 |
+| **Data sourcing / evidence quality** | **Partial — FMP+Finnhub aggregators only; qualitative service not wired to headless engine; SEC API, Benzinga, NewsAPI not yet integrated** | **4.5/10** |
 | Evidence librarian / claim ledger | Working, partial enforcement | 6.0/10 |
 | 3× sector analyst agents (Compute / Power / Infrastructure) | Working | 7.0/10 |
 | DCF valuation engine | Working (WACC, FCF projection, sensitivity table) | 7.5/10 |
@@ -125,6 +126,7 @@ These block everything else. No JPAM-equivalent is achievable until these are re
 
 | Division | Core Missings | Priority |
 |---|---|---|
+| **Data Sourcing Quality** | `QualitativeDataService` not wired to `ResearchPipelineEngine`; no SEC API, Benzinga, or NewsAPI; real-time evidence is FMP/Finnhub aggregators only | **Session 19** |
 | **Performance Attribution** | No BHB attribution, no benchmark comparison, no alpha calculation | High |
 | **Quantitative Research** | No factor model, no VaR/CVaR, no benchmark beta | High |
 | **Investment Committee** | No voting mechanism, no committee record | High |

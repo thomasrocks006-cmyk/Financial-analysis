@@ -22,7 +22,7 @@ from research_pipeline.schemas.qualitative import (
     EstimatePeriod,
     InsiderActivitySummary,
     InsiderDirection,
-    InsiderTransaction,
+    InsiderTransactionRecord,
     NewsItem,
     PressRelease,
     QualitativePackage,
@@ -139,8 +139,8 @@ class TestQualitativePackage:
                                            new_grade="Buy")],
             insider_activity=InsiderActivitySummary(
                 ticker="NVDA",
-                transactions=[InsiderTransaction(ticker="NVDA", direction=InsiderDirection.BUY,
-                                                shares=100, price_per_share=500.0, total_value=50000)],
+                transactions=[InsiderTransactionRecord(ticker="NVDA", direction=InsiderDirection.BUY,
+                                                      shares=100, price_per_share=500.0, total_value=50000)],
                 total_bought_usd=50000,
             ),
             analyst_estimates=AnalystEstimates(

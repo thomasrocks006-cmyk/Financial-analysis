@@ -1,6 +1,17 @@
 # ── Research Universe ───────────────────────────────────────────────────
-# AI Infrastructure investment research coverage
-# Organized by sector analyst assignment from v8 spec + skill files.
+# JPAM-Australia platform — multi-asset research coverage.
+# The platform supports any universe: equities (AU/US/global), fixed income,
+# alternatives, REITs, infrastructure, and thematic / sector mandates.
+#
+# This file defines the DEFAULT example universe for the AI Infrastructure
+# thematic portfolio. Switch the universe per run via RunRequest.universe
+# or by loading a different universe YAML at startup.
+#
+# Organised by sector analyst assignment. Add sectors freely — the
+# GenericSectorAnalystAgent handles any industry group not explicitly
+# covered by a named specialist agent.
+#
+# Organised by sector analyst assignment from v8 spec + skill files.
 
 version: v8
 

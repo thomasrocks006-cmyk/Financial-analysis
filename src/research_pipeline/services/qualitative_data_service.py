@@ -43,7 +43,7 @@ from research_pipeline.schemas.qualitative import (
     EstimatePeriod,
     InsiderActivitySummary,
     InsiderDirection,
-    InsiderTransaction,
+    InsiderTransactionRecord,
     NewsItem,
     PressRelease,
     QualitativePackage,
@@ -394,7 +394,7 @@ class QualitativeDataService:
         return actions[:15]
 
     def _parse_insider(self, ticker: str, raw: list) -> InsiderActivitySummary:
-        transactions: list[InsiderTransaction] = []
+        transactions: list[InsiderTransactionRecord] = []
         total_bought = 0.0
         total_sold = 0.0
 
@@ -418,7 +418,7 @@ class QualitativeDataService:
             elif direction == InsiderDirection.SELL:
                 total_sold += value
 
-            transactions.append(InsiderTransaction(
+            transactions.append(InsiderTransactionRecord(
                 ticker=ticker,
                 reporter_name=item.get("reportingName", item.get("name", "")),
                 role=item.get("typeOfOwner", item.get("title", "")),

@@ -144,8 +144,13 @@ class AnalystAction(BaseModel):
 
 # ── Source 6: Insider Transactions ───────────────────────────────────────
 
-class InsiderTransaction(BaseModel):
-    """Single insider buy or sell transaction (SEC Form 4)."""
+class InsiderTransactionRecord(BaseModel):
+    """Single insider buy or sell transaction sourced from FMP/Finnhub (SEC Form 4).
+
+    Named ``InsiderTransactionRecord`` to distinguish from the primary-source
+    ``InsiderTransaction`` below, which is populated by ``SECApiService`` directly
+    from EDGAR Form 3/4/5 filings.
+    """
     ticker: str
     reporter_name: str = ""
     role: str = ""              # CEO, CFO, Director, 10% Owner etc.
@@ -161,7 +166,7 @@ class InsiderTransaction(BaseModel):
 class InsiderActivitySummary(BaseModel):
     """Aggregated insider activity summary for a ticker."""
     ticker: str
-    transactions: list[InsiderTransaction] = Field(default_factory=list)
+    transactions: list[InsiderTransactionRecord] = Field(default_factory=list)
     total_bought_usd: float = 0.0
     total_sold_usd: float = 0.0
 
@@ -176,6 +181,77 @@ class InsiderActivitySummary(BaseModel):
         if self.net_usd < 0:
             return InsiderDirection.SELL
         return InsiderDirection.OTHER
+
+
+# ── SEC API primary-source schemas (DSQ-2 / DSQ-4) ───────────────────────
+
+class FilingMetadata(BaseModel):
+    """Metadata for a single SEC EDGAR filing retrieved via SECApiService.
+
+    Covers 10-K, 10-Q, and 8-K filings for US-listed companies.  ASX tickers
+    fall back to ``SECFiling`` (FMP-sourced) since EDGAR does not cover them.
+    """
+    ticker: str
+    form_type: str              # "10-K", "10-Q", "8-K"
+    accession_number: str       # EDGAR accession number — unique filing key
+    filed_at: datetime
+    period_of_report: str = ""
+    is_material_event: bool = False
+    source_tier: int = QualSourceTier.SEC_FILING.value
+
+
+class MaterialEvent(BaseModel):
+    """A material 8-K event extracted from EDGAR via SECApiService.
+
+    Used in Stage 2 (data ingestion) and Stage 10 (red team inputs).
+    ``is_adverse`` is set True for restatements, going-concern disclosures,
+    class-action notices, and other adverse corporate events.
+    """
+    ticker: str
+    accession_number: str
+    event_type: str             # "earnings", "guidance_change", "restatement", "m_and_a", etc.
+    filed_at: datetime
+    summary: str = ""
+    full_text_url: str = ""
+    is_adverse: bool = False
+    source_tier: int = QualSourceTier.SEC_FILING.value
+
+
+class InsiderTransaction(BaseModel):
+    """Primary-source insider transaction from EDGAR Form 3 / 4 / 5.
+
+    Retrieved via ``SECApiService`` — higher fidelity than the FMP-aggregated
+    ``InsiderTransactionRecord``.  ``is_cluster_signal`` is True when multiple
+    insiders transacted in the same direction within the same rolling 30-day
+    window.
+    """
+    ticker: str
+    insider_name: str = ""
+    title: str = ""             # CEO, CFO, Director, 10% Owner, etc.
+    transaction_type: str = ""  # "buy", "sell", "gift", etc.
+    shares: int = 0
+    price_per_share: float = 0.0
+    transaction_date: Optional[datetime] = None
+    form_type: str = "Form 4"   # "Form 3", "Form 4", "Form 5"
+    is_cluster_signal: bool = False
+    source_tier: int = QualSourceTier.SEC_FILING.value
+
+
+class FilingSection(BaseModel):
+    """A single extracted section from a 10-K or 10-Q retrieved via SECApiService.
+
+    Sections are chunked to <4 000 tokens each for safe prompt injection.
+    ``section_code`` follows SEC item numbering: "1A" (Risk Factors),
+    "7" (MD&A), "7A" (Quantitative Disclosures About Market Risk).
+    """
+    ticker: str
+    form_type: str
+    accession_number: str
+    section_code: str           # "1A", "7", "7A"
+    section_title: str = ""
+    content_chunks: list[str] = Field(default_factory=list)  # each <4 000 tokens
+    total_tokens: int = 0
+    source_tier: str = "TIER_1_PRIMARY"  # Always Tier 1 for SEC primary filings
 
 
 # ── Source 7: Analyst Estimates ──────────────────────────────────────────

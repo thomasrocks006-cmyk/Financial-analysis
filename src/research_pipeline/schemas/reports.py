@@ -84,6 +84,9 @@ class RiskPacket(BaseModel):
     volatility_contributions: dict[str, float] = {}
     scenario_results: list[ScenarioResult] = []
     drawdown_risk_summary: str = ""
+    # QW-1 — formal disclosure obligation flag (gate_9 warns but previously did
+    # not track whether a concentration breach requires client disclosure)
+    concentration_breach_disclosure: bool = False
     # Action 6 — VaR / drawdown from VaREngine embedded at build time
     var_analysis: Optional[dict[str, Any]] = None     # VaRResult.model_dump()
     drawdown_analysis: Optional[dict[str, Any]] = None  # DrawdownAnalysis.model_dump()

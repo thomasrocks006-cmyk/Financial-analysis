@@ -1,0 +1,45 @@
+{
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/.venv/**": true,
+    "**/venv/**": true,
+    "**/env/**": true,
+    "**/frontend/node_modules/**": true,
+    "**/frontend/.next/**": true,
+    "**/__pycache__/**": true,
+    "**/*.pyc": true,
+    "**/storage/**": true,
+    "**/dist/**": true,
+    "**/build/**": true,
+    "**/*.egg-info/**": true,
+    "**/.pytest_cache/**": true
+  },
+  "files.exclude": {
+    "**/.git": true,
+    "**/__pycache__": true,
+    "**/*.pyc": true,
+    "**/*.egg-info": true,
+    "**/.pytest_cache": true,
+    "**/.venv": true,
+    "**/frontend/node_modules": true,
+    "**/frontend/.next": true
+  },
+  "search.exclude": {
+    "**/.venv/**": true,
+    "**/frontend/node_modules/**": true,
+    "**/frontend/.next/**": true,
+    "**/storage/**": true,
+    "**/__pycache__/**": true,
+    "**/*.egg-info/**": true
+  },
+  "python.analysis.exclude": [
+    ".venv/**",
+    "frontend/node_modules/**"
+  ],
+  "git.autoRepositoryDetection": false,
+  "git.decorations.enabled": true,
+  "git.statusDecorations.enabled": true,
+  "extensions.autoCheckUpdates": false,
+  "extensions.autoUpdate": false
+}
