@@ -24,7 +24,7 @@
 | **Session 11 (revised)** | ✅ **COMPLETE — `2b6a360`** |
 | **Session 12 — Macro Economy & Australia/US Markets** | ✅ **COMPLETE — `12c7086`** |
 | **Session 13 — Depth & Quality** | ✅ **COMPLETE — `34d7949`** |
-| **Session 14 — Superannuation & AU Client Context** | 🔲 **PLANNED** |
+| **Session 14 — Superannuation & AU Client Context** | ✅ **COMPLETE — `29272dd`** |
 | **PROJECT_ISSUES_ASSESSMENT.md (PR #2)** | ✅ **MERGED — March 28, 2026** |
 | **Residual issues (ISS-1, ISS-3, ISS-4, ISS-9, ISS-10, ISS-20)** | ✅ **COMPLETE — `2b6a360`** |
 | **PR #1 Core system improvements** | ⛔ **Do not merge as-is** |
@@ -430,15 +430,15 @@ This fills the current **2/10 macro economy gap** (see ARCHITECTURE.md §13.2).
 
 **Goal:** Model the JP Morgan Australia client base — superannuation funds, SMSF, retail AU investors.
 
-| Step | Task | Division | Effort |
-|---|---|---|---|
-| 1 | `SuperannuationMandateService` — AU super fund mandate types (growth, balanced, conservative, lifecycle) | Portfolio Management | Medium |
-| 2 | `AustralianTaxService` — CGT discount, franking credits, div withholding for foreign equities | Client Solutions | Medium |
-| 3 | `ClientProfileSchema` — client type (super fund / SMSF / HNW / institutional), AU residency flag, AUS/US allocation target | Client Solutions | Low |
-| 4 | Mandate checking (Stage 3) extended — AU super mandates checked against universe + weights | Investment Governance | Medium |
-| 5 | Report assembly — AU-format disclosures, FSG reference, ASIC compliance notices | Client Solutions | Medium |
-| 6 | `tests/test_session14.py` — ~30 tests | Operations | Medium |
-| 7 | Full suite + commit | Operations | Low |
+| Step | Task | Division | Effort | Status |
+|---|---|---|---|---|
+| 1 | `SuperannuationMandateService` — AU super fund mandate types (growth, balanced, conservative, lifecycle) | Portfolio Management | Medium | ✅ `29272dd` |
+| 2 | `AustralianTaxService` — CGT discount, franking credits, div withholding for foreign equities | Client Solutions | Medium | ✅ `29272dd` |
+| 3 | `ClientProfileSchema` — client type (super fund / SMSF / HNW / institutional), AU residency flag, AUS/US allocation target | Client Solutions | Low | ✅ `29272dd` |
+| 4 | Mandate checking (Stage 12) extended — APRA SPS 530 single-name, intl cap, AU minimum checks | Investment Governance | Medium | ✅ `29272dd` |
+| 5 | Report assembly — AU-format disclosures, FSG reference, ASIC compliance notices, `build_au_disclosures()` | Client Solutions | Medium | ✅ `29272dd` |
+| 6 | `tests/test_session14.py` — 60 tests | Operations | Medium | ✅ `29272dd` |
+| 7 | Full suite + commit | Operations | Low | ✅ `29272dd` — 857 passing |
 
 ---
 
