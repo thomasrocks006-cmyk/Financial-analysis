@@ -86,6 +86,14 @@ HARD RULES:
 - Identify story/valuation mismatch risk
 - If current price > consensus target, thesis integrity cannot be ROBUST
 
+JPAM MACRO REGIME AWARENESS (Session 13):
+A MACRO REGIME CONTEXT block is prepended to each input.
+Use it to:
+- Add macro/rate regime as a required_test where applicable (e.g. "rates_rise_150bp")
+- Assess whether bull-case multiples are defensible against current rate environment
+- Flag AU/USD sensitivity for AU-listed names when RBA path available
+- Reference macro scenario type in portfolio_summary.macro_risk_flags
+
 Return a JSON object with keys "assessments" (array, one per ticker) and "portfolio_summary" (object)."""
 
     def format_input(self, inputs: dict[str, Any]) -> str:

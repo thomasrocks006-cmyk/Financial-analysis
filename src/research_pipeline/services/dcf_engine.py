@@ -312,3 +312,119 @@ class DCFEngine:
             composite_upside_pct=composite_upside,
             methodology_note=" | ".join(notes) if notes else "No methods applied",
         )
+
+    # ── Session 13: Macro-adjusted WACC + full valuation pack ─────────────────
+
+    def macro_adjusted_wacc(
+        self,
+        base_wacc: float,
+        economy_analysis: dict | None = None,
+        macro_scenario: dict | None = None,
+    ) -> float:
+        """Adjust base WACC for the current macro rate regime.
+
+        Uses RBA/Fed thesis and macro scenario type from Session 12 outputs.
+        Adjustments are symmetric ±50bp per direction with a hard floor of 5%.
+
+        Args:
+            base_wacc: Starting WACC (e.g. 0.10 for 10%).
+            economy_analysis: Output dict from EconomyAnalystAgent.
+            macro_scenario: Output dict from MacroScenarioService.
+
+        Returns:
+            Adjusted WACC as a float (e.g. 0.105).
+        """
+        adjustment = 0.0
+
+        # Apply scenario-based adjustment
+        if macro_scenario:
+            scenario_type = str(
+                macro_scenario.get("composite_type", macro_scenario.get("scenario_type", ""))
+            ).lower()
+            if "bear" in scenario_type:
+                adjustment += 0.005   # +50bp for rising-rate / risk-off regime
+            elif "bull" in scenario_type:
+                adjustment -= 0.005   # -50bp for falling-rate / risk-on regime
+
+        # Apply Fed/RBA thesis adjustment if present
+        if economy_analysis:
+            fed = str(economy_analysis.get("fed_funds_thesis", "")).lower()
+            rba = str(economy_analysis.get("rba_cash_rate_thesis", "")).lower()
+            if any(kw in fed for kw in ("hik", "hawkish", "tighten", "rising")):
+                adjustment += 0.005
+            elif any(kw in fed for kw in ("cut", "easing", "dovish", "falling")):
+                adjustment -= 0.005
+            if any(kw in rba for kw in ("hik", "hawkish", "tighten", "rising")):
+                adjustment += 0.0025  # smaller RBA influence on US-listed names
+            elif any(kw in rba for kw in ("cut", "easing", "dovish", "falling")):
+                adjustment -= 0.0025
+
+        adjusted = round(base_wacc + adjustment, 4)
+        return max(adjusted, 0.05)   # floor at 5%
+
+    def build_full_valuation_pack(
+        self,
+        assumptions: "DCFAssumptions",
+        net_debt: float = 0.0,
+        current_price: float = 0.0,
+        ebitda: Optional[float] = None,
+        eps: Optional[float] = None,
+        peer_ev_ebitda_multiple: Optional[float] = None,
+        peer_pe_multiple: Optional[float] = None,
+        economy_analysis: dict | None = None,
+        macro_scenario: dict | None = None,
+    ) -> dict:
+        """Session 13: one-call full valuation pack with sensitivity + cross-validation.
+
+        Computes:
+        1. DCF with macro-adjusted WACC
+        2. WACC × terminal_growth sensitivity table
+        3. Relative valuation (EV/EBITDA + P/E cross-validation)
+
+        Returns a serialisable dict suitable for injection into agent prompts.
+        """
+        # Macro-adjust WACC before all calculations
+        adj_wacc = self.macro_adjusted_wacc(
+            assumptions.wacc, economy_analysis, macro_scenario
+        )
+        assumptions.wacc = adj_wacc
+
+        dcf_result = self.compute_dcf(assumptions, net_debt)
+        sensitivity = self.sensitivity_table(assumptions, net_debt)
+        rel_val = self.relative_valuation(
+            ticker=assumptions.ticker,
+            current_price=current_price,
+            ebitda=ebitda,
+            net_debt=net_debt,
+            shares_outstanding=assumptions.shares_outstanding,
+            peer_ev_ebitda_multiple=peer_ev_ebitda_multiple,
+            eps=eps,
+            peer_pe_multiple=peer_pe_multiple,
+        )
+
+        return {
+            "ticker": assumptions.ticker,
+            "macro_adjusted_wacc": adj_wacc,
+            "dcf": {
+                "implied_share_price": dcf_result.implied_share_price,
+                "enterprise_value": dcf_result.enterprise_value,
+                "terminal_value": dcf_result.terminal_value,
+                "fcf_projections": dcf_result.fcf_projections,
+            },
+            "sensitivity": {
+                "row_label": sensitivity.row_label,
+                "col_label": sensitivity.col_label,
+                "row_values": sensitivity.row_values,
+                "col_values": sensitivity.col_values,
+                "grid": sensitivity.grid,
+            },
+            "relative_valuation": {
+                "ev_ebitda_implied": rel_val.ev_ebitda_implied_price,
+                "ev_ebitda_upside_pct": rel_val.ev_ebitda_upside_pct,
+                "pe_implied": rel_val.pe_implied_price,
+                "pe_upside_pct": rel_val.pe_upside_pct,
+                "composite_implied": rel_val.composite_implied_price,
+                "composite_upside_pct": rel_val.composite_upside_pct,
+                "methodology_note": rel_val.methodology_note,
+            },
+        }

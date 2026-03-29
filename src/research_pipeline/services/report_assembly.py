@@ -106,8 +106,15 @@ class ReportAssemblyService:
         stock_cards: list[StockCard],
         self_audit_text: str = "",
         claim_register_text: str = "",
+        narrative_sections: dict[str, str] | None = None,  # Session 13: LLM-generated prose
     ) -> FinalReport:
-        """Assemble the final report. Only runs if review passed."""
+        """Assemble the final report. Only runs if review passed.
+
+        Session 13: When ``narrative_sections`` is provided (from
+        ReportNarrativeAgent), its values override the static ``sections``
+        entries, producing institutionally-worded prose rather than
+        hardcoded template strings.
+        """
         if not review_result.is_publishable:
             logger.error("Cannot assemble report: review status is %s", review_result.status)
             return FinalReport(
@@ -120,12 +127,19 @@ class ReportAssemblyService:
                 )],
             )
 
+        # Merge: start with static sections, overlay LLM narrative where available
+        merged_sections = dict(sections)
+        if narrative_sections:
+            for key, text in narrative_sections.items():
+                if text and not text.startswith("["):  # skip placeholder strings
+                    merged_sections[key] = text
+
         report_sections = []
         for name in [
             "executive_summary", "methodology", "valuation_appendix",
             "risk_appendix", "self_audit_appendix", "claim_register_appendix",
         ]:
-            content = sections.get(name, "")
+            content = merged_sections.get(name, "")
             if name == "self_audit_appendix" and not content:
                 content = self_audit_text
             if name == "claim_register_appendix" and not content:

@@ -103,6 +103,11 @@ from research_pipeline.schemas.macro_economy import (
 # Session 12 (ISS-13): ASX sector analyst
 from research_pipeline.agents.sector_analyst_asx import SectorAnalystASX, is_asx_ticker
 
+# Session 13: Depth & Quality — new services and agents
+from research_pipeline.agents.report_narrative_agent import ReportNarrativeAgent
+from research_pipeline.services.sector_data_service import SectorDataService
+from research_pipeline.services.factor_engine import FREDFactorFetcher
+
 logger = logging.getLogger(__name__)
 
 
@@ -192,8 +197,14 @@ class PipelineEngine:
             fred_api_key=config.market_config.fred_api_key
         )
         self.macro_scenario_svc = MacroScenarioService()
-
-        # Run state
+        # Session 13: Sector data service, narrative agent, FRED factor fetcher
+        self.sector_data_svc = SectorDataService(
+            fmp_api_key=settings.api_keys.fmp_api_key if hasattr(settings, "api_keys") and settings.api_keys else None
+        )
+        self.fred_factor_fetcher = FREDFactorFetcher(
+            fred_api_key=config.market_config.fred_api_key
+        )
+        self.report_narrative_agent = ReportNarrativeAgent(**agent_kwargs)
         self.run_record: Optional[RunRecord] = None
         self.gate_results: dict[int, GateResult] = {}
         self.stage_outputs: dict[int, Any] = {}
@@ -780,13 +791,28 @@ class PipelineEngine:
         expected_count = 0
         mkt_data = self.stage_outputs.get(2, [])
         macro_ctx = self._get_macro_context()  # may be empty if stage 8 hasn't run yet
+
+        # Session 13: Fetch live sector financials (revenue, earnings, GICS)
+        sector_data_map: dict[str, dict] = {}
+        try:
+            sd_results = self.sector_data_svc.get_sector_data(universe)
+            sector_data_map = {r.ticker: r.model_dump() for r in sd_results}
+            logger.debug("SectorDataService: fetched %d tickers (%s)", len(sd_results),
+                         "live" if any(r.is_live for r in sd_results) else "synthetic")
+        except Exception as _sd_exc:
+            logger.debug("SectorDataService failed (non-blocking): %s", _sd_exc)
+
         for agent, tickers in [
             (self.compute_analyst, compute_tickers),
             (self.power_analyst, power_tickers),
             (self.infra_analyst, infra_tickers),
         ]:
             if tickers:  # skip agents with no relevant tickers in this universe
-                agent_calls.append(agent.run(self.run_record.run_id, {"tickers": tickers, "market_data": mkt_data}))
+                agent_calls.append(agent.run(self.run_record.run_id, {
+                    "tickers": tickers,
+                    "market_data": mkt_data,
+                    "sector_financials": {t: sector_data_map[t] for t in tickers if t in sector_data_map},
+                }))
                 expected_count += 1
             else:
                 logger.info("Skipping %s — no tickers in universe", agent.name)
@@ -866,6 +892,16 @@ class PipelineEngine:
         logger.info("═══ STAGE 7: Valuation & Modelling ═══")
         # ARC-4: Stage 8 now runs before Stage 7, so macro context is available here
         macro_ctx = self._get_macro_context()
+        # Session 13: Pass economy_analysis + sector data to give valuation agent DCF context
+        stage_8_data = self.stage_outputs.get(8, {})
+        economy_ctx_v7 = stage_8_data.get("economy_analysis", {})
+        macro_scenario_v7 = stage_8_data.get("macro_scenario", {})
+        sector_data_v7: dict = {}
+        try:
+            sd_v7 = self.sector_data_svc.get_sector_data(universe)
+            sector_data_v7 = {r.ticker: r.model_dump() for r in sd_v7}
+        except Exception:
+            pass
         result = await self.valuation_agent.run(
             self.run_record.run_id,
             {
@@ -873,6 +909,9 @@ class PipelineEngine:
                 "sector_outputs": self._get_sector_outputs(),
                 "market_data": self.stage_outputs.get(2, []),
                 "macro_context": macro_ctx.model_dump(mode="json"),
+                "economy_analysis": economy_ctx_v7,    # Session 13: macro-adjusted WACC context
+                "macro_scenario": macro_scenario_v7,   # Session 13: scenario type for WACC adj
+                "sector_financials": sector_data_v7,   # Session 13: revenue/earnings context
             },
         )
         self._save_stage_output(7, result.model_dump())
@@ -1441,15 +1480,39 @@ class PipelineEngine:
             except Exception as _exc:
                 logger.warning("StockCard build failed for %s (non-blocking): %s", ticker, _exc)
 
+        report_sections_input = {
+            "executive_summary": "AI Infrastructure Investment Research — Executive Summary",
+            "methodology": "Public-source institutional-style research methodology.",
+        }
+
+        # Session 13: Generate LLM narrative prose per section (non-blocking)
+        narrative_sections: dict[str, str] | None = None
+        try:
+            narrative_inputs: dict = {
+                "run_id": self.run_record.run_id,
+                "tickers": universe_for_report,
+                "publication_status": review_result.status.value,
+                "economy_analysis": self.stage_outputs.get(8, {}).get("economy_analysis"),
+                "macro_scenario": self.stage_outputs.get(8, {}).get("macro_scenario"),
+                "regime_classification": self.stage_outputs.get(8, {}).get("regime_classification", ""),
+                "portfolios": (self.stage_outputs.get(12, {}).get("parsed_output") or {}).get("portfolios", []),
+                "valuations": (valuation_parsed.get("valuations") if isinstance(valuation_parsed, dict) else None),
+            }
+            narrative_sections = await self.report_narrative_agent.generate_narrative(
+                run_id=self.run_record.run_id,
+                pipeline_outputs=narrative_inputs,
+            )
+            logger.info("ReportNarrativeAgent: narrative generated for %d sections", len(narrative_sections))
+        except Exception as _narr_exc:
+            logger.warning("ReportNarrativeAgent failed (non-blocking): %s", _narr_exc)
+
         report = self.report_assembly.assemble_report(
             run_id=self.run_record.run_id,
             review_result=review_result,
-            sections={
-                "executive_summary": "AI Infrastructure Investment Research — Executive Summary",
-                "methodology": "Public-source institutional-style research methodology.",
-            },
+            sections=report_sections_input,
             stock_cards=stock_cards,
             self_audit_text=json.dumps(audit.model_dump(), indent=2, default=str),
+            narrative_sections=narrative_sections,  # Session 13
         )
 
         # Save report

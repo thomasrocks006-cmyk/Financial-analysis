@@ -110,6 +110,14 @@ HARD RULES:
 - Do NOT recommend specific price targets — that is the Valuation Analyst's role
 - Concentrate on factor, risk, and construction signals only
 
+JPAM MACRO REGIME AWARENESS (Session 13):
+A MACRO REGIME CONTEXT block is prepended to each input.
+Use it to:
+- Adjust factor tilt recommendations based on macro regime (e.g. value > growth in rate-rising regime)
+- Reference RBA/Fed stance when computing cost_of_capital or discount rate commentary
+- Include macro regime label in quant_commentary
+- Flag when factor exposures misalign with current macro regime
+
 Return a single JSON object (not an array)."""
 
     def format_input(self, inputs: dict[str, Any]) -> str:

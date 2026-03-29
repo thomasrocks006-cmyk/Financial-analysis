@@ -143,7 +143,7 @@ Stage 8 completed immediately before Stage 9 with real macro output — it is si
 
 ---
 
-## Part B — Macro Economy Module (Session 12)
+## Part B — Macro Economy Module (Session 12) ✅ COMPLETE — `12c7086`
 
 The platform currently scores **2 / 10 on macro economy coverage**. The `MacroStrategistAgent` only classifies the AI infrastructure investment regime — it has zero awareness of:
 

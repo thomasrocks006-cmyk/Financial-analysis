@@ -89,11 +89,58 @@ HARD RULES:
 - No single-point fair values — always provide ranges
 - methodology_tag is MANDATORY — every output must have it set (not null/empty)
 
+JPAM MACRO REGIME AWARENESS (Session 13):
+You will receive a MACRO REGIME CONTEXT block at the top of each input.
+Adjust ALL valuation assumptions based on this context:
+- RBA/Fed rate trajectory directly affects WACC and discount rates
+- Inflation regime governs margin assumption credibility (COGS pressure)
+- AU/US divergence affects relative multiple compression/expansion
+- Reference the macro regime in section_2_historical_context and in each scenario's key_assumption
+- If rate environment is "bear" (rising rates), tighten WACC by +50–100bp vs base
+- If rate environment is "bull" (falling rates), loosen WACC by 50bp vs base
+- State DCF sensitivity table ranges explicitly if provided in inputs
+
 Return a JSON array of valuation outputs."""
 
-    def format_input(self, inputs: dict[str, Any]) -> str:
+    def format_input(self, inputs: dict[str, Any]) -> str:  # Session 13: DCF sensitivity + macro header
         import json
-        return json.dumps(inputs, indent=2, default=str)
+        from research_pipeline.services.dcf_engine import DCFEngine, DCFAssumptions
+
+        macro_header = self._build_macro_header(inputs)
+        parts: list[str] = []
+        if macro_header:
+            parts.append(macro_header)
+
+        # Inject pre-computed DCF sensitivity table when assumptions are provided
+        dcf_raw = inputs.get("dcf_assumptions")
+        if dcf_raw and isinstance(dcf_raw, dict):
+            try:
+                engine = DCFEngine()
+                assumptions = DCFAssumptions(
+                    ticker=dcf_raw.get("ticker", "?"),
+                    revenue_base=float(dcf_raw.get("revenue_base", 1000)),
+                    revenue_growth_rates=[float(dcf_raw.get("revenue_growth", 0.12))] * 5,
+                    ebitda_margin_path=[float(dcf_raw.get("ebitda_margin", 0.30))] * 5,
+                    capex_pct_revenue=float(dcf_raw.get("capex_pct", 0.08)),
+                    tax_rate=float(dcf_raw.get("tax_rate", 0.21)),
+                    wacc=float(dcf_raw.get("wacc", 0.10)),
+                    terminal_growth=float(dcf_raw.get("terminal_growth", 0.03)),
+                    shares_outstanding=float(dcf_raw.get("shares_outstanding", 1.0)),
+                )
+                net_debt = float(dcf_raw.get("net_debt", 0.0))
+                st = engine.sensitivity_table(assumptions, net_debt)
+                header_row = "WACC \\ TG | " + " | ".join(f"{v:.1%}" for v in st.col_values)
+                table_rows = [header_row]
+                for wacc_val, row in zip(st.row_values, st.grid):
+                    table_rows.append(f"{wacc_val:.1%}     | " + " | ".join(f"${p:.0f}" for p in row))
+                parts.append("=== DCF SENSITIVITY TABLE (WACC × Terminal Growth) ===")
+                parts.append("\n".join(table_rows))
+                parts.append("=== END SENSITIVITY TABLE ===")
+            except Exception:  # non-blocking — never kill valuation agent
+                pass
+
+        parts.append(json.dumps(inputs, indent=2, default=str))
+        return "\n\n".join(parts)
 
     def parse_output(self, raw_response: str) -> dict[str, Any]:
         """Enforce mandatory methodology_tag on every price target."""

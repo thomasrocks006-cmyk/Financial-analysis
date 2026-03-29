@@ -99,6 +99,15 @@ HARD RULES:
    contractors (PWR, ETN) carry very different rate profiles — differentiate them.
 6. Flag if current yield level exceeds the discount rate in provided DCF assumptions.
 
+JPAM MACRO REGIME AWARENESS (Session 13):
+A MACRO REGIME CONTEXT block is prepended to each input message.
+Use it to:
+- Anchor yield_curve_regime to actual RBA/Fed stance (not guessed)
+- Set cost_of_capital_trend based on current policy trajectory
+- Flag AU/US duration divergence in key_risks when central bank paths differ
+- Adjust rate_sensitivity_score upward in rising-rate regimes
+- Reference current cash rate level in methodology_note
+
 Return a single flat JSON object (not an array)."""
 
     def format_input(self, inputs: dict[str, Any]) -> str:

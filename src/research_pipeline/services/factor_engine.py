@@ -187,3 +187,208 @@ class FactorExposureEngine:
             quality_contribution_pct=round(quality_contrib, 4),
             residual_alpha_pct=round(residual_alpha, 4),
         )
+
+
+# ── Session 13: FRED Fama-French factor fetcher ───────────────────────────────
+
+# FRED series IDs for Kenneth French's 5-factor data (daily)
+_FRED_FF5_SERIES: dict[str, str] = {
+    "mkt_rf": "F-F_Research_Data_5_Factors_2x3_daily_MKT-RF",
+    "smb":    "F-F_Research_Data_5_Factors_2x3_daily_SMB",
+    "hml":    "F-F_Research_Data_5_Factors_2x3_daily_HML",
+    "rmw":    "F-F_Research_Data_5_Factors_2x3_daily_RMW",
+    "cma":    "F-F_Research_Data_5_Factors_2x3_daily_CMA",
+    "rf":     "F-F_Research_Data_5_Factors_2x3_daily_RF",
+}
+
+# Synthetic daily factor return distributions (used when FRED is unavailable)
+# Annualised premia → divide by 252 for daily
+_SYNTHETIC_FACTOR_DAILY: dict[str, float] = {
+    "mkt_rf": 0.08 / 252,
+    "smb":    0.02 / 252,
+    "hml":    0.03 / 252,
+    "rmw":    0.025 / 252,
+    "cma":    0.015 / 252,
+    "rf":     0.05 / 252,
+}
+
+
+class FactorRefitResult:
+    """Result from a FRED-based factor model refit.
+
+    Attributes:
+        factor_returns: dict of factor → list[float] (daily, annualised)
+        r_squared: dict of ticker → R² from OLS regression
+        alpha: dict of ticker → alpha (excess return unexplained by factors)
+        is_live: True when FRED data was actually used; False for synthetic
+        obs_count: number of daily observations fetched
+        source: human-readable data source description
+    """
+
+    def __init__(
+        self,
+        factor_returns: dict[str, list[float]],
+        r_squared: dict[str, float] | None = None,
+        alpha: dict[str, float] | None = None,
+        is_live: bool = False,
+        obs_count: int = 0,
+        source: str = "synthetic",
+    ) -> None:
+        self.factor_returns = factor_returns
+        self.r_squared = r_squared or {}
+        self.alpha = alpha or {}
+        self.is_live = is_live
+        self.obs_count = obs_count
+        self.source = source
+
+    def to_dict(self) -> dict:
+        return {
+            "is_live": self.is_live,
+            "obs_count": self.obs_count,
+            "source": self.source,
+            "factor_returns_mean": {k: round(float(np.mean(v)), 6) for k, v in self.factor_returns.items() if v},
+            "r_squared": self.r_squared,
+            "alpha": self.alpha,
+        }
+
+
+class FREDFactorFetcher:
+    """Session 13: fetch Fama-French 5-factor daily data from FRED.
+
+    Falls back to synthetic factor returns when the FRED API is unavailable
+    or when no API key is configured.  The synthetic fallback uses long-run
+    premia from academic literature (Fama & French, 2015).
+
+    Usage:
+        fetcher = FREDFactorFetcher(fred_api_key="...")
+        result = fetcher.fetch(obs=252)  # 1Y of daily data
+        factor_returns = result.factor_returns   # dict[str, list[float]]
+    """
+
+    _CACHE: dict[str, "FactorRefitResult"] = {}
+    _CACHE_TS: float = 0.0
+    _CACHE_TTL: float = 3600.0  # 1 hour
+
+    def __init__(self, fred_api_key: str | None = None) -> None:
+        self.fred_api_key = fred_api_key
+
+    def fetch(self, obs: int = 252) -> "FactorRefitResult":
+        """Fetch factor returns; returns live FRED data or synthetic fallback.
+
+        Args:
+            obs: Number of daily observations to request (default 252 = 1Y).
+
+        Returns:
+            FactorRefitResult with factor_returns dict keyed by factor name.
+        """
+        import time
+        now = time.time()
+        cache_key = f"ff5_{obs}"
+        if cache_key in self._CACHE and (now - self._CACHE_TS) < self._CACHE_TTL:
+            return self._CACHE[cache_key]
+
+        if self.fred_api_key:
+            try:
+                result = self._fetch_fred(obs)
+                self._CACHE[cache_key] = result
+                self._CACHE_TS = now
+                return result
+            except Exception as exc:
+                logger.warning("FREDFactorFetcher: FRED fetch failed (%s) — using synthetic", exc)
+
+        result = self._synthetic(obs)
+        self._CACHE[cache_key] = result
+        self._CACHE_TS = now
+        return result
+
+    def _fetch_fred(self, obs: int) -> "FactorRefitResult":
+        """Attempt to pull factor data from FRED REST API."""
+        import urllib.request
+        import json as _json
+
+        factor_returns: dict[str, list[float]] = {}
+        for factor_name, series_id in _FRED_FF5_SERIES.items():
+            url = (
+                f"https://api.stlouisfed.org/fred/series/observations"
+                f"?series_id={series_id}&api_key={self.fred_api_key}"
+                f"&file_type=json&sort_order=desc&limit={obs}"
+            )
+            with urllib.request.urlopen(url, timeout=10) as resp:
+                data = _json.loads(resp.read())
+            observations = data.get("observations", [])
+            values: list[float] = []
+            for o in observations:
+                v = o.get("value", ".")
+                if v != ".":
+                    try:
+                        values.append(float(v) / 100)  # FRED returns %, convert to decimal
+                    except ValueError:
+                        pass
+            factor_returns[factor_name] = list(reversed(values))
+
+        n = min(len(v) for v in factor_returns.values()) if factor_returns else 0
+        return FactorRefitResult(
+            factor_returns=factor_returns,
+            is_live=True,
+            obs_count=n,
+            source=f"FRED Fama-French 5-Factor (daily), {n} obs",
+        )
+
+    def _synthetic(self, obs: int) -> "FactorRefitResult":
+        """Generate synthetic factor return series using long-run premia."""
+        rng = np.random.default_rng(seed=42)
+        factor_returns: dict[str, list[float]] = {}
+        for name, daily_mean in _SYNTHETIC_FACTOR_DAILY.items():
+            noise = rng.normal(loc=daily_mean, scale=abs(daily_mean) * 2, size=obs)
+            factor_returns[name] = [round(float(v), 6) for v in noise]
+        return FactorRefitResult(
+            factor_returns=factor_returns,
+            is_live=False,
+            obs_count=obs,
+            source="Synthetic — long-run Fama-French premia (FRED unavailable)",
+        )
+
+    def refit_exposures(
+        self,
+        ticker_returns: dict[str, list[float]],
+        factor_result: "FactorRefitResult",
+    ) -> dict[str, dict[str, float]]:
+        """OLS refit of ticker returns against fetched factor series.
+
+        Args:
+            ticker_returns: dict of ticker → list of daily returns (same length as factors).
+            factor_result: output of fetch().
+
+        Returns:
+            dict of ticker → {factor: beta, ..., r_squared, alpha}
+        """
+        results: dict[str, dict[str, float]] = {}
+        factor_names = [n for n in factor_result.factor_returns if n != "rf"]
+        fr = factor_result.factor_returns
+        n = min(len(fr.get(f, [])) for f in factor_names) if factor_names else 0
+
+        for ticker, ret_series in ticker_returns.items():
+            if len(ret_series) < 30 or n < 30:
+                results[ticker] = {"r_squared": 0.0, "alpha": 0.0}
+                continue
+
+            m = min(len(ret_series), n)
+            rf_series = fr.get("rf", [0.0] * m)
+            y = np.array(ret_series[:m]) - np.array(rf_series[:m])
+            X_cols = [np.array(fr[f][:m]) for f in factor_names]
+            X = np.column_stack([np.ones(m)] + X_cols)
+
+            try:
+                betas, _, _, _ = np.linalg.lstsq(X, y, rcond=None)
+                y_hat = X @ betas
+                ss_res = float(np.sum((y - y_hat) ** 2))
+                ss_tot = float(np.sum((y - np.mean(y)) ** 2))
+                r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0
+                row: dict[str, float] = {"r_squared": round(r2, 4), "alpha": round(float(betas[0]), 6)}
+                for i, f in enumerate(factor_names):
+                    row[f] = round(float(betas[i + 1]), 4)
+                results[ticker] = row
+            except np.linalg.LinAlgError:
+                results[ticker] = {"r_squared": 0.0, "alpha": 0.0}
+
+        return results

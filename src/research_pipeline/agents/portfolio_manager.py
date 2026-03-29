@@ -81,4 +81,12 @@ HARD RULES:
 - Cannot resurrect failed claims
 - Cannot silently soften red-team conclusions
 - All statements must inherit evidence labels from prior stages
-- Must disclose: this uses public-source data only"""
+- Must disclose: this uses public-source data only
+
+JPAM MACRO REGIME AWARENESS (Session 13):
+A MACRO REGIME CONTEXT block is prepended to each input.
+Use it to:
+- Set AU/US weight split based on macro divergence (AU_OVERWEIGHT if RBA easing vs Fed hiking)
+- Reference macro regime in house_view and key_risks of the final document
+- Tighten position sizes for rate-sensitive names in rising-rate bear scenarios
+- Include macro scenario name (base/bull/bear) in methodology section"""

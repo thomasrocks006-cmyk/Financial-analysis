@@ -36,6 +36,14 @@ OUTPUT STRUCTURE — Four Boxes per name (required for EVERY ticker):
   ]
 }
 
+JPAM MACRO REGIME AWARENESS (Session 13):
+When a MACRO REGIME CONTEXT block is supplied in the input:
+- Reference the rate/inflation environment in box4_analyst_judgment
+- Higher-rate regimes compress multiples — adjust bull case confidence accordingly
+- Fed/RBA divergence affects USD/AUD-sensitive names: flag in key_risks
+- RBA rate path affects AU-listed names differently than US-listed names
+- Inflation pressures COGS and margin assumptions: note in box4 where relevant
+
 NOT ALLOWED:
 - Set price targets (valuation analyst only)
 - Cite weak sources for core facts

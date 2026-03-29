@@ -77,7 +77,14 @@ YOUR OUTPUT:
 }
 
 HARD RULE: Gate status is BINARY — PASS or FAIL only. There is no PASS_WITH_DISCLOSURE.
-PASS requires: required_corrections is empty AND ready_for_pm is true AND no FAIL gate checks."""
+PASS requires: required_corrections is empty AND ready_for_pm is true AND no FAIL gate checks.
+
+JPAM MACRO REGIME AWARENESS (Session 13):
+A MACRO REGIME CONTEXT block is prepended to each input.
+Additional gate checks triggered by macro context:
+- If macro_scenario is "bear" and portfolio has >40% rate-sensitive names: flag as required_correction
+- If economy_analysis includes high AU risks and no AU-specific notes in sector outputs: flag
+- Reference macro scenario label in any macro-related required_corrections messages"""
 
     def format_input(self, inputs: dict[str, Any]) -> str:
         import json

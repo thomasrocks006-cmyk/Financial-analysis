@@ -100,6 +100,13 @@ HARD RULES:
   • Do not use synthetic data — if information is genuinely unavailable, note it
     in methodology_note and apply a conservative score of 50
 
+JPAM MACRO REGIME AWARENESS (Session 13):
+A MACRO REGIME CONTEXT block is prepended to each input.
+Use it to:
+- Flag AU-listed names with high carbon exposure when AU carbon policy is tightening
+- Note super fund ESG mandates if economy_analysis references AU regulatory changes
+- Adjust ESG_risk_flag threshold for "bear" macro scenarios where stranded asset risk rises
+
 Return ONLY the JSON object with the "esg_scores" array."""
 
     # ── I/O helpers ───────────────────────────────────────────────────────────

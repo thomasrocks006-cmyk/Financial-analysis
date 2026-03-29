@@ -412,8 +412,75 @@ class BaseAgent(ABC):
         )
 
     def format_input(self, inputs: dict[str, Any]) -> str:
-        """Format structured inputs into the user message. Override as needed."""
-        return json.dumps(inputs, indent=2, default=str)
+        """Format structured inputs into the user message. Override as needed.
+
+        Session 13: automatically prepends a macro regime context block when
+        economy_analysis or macro_scenario data is present in inputs.  This
+        ensures all 14 agents are rate/inflation-aware without requiring each
+        subclass to duplicate the injection logic.
+        """
+        macro_header = self._build_macro_header(inputs)
+        body = json.dumps(inputs, indent=2, default=str)
+        if macro_header:
+            return f"{macro_header}\n\n{body}"
+        return body
+
+    @staticmethod
+    def _build_macro_header(inputs: dict[str, Any]) -> str:
+        """Session 13: extract economy_analysis + macro_scenario from inputs.
+
+        Returns a formatted markdown-style block that agents can prepend to
+        their user message so the LLM explicitly sees the macro regime before
+        processing stock-level data.  Returns empty string when no macro data
+        is present.
+        """
+        lines: list[str] = []
+        ea = inputs.get("economy_analysis") or inputs.get("economy_analysis_fi") or inputs.get("economy_analysis_pm")
+        ms = inputs.get("macro_scenario") or inputs.get("macro_scenario_fi") or inputs.get("macro_scenario_pm")
+
+        if ea:
+            lines.append("=== MACRO REGIME CONTEXT ===")
+            if isinstance(ea, dict):
+                rba = ea.get("rba_cash_rate_thesis", "")
+                fed = ea.get("fed_funds_thesis", "")
+                au_cpi = ea.get("au_cpi_assessment", "")
+                us_cpi = ea.get("us_cpi_assessment", "")
+                au_risks = ea.get("key_risks_au", [])
+                us_risks = ea.get("key_risks_us", [])
+                if rba:
+                    lines.append(f"RBA Cash Rate Thesis: {rba}")
+                if fed:
+                    lines.append(f"Fed Funds Thesis: {fed}")
+                if au_cpi:
+                    lines.append(f"AU CPI Assessment: {au_cpi}")
+                if us_cpi:
+                    lines.append(f"US CPI Assessment: {us_cpi}")
+                if au_risks:
+                    lines.append(f"Key AU Risks: {'; '.join(str(r) for r in au_risks[:3])}")
+                if us_risks:
+                    lines.append(f"Key US Risks: {'; '.join(str(r) for r in us_risks[:3])}")
+            else:
+                lines.append(str(ea))
+
+        if ms:
+            if not lines:
+                lines.append("=== MACRO SCENARIO ===")
+            else:
+                lines.append("--- Macro Scenario ---")
+            if isinstance(ms, dict):
+                composite = ms.get("composite_type", ms.get("scenario_type", ""))
+                desc = ms.get("composite_description", ms.get("description", ""))
+                if composite:
+                    lines.append(f"Scenario: {composite}")
+                if desc:
+                    lines.append(f"Description: {desc}")
+            else:
+                lines.append(str(ms))
+            lines.append("=== END MACRO CONTEXT ===")
+        elif lines:
+            lines.append("=== END MACRO CONTEXT ===")
+
+        return "\n".join(lines)
 
     def _validate_output_quality(self, result: dict) -> list[str]:  # ACT-S10-3 / ISS-9
         """Check _REQUIRED_OUTPUT_KEYS against parsed output.
