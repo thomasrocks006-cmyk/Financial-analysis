@@ -115,7 +115,10 @@ from research_pipeline.services.report_assembly import build_au_disclosures
 
 # Session 15: Event stream contract (Phase 2)
 from typing import Awaitable, Callable
-from research_pipeline.schemas.events import PipelineEvent
+from research_pipeline.schemas.events import PipelineEvent, STAGE_LABELS
+
+# Session 17: Traceability & Provenance
+from research_pipeline.services.provenance_service import ProvenanceService
 
 logger = logging.getLogger(__name__)
 
@@ -221,6 +224,9 @@ class PipelineEngine:
         # Session 15: optional event callback — async (event) -> None
         # Set by the FastAPI RunManager before calling run_full_pipeline().
         self._event_callback: Optional[Callable[[PipelineEvent], Awaitable[None]]] = None
+
+        # Session 17: Provenance service — builds per-stage lineage cards
+        self._provenance: Optional[ProvenanceService] = None  # initialised in run_full_pipeline
 
         self.run_record: Optional[RunRecord] = None
         self.gate_results: dict[int, GateResult] = {}
@@ -593,13 +599,30 @@ class PipelineEngine:
         return self._generate_synthetic_returns(tickers, n_days=n_days, seed_offset=seed_offset)
 
     def _save_stage_output(self, stage: int, data: Any) -> None:
-        """Persist stage output to disk."""
+        """Persist stage output to disk and build provenance card."""
         self.stage_outputs[stage] = data
         output_dir = self.settings.storage_dir / "artifacts" / self.run_record.run_id
         output_dir.mkdir(parents=True, exist_ok=True)
         filepath = output_dir / f"stage_{stage:02d}.json"
         filepath.write_text(json.dumps(data, indent=2, default=str))
         logger.info("Stage %d output saved to %s", stage, filepath)
+
+        # Session 17: build provenance card for this stage
+        if self._provenance is not None:
+            try:
+                gate_data = self.gate_results.get(stage)
+                self._provenance.build_stage_card(
+                    stage_num=stage,
+                    stage_label=STAGE_LABELS.get(stage, f"Stage {stage}"),
+                    stage_output=data,
+                    gate_passed=gate_data.passed if gate_data else None,
+                    gate_reason=gate_data.reason if gate_data else "",
+                    gate_blockers=gate_data.blockers if gate_data else [],
+                    duration_ms=self._stage_timings.get(stage, 0.0),
+                    error=None,
+                )
+            except Exception as exc:
+                logger.debug("Provenance card build failed for stage %d: %s", stage, exc)
 
     def _check_gate(self, gate_result: GateResult) -> bool:
         """Record gate result and return whether it passed."""
@@ -1753,6 +1776,15 @@ class PipelineEngine:
         if event_callback is not None:
             self._event_callback = event_callback
         run_start = time.monotonic()
+
+        # Session 17: initialise provenance service
+        _run_id = self.run_record.run_id if self.run_record else "unknown"
+        self._provenance = ProvenanceService(
+            run_id=_run_id,
+            model=self.settings.llm_model,
+            temperature=self.settings.llm_temperature,
+        )
+
         logger.info("╔══════════════════════════════════════════════╗")
         logger.info("║  AI Infrastructure Research Pipeline v8      ║")
         logger.info("║  Starting full pipeline run                  ║")
@@ -1891,6 +1923,29 @@ class PipelineEngine:
         # ── ACT-S6-1 / ACT-S7-3: Build and attach SelfAuditPacket ─────────────
         audit_packet = self._emit_audit_packet(universe)
 
+        # Session 17: Build and persist provenance packet
+        provenance_packet = None
+        if self._provenance is not None:
+            try:
+                report_md = ""
+                s13 = self.stage_outputs.get(13, {})
+                if isinstance(s13, dict) and "report_path" in s13:
+                    rp = Path(s13["report_path"])
+                    if rp.exists():
+                        try:
+                            report_md = rp.read_text(encoding="utf-8")
+                        except Exception:
+                            pass
+                pkt = self._provenance.build_packet(report_md=report_md)
+                self._provenance.save_packet(pkt, self.settings.storage_dir)
+                provenance_packet = pkt.model_dump(mode="json")
+                logger.info(
+                    "Provenance packet built: %d/%d stages, %.1f%% complete",
+                    pkt.stages_with_provenance, pkt.total_stages, pkt.completeness_pct,
+                )
+            except Exception as exc:
+                logger.warning("Provenance packet build failed (non-blocking): %s", exc)
+
         # Session 15 Phase 2: emit pipeline_completed
         _pipeline_total_ms = round((time.monotonic() - run_start) * 1000, 1)
         await self._emit(PipelineEvent.pipeline_completed(self.run_record.run_id, _pipeline_total_ms))
@@ -1901,4 +1956,5 @@ class PipelineEngine:
             "stages_completed": sorted(self.gate_results.keys()),
             "report_path": self.stage_outputs.get(13, {}).get("report_path"),
             "audit_packet": audit_packet.model_dump(mode="json") if audit_packet else None,
+            "provenance_packet": provenance_packet,
         }

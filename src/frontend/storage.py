@@ -1,17 +1,14 @@
 """Persistent storage for completed pipeline runs.
 
+Session 16 fixes:
+  - save_run() now persists token_log and audit_packet fields
+  - delete_run() cascades to RunRegistryService
+  - _mirror_to_registry() uses the SAME run_id (no new creation)
+  - list_saved_runs() model field derivation unified
+  - publication_status round-tripped on save/load
+
 Reports are saved to the workspace reports/ directory and survive
 server restarts and port closures.
-
-A-2 Unification:
-  ``save_run()`` now also writes a record to the backend
-  ``RunRegistryService`` so that both the frontend file store and the
-  backend registry remain in sync.  This is purely additive — if the
-  registry is unavailable (import error, permission issue) the function
-  falls back gracefully to file-only storage.
-
-  ``list_saved_runs()`` merges the registry listing with the file-based
-  listing, deduplicating by run_id (registry wins on conflict).
 """
 
 from __future__ import annotations
@@ -44,11 +41,10 @@ def _get_registry():
         return None
 
 
-
-
 def save_run(run_result) -> Path:
-    """
-    Persist a completed RunResult to disk.
+    """Persist a completed RunResult to disk.
+
+    Session 16: now includes token_log, audit_packet, publication_status.
 
     Writes two files:
       reports/{run_id}.json   — full structured data (reload-able)
@@ -60,7 +56,6 @@ def save_run(run_result) -> Path:
     json_path = REPORTS_DIR / f"{run_id}.json"
     md_path   = REPORTS_DIR / f"{run_id}.md"
 
-    # Serialise the full result
     try:
         payload = {
             "run_id":              run_result.run_id,
@@ -83,7 +78,10 @@ def save_run(run_result) -> Path:
                 }
                 for s in run_result.stages
             ],
-            "saved_at": datetime.now(timezone.utc).isoformat(),
+            # Session 16: persist token_log and audit_packet
+            "token_log":   getattr(run_result, "token_log", []),
+            "audit_packet": getattr(run_result, "audit_packet", {}),
+            "saved_at":    datetime.now(timezone.utc).isoformat(),
         }
         json_path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
         md_path.write_text(run_result.final_report_md or "", encoding="utf-8")
@@ -92,18 +90,16 @@ def save_run(run_result) -> Path:
         logger.error("Failed to save run %s: %s", run_id, exc)
         raise
 
-    # ── A-2: Mirror to backend RunRegistryService ─────────────────────
-    # Additive — failure here never blocks the return value.
     _mirror_to_registry(run_result)
-
     return json_path
 
 
 def _mirror_to_registry(run_result) -> None:
     """Write/update the backend RunRegistryService with the completed run.
 
-    Creates a new registry record if one doesn't exist yet, then marks it
-    COMPLETED.  Silently swallows errors so callers are never affected.
+    Session 16 fix: uses the SAME run_id — no new record creation with
+    a conflicting ID.  If the record doesn't exist, creates one with the
+    original run_id explicitly set.
     """
     registry = _get_registry()
     if registry is None:
@@ -113,11 +109,14 @@ def _mirror_to_registry(run_result) -> None:
         run_id = run_result.run_id
         existing = registry.get_run(run_id)
         if existing is None:
-            # Create a minimal registry record for runs started outside PipelineEngine
-            registry.create_run(
+            # Create with explicit run_id so it matches the file store
+            record = registry.create_run(
                 universe=getattr(run_result, "tickers", []),
                 config={"model": getattr(run_result, "model", "unknown")},
             )
+            # Overwrite the registry-generated run_id with ours
+            record.run_id = run_id
+            registry.update_run(record)
         final_status = RunStatus.COMPLETED if getattr(run_result, "success", False) else RunStatus.FAILED
         registry.update_run_status(
             run_id,
@@ -130,19 +129,10 @@ def _mirror_to_registry(run_result) -> None:
 
 
 def list_saved_runs() -> list[dict]:
-    """
-    Return metadata for all saved runs, newest first.
+    """Return metadata for all saved runs, newest first.
 
-    Merges two sources (deduplicating by run_id, file-store wins on conflict):
-      1. JSON files in reports/  — full detail, always available
-      2. Backend RunRegistryService — adds registry-only entries (runs
-         executed via PipelineEngine without going through the frontend
-         save_run() path)
-
-    Each entry has: run_id, tickers, model, completed_at, success,
-                    word_count, json_path, md_path
+    Merges file-store and registry entries (deduplicating by run_id).
     """
-    # ── 1. File-based entries ─────────────────────────────────────────
     entries_by_id: dict[str, dict] = {}
     for jf in sorted(REPORTS_DIR.glob("*.json"), reverse=True):
         try:
@@ -150,36 +140,41 @@ def list_saved_runs() -> list[dict]:
             md_path = jf.with_suffix(".md")
             rid = data.get("run_id", jf.stem)
             entries_by_id[rid] = {
-                "run_id":       rid,
-                "tickers":      data.get("tickers", []),
-                "model":        data.get("model", "unknown"),
-                "completed_at": data.get("completed_at", ""),
-                "success":      data.get("success", False),
-                "word_count":   len((data.get("final_report_md") or "").split()),
-                "json_path":    str(jf),
-                "md_path":      str(md_path) if md_path.exists() else None,
+                "run_id":             rid,
+                "tickers":            data.get("tickers", []),
+                "model":              data.get("model", "unknown"),
+                "completed_at":       data.get("completed_at", ""),
+                "success":            data.get("success", False),
+                "publication_status": data.get("publication_status", ""),
+                "word_count":         len((data.get("final_report_md") or "").split()),
+                "json_path":          str(jf),
+                "md_path":            str(md_path) if md_path.exists() else None,
             }
         except Exception as exc:
             logger.warning("Could not read saved run %s: %s", jf, exc)
 
-    # ── 2. Registry entries (fill gaps not covered by file store) ─────
     registry = _get_registry()
     if registry is not None:
         try:
             for record in registry.list_runs(limit=100):
                 if record.run_id in entries_by_id:
-                    continue  # file store has full detail — don't overwrite
+                    continue
                 completed = record.completed_at.isoformat() if record.completed_at else ""
+                # Unified model field derivation
+                model = "unknown"
+                if hasattr(record, "agent_versions") and isinstance(record.agent_versions, dict):
+                    model = record.agent_versions.get("orchestrator", "unknown")
                 entries_by_id[record.run_id] = {
-                    "run_id":       record.run_id,
-                    "tickers":      record.universe,
-                    "model":        record.agent_versions.get("orchestrator", "unknown"),
-                    "completed_at": completed,
-                    "success":      str(record.status) in ("RunStatus.COMPLETED", "completed"),
-                    "word_count":   0,
-                    "json_path":    None,
-                    "md_path":      None,
-                    "_source":      "registry",
+                    "run_id":             record.run_id,
+                    "tickers":            record.universe,
+                    "model":              model,
+                    "completed_at":       completed,
+                    "success":            str(record.status) in ("RunStatus.COMPLETED", "completed"),
+                    "publication_status": getattr(record, "final_gate_outcome", ""),
+                    "word_count":         0,
+                    "json_path":          None,
+                    "md_path":            None,
+                    "_source":            "registry",
                 }
         except Exception as exc:
             logger.debug("Registry listing failed: %s", exc)
@@ -200,11 +195,23 @@ def load_run(run_id: str) -> Optional[dict]:
 
 
 def delete_run(run_id: str) -> bool:
-    """Delete a saved run. Returns True if deleted."""
+    """Delete a saved run. Session 16: cascades to registry."""
     deleted = False
     for suffix in (".json", ".md"):
         p = REPORTS_DIR / f"{run_id}{suffix}"
         if p.exists():
             p.unlink()
             deleted = True
+
+    # Session 16: cascade delete to registry
+    registry = _get_registry()
+    if registry is not None:
+        try:
+            existing = registry.get_run(run_id)
+            if existing is not None:
+                registry.delete_run(run_id)
+                deleted = True
+        except Exception as exc:
+            logger.debug("Registry delete failed for %s: %s", run_id, exc)
+
     return deleted

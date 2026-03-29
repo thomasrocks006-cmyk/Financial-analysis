@@ -150,6 +150,107 @@ class RunManager:
         run = self._runs.get(run_id)
         return run.result if run else None
 
+    def get_stages(self, run_id: str) -> list[dict[str, Any]]:
+        """Return per-stage summaries with timing, output, gate status."""
+        from research_pipeline.schemas.events import STAGE_LABELS
+        run = self._runs.get(run_id)
+        if run is None:
+            return []
+
+        stages: list[dict[str, Any]] = []
+        engine = run.engine if hasattr(run, "engine") else None
+        result = run.result or {}
+        stage_outputs = result.get("stage_outputs", {})
+
+        for stage_num in range(15):
+            label = STAGE_LABELS.get(stage_num, f"Stage {stage_num}")
+
+            # Get output — try both int and string keys
+            output = stage_outputs.get(stage_num, stage_outputs.get(str(stage_num), {}))
+
+            # Gate info
+            gate_passed = None
+            gate_reason = ""
+            gates = result.get("gate_results", {})
+            gate_data = gates.get(stage_num, gates.get(str(stage_num)))
+            if isinstance(gate_data, dict):
+                gate_passed = gate_data.get("passed")
+                gate_reason = gate_data.get("reason", "")
+
+            # Timing
+            timing_ms = 0.0
+            timings = result.get("stage_timings", {})
+            timing_ms = timings.get(f"stage_{stage_num}", timings.get(stage_num, 0.0))
+
+            # Status
+            if isinstance(output, dict) and output:
+                st = "completed" if gate_passed is not False else "failed"
+            elif stage_num in {int(k) if isinstance(k, str) and k.isdigit() else k for k in stage_outputs}:
+                st = "completed"
+            else:
+                st = "pending" if run.status in (ApiRunStatus.QUEUED, ApiRunStatus.RUNNING) else "skipped"
+
+            stages.append({
+                "stage_num": stage_num,
+                "stage_label": label,
+                "status": st,
+                "duration_ms": timing_ms,
+                "gate_passed": gate_passed,
+                "gate_reason": gate_reason,
+                "output": output if isinstance(output, dict) else {"data": output} if output else {},
+                "has_output": bool(output),
+            })
+        return stages
+
+    def get_audit_packet(self, run_id: str) -> dict[str, Any]:
+        """Return the self-audit packet for a completed run."""
+        run = self._runs.get(run_id)
+        if run is None or run.result is None:
+            return {}
+        return run.result.get("audit_packet", run.result.get("self_audit_packet", {}))
+
+    def get_timings(self, run_id: str) -> dict[str, Any]:
+        """Stage timing breakdown for a run."""
+        run = self._runs.get(run_id)
+        if run is None or run.result is None:
+            return {}
+        timings = run.result.get("stage_timings", {})
+        total = run.result.get("total_duration_s", 0)
+        return {"stage_latencies_ms": timings, "total_pipeline_duration_s": total}
+
+    def get_provenance(self, run_id: str) -> dict[str, Any]:
+        """Return the provenance packet for a completed run."""
+        run = self._runs.get(run_id)
+        if run is None or run.result is None:
+            return {}
+        packet = run.result.get("provenance_packet")
+        if packet:
+            return packet
+        # Fallback: try loading from disk
+        prov_path = self.settings.storage_dir / "artifacts" / run_id / "provenance_packet.json"
+        if prov_path.exists():
+            import json as _json
+            try:
+                return _json.loads(prov_path.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        return {}
+
+    def list_artifacts(self, run_id: str) -> list[dict[str, Any]]:
+        """List artifact files for a run from the storage directory."""
+        artifact_dir = self.settings.storage_dir / "artifacts" / run_id
+        if not artifact_dir.exists():
+            return []
+        artifacts = []
+        for f in sorted(artifact_dir.iterdir()):
+            if f.is_file():
+                artifacts.append({
+                    "filename": f.name,
+                    "size_bytes": f.stat().st_size,
+                    "path": str(f),
+                })
+        return artifacts
+
     def cancel_run(self, run_id: str) -> bool:
         """Cancel a queued or running pipeline. Returns True if cancelled."""
         run = self._runs.get(run_id)

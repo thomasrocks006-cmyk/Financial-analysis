@@ -30,7 +30,7 @@ from fastapi.responses import JSONResponse
 
 from research_pipeline.config.loader import load_pipeline_config
 from research_pipeline.config.settings import Settings
-from api.routes.runs import router as runs_router
+from api.routes.runs import router as runs_router, saved_router
 from api.services.run_manager import RunManager
 
 logger = logging.getLogger(__name__)
@@ -106,6 +106,7 @@ def create_app() -> FastAPI:
 
     # ── Routes ───────────────────────────────────────────────────────────
     app.include_router(runs_router, prefix="/api/v1")
+    app.include_router(saved_router, prefix="/api/v1")
 
     # ── Health / root ─────────────────────────────────────────────────────
     @app.get("/", include_in_schema=False)

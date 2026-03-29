@@ -1,42 +1,27 @@
 """PipelineEngineAdapter — thin frontend shim over PipelineEngine.
 
+Session 16 truthfulness overhaul:
+  - ``elapsed_secs`` now populated from ``engine._stage_timings``
+  - ``raw_text`` populated for LLM-producing stages (5-12)
+  - ``token_log`` populates from engine LLM call telemetry
+  - ``audit_packet`` fully extracted from engine SelfAuditPacket
+  - ``report_md`` fallback reads from report_path file when inline absent
+  - ``progress_callback`` fires both "running" and "done" per stage
+  - ``activity_callback`` fires with descriptive messages per stage
+
 This module is the *recommended replacement* for the legacy
 ``frontend.pipeline_runner.PipelineRunner``.  It exposes the same external
 interface (``STAGES``, ``StageResult``, ``RunResult``, ``PipelineRunner``
 alias, ``PipelineEngineAdapter``) so that ``app.py`` can adopt it with a
-one-line import swap:
-
-  # Old:
-  from frontend.pipeline_runner import STAGES, PipelineRunner, RunResult
-
-  # New:
-  from frontend.pipeline_adapter import STAGES, PipelineRunner, RunResult
-
-**What changed:**
-  - Stage logic lives exclusively in ``research_pipeline.pipeline.engine``
-    (PipelineEngine).  No duplicate stage implementations here.
-  - This file is ~120 lines instead of 1851.
-  - All deterministic services, gate logic, and agent calls are delegated
-    to PipelineEngine — a single source of truth.
-
-**What is preserved (backward compatibility):**
-  - ``STAGES`` constant — same list of (num, name) tuples
-  - ``StageResult`` dataclass — same fields
-  - ``RunResult`` dataclass — same fields
-  - ``PipelineRunner`` name re-exported as an alias for PipelineEngineAdapter
-  - ``ProgressCallback`` / ``ActivityCallback`` types
-  - ``run()`` coroutine signature and return type
-
-**Migration note:**
-  ``pipeline_runner.py`` is deliberately NOT deleted; it remains available
-  for direct use.  Once app.py switches to this adapter, pipeline_runner.py
-  can be archived.
+one-line import swap.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -156,6 +141,9 @@ class PipelineEngineAdapter:
         )
         self._config = PipelineConfig()
 
+    # ── LLM stages for raw_text extraction ─────────────────────────────
+    _LLM_STAGES = {5, 6, 7, 8, 9, 10, 11, 12}
+
     # ── Run ──────────────────────────────────────────────────────────────
 
     async def run(
@@ -163,8 +151,18 @@ class PipelineEngineAdapter:
         progress_callback: Optional[ProgressCallback] = None,
         activity_callback: Optional[ActivityCallback] = None,
     ) -> RunResult:
-        """Execute the pipeline and return a ``RunResult`` compatible dict."""
+        """Execute the pipeline and return a truthful ``RunResult``.
+
+        Session 16 overhaul:
+          • elapsed_secs populated from engine._stage_timings
+          • raw_text populated for LLM stages
+          • audit_packet fully extracted from SelfAuditPacket
+          • token_log populated from engine telemetry (per-stage agent names)
+          • progress_callback fires "running" (start) and "done" (end) per stage
+          • report_md fallbacks through report_markdown → report → report_path file
+        """
         started_at = datetime.now(timezone.utc).isoformat()
+        _stage_names = dict(STAGES)
 
         if activity_callback:
             activity_callback("Initialising PipelineEngine …")
@@ -172,13 +170,36 @@ class PipelineEngineAdapter:
         engine = PipelineEngine(settings=self._settings, config=self._config)
 
         # Bridge: translate engine progress to ProgressCallback
-        if progress_callback:
+        # Fires "running" when stage starts, "done" when output is saved
+        _stage_start_times: dict[int, float] = {}
+
+        if progress_callback or activity_callback:
+            _original_timed_stage = engine._timed_stage
+
+            async def _intercepting_timed_stage(stage_num: int, coro):
+                stage_name = _stage_names.get(stage_num, f"Stage {stage_num}")
+                _stage_start_times[stage_num] = time.monotonic()
+                # Fire "running" before stage executes
+                if progress_callback:
+                    progress_callback(stage_num, stage_name, "running", {})
+                if activity_callback:
+                    activity_callback(f"Running {stage_name} …")
+                return await _original_timed_stage(stage_num, coro)
+
+            engine._timed_stage = _intercepting_timed_stage  # type: ignore[method-assign]
+
             _original_save = engine._save_stage_output
 
             def _intercepting_save(stage_num: int, output: Any) -> None:
                 _original_save(stage_num, output)
-                stage_name = dict(STAGES).get(stage_num, f"Stage {stage_num}")
-                progress_callback(stage_num, stage_name, "done", output if isinstance(output, dict) else {})
+                stage_name = _stage_names.get(stage_num, f"Stage {stage_num}")
+                if progress_callback:
+                    progress_callback(
+                        stage_num, stage_name, "done",
+                        output if isinstance(output, dict) else {},
+                    )
+                if activity_callback:
+                    activity_callback(f"Completed {stage_name}")
 
             engine._save_stage_output = _intercepting_save  # type: ignore[method-assign]
 
@@ -189,73 +210,123 @@ class PipelineEngineAdapter:
         succeeded = pipeline_result.get("status") != "failed"
         pub_status = "PASS" if succeeded else "FAIL"
 
-        # Build StageResult list from engine.stage_outputs
+        # ── Build StageResult list with truthful elapsed_secs + raw_text ─
         stage_results: list[StageResult] = []
         for num, name in STAGES:
             output = engine.stage_outputs.get(num, {})
             gate = engine.gate_results.get(num)
+
             if num not in engine.stage_outputs:
                 status = "failed" if not succeeded else "skipped"
             elif gate and not gate.passed:
                 status = "failed"
             else:
                 status = "done"
+
+            # Truthful elapsed_secs from engine._stage_timings (ms → secs)
+            elapsed_secs = round(engine._stage_timings.get(num, 0.0) / 1000, 2)
+
+            # Truthful raw_text for LLM stages
+            raw_text = ""
+            if num in self._LLM_STAGES and isinstance(output, dict):
+                raw_text = (
+                    output.get("raw_text", "")
+                    or output.get("raw_output", "")
+                    or output.get("parsed_output", "")
+                )
+                if isinstance(raw_text, dict):
+                    raw_text = json.dumps(raw_text, indent=2)
+
             stage_results.append(StageResult(
                 stage_num=num,
                 stage_name=name,
                 status=status,
                 output=output if isinstance(output, dict) else {"data": output},
+                raw_text=str(raw_text),
+                elapsed_secs=elapsed_secs,
+                error=gate.reason if gate and not gate.passed else None,
             ))
 
-        # Fix: Load report markdown from report_path if inline markdown absent
+        # ── Report markdown: cascade through possible keys + file path ───
         report_md: str = ""
         report_output = engine.stage_outputs.get(13, {})
         if isinstance(report_output, dict):
-            # Try inline markdown first
-            report_md = report_output.get("report_markdown", report_output.get("report", ""))
-            # If missing, try loading from report_path
+            report_md = (
+                report_output.get("report_markdown", "")
+                or report_output.get("report", "")
+                or report_output.get("content", "")
+            )
             if not report_md and "report_path" in report_output:
-                report_path = Path(report_output["report_path"])
-                if report_path.exists():
+                rp = Path(report_output["report_path"])
+                if rp.exists():
                     try:
-                        report_md = report_path.read_text(encoding="utf-8")
-                        logger.info(f"Loaded report markdown from {report_path}")
+                        report_md = rp.read_text(encoding="utf-8")
+                        logger.info("Loaded report from %s", rp)
                     except Exception as e:
-                        logger.warning(f"Failed to load report from {report_path}: {e}")
+                        logger.warning("Failed to load report from %s: %s", rp, e)
 
         run_id = engine.run_record.run_id if engine.run_record else f"run-{uuid.uuid4().hex[:8]}"
 
-        # Fix: Populate token_log and audit_packet from engine telemetry
-        token_log: list[dict] = []
+        # ── Truthful audit_packet from SelfAuditPacket ────────────────────
         audit_packet_dict: dict[str, Any] = {}
-        stage_timings_dict: dict[str, float] = {}
-        
         if engine.run_record:
-            # Extract audit packet if available
-            if hasattr(engine.run_record, "audit_packet") and engine.run_record.audit_packet:
-                audit_packet = engine.run_record.audit_packet
-                if hasattr(audit_packet, "model_dump"):
-                    audit_packet_dict = audit_packet.model_dump()
-                elif isinstance(audit_packet, dict):
-                    audit_packet_dict = audit_packet
-                
-                # Extract stage timings from audit packet
-                if "stage_latencies_ms" in audit_packet_dict:
-                    stage_timings_dict = audit_packet_dict["stage_latencies_ms"]
-            
-            # Build token_log from stage outputs (approximate until engine emits real events)
-            # This is a placeholder until Phase 2 implements full telemetry
-            for num, name in STAGES:
-                output = engine.stage_outputs.get(num, {})
-                if isinstance(output, dict) and "agent_name" in output:
-                    token_log.append({
-                        "stage": num,
-                        "agent": output.get("agent_name", "unknown"),
-                        "model": self.model,
-                        "tokens_in": 0,  # Placeholder until Phase 2
-                        "tokens_out": 0,
-                        "cost_usd": 0.0,
-                    })
+            # Try self_audit_packet first (populated by _emit_audit_packet)
+            sap = getattr(engine.run_record, "self_audit_packet", None)
+            if sap:
+                audit_packet_dict = sap if isinstance(sap, dict) else {}
+            else:
+                # Try building it ourselves
+                try:
+                    packet = engine._build_self_audit_packet(self.tickers)
+                    audit_packet_dict = packet.model_dump(mode="json")
+                except Exception as e:
+                    logger.debug("Could not build audit packet: %s", e)
+
+        # Inject stage_latencies_ms from engine._stage_timings
+        if engine._stage_timings:
+            audit_packet_dict["stage_latencies_ms"] = {
+                f"stage_{s}": ms for s, ms in engine._stage_timings.items()
+            }
+        if engine._pipeline_start > 0:
+            audit_packet_dict["total_pipeline_duration_s"] = round(
+                time.monotonic() - engine._pipeline_start, 2
+            )
+
+        # ── Token log from engine stage outputs + agent metadata ──────────
+        token_log: list[dict] = []
+        for num, name in STAGES:
+            output = engine.stage_outputs.get(num, {})
+            if not isinstance(output, dict):
+                continue
+            agent_name = output.get("agent_name", "")
+            model_used = output.get("model", self.model)
+            tokens_in = int(output.get("tokens_in", output.get("input_tokens", 0)))
+            tokens_out = int(output.get("tokens_out", output.get("output_tokens", 0)))
+            cost = float(output.get("cost_usd", 0.0))
+
+            # For sector analysis (stage 6), aggregate sub-agent entries
+            if num == 6 and "sector_outputs" in output:
+                for so in output["sector_outputs"]:
+                    if isinstance(so, dict):
+                        token_log.append({
+                            "stage": num,
+                            "agent": so.get("agent_name", f"sector_analyst_{num}"),
+                            "model": so.get("model", model_used),
+                            "tokens_in": int(so.get("tokens_in", so.get("input_tokens", 0))),
+                            "tokens_out": int(so.get("tokens_out", so.get("output_tokens", 0))),
+                            "cost_usd": float(so.get("cost_usd", 0.0)),
+                        })
+                continue
+
+            if agent_name or num in self._LLM_STAGES:
+                token_log.append({
+                    "stage": num,
+                    "agent": agent_name or f"stage_{num}_agent",
+                    "model": model_used,
+                    "tokens_in": tokens_in,
+                    "tokens_out": tokens_out,
+                    "cost_usd": cost,
+                })
 
         return RunResult(
             run_id=run_id,
