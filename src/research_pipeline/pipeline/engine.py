@@ -108,6 +108,11 @@ from research_pipeline.agents.report_narrative_agent import ReportNarrativeAgent
 from research_pipeline.services.sector_data_service import SectorDataService
 from research_pipeline.services.factor_engine import FREDFactorFetcher
 
+# Session 14: Australian Client Context
+from research_pipeline.services.superannuation_mandate import SuperannuationMandateService
+from research_pipeline.services.australian_tax_service import AustralianTaxService
+from research_pipeline.services.report_assembly import build_au_disclosures
+
 logger = logging.getLogger(__name__)
 
 
@@ -205,6 +210,9 @@ class PipelineEngine:
             fred_api_key=config.market_config.fred_api_key
         )
         self.report_narrative_agent = ReportNarrativeAgent(**agent_kwargs)
+        # Session 14: AU client context services
+        self.super_mandate_svc = SuperannuationMandateService()
+        self.tax_svc = AustralianTaxService()
         self.run_record: Optional[RunRecord] = None
         self.gate_results: dict[int, GateResult] = {}
         self.stage_outputs: dict[int, Any] = {}
@@ -1351,6 +1359,32 @@ class PipelineEngine:
         if not mandate_check.is_compliant:
             logger.warning("Mandate violations on baseline: %s", [v.description for v in mandate_check.violations])
 
+        # Session 14: APRA SPS 530 super mandate check (non-blocking, parallel to existing mandate)
+        super_mandate_result: dict | None = None
+        try:
+            client_profile = getattr(self.config, "client_profile", None)
+            if client_profile is not None and getattr(client_profile, "is_super", False):
+                fund_type = getattr(client_profile, "super_fund_type", None) or "balanced"
+                asx_tickers = [t for t in universe if t.endswith(".AX") or t.endswith(".ASX")]
+                super_check = self.super_mandate_svc.check_compliance(
+                    run_id=self.run_record.run_id,
+                    mandate_type=fund_type,
+                    weights=baseline_weights,
+                    asx_tickers=asx_tickers,
+                )
+                super_mandate_result = super_check.model_dump()
+                if not super_check.is_compliant:
+                    logger.warning(
+                        "APRA SPS 530 super mandate violations: %s",
+                        [v.description for v in super_check.violations],
+                    )
+                else:
+                    logger.info(
+                        "APRA SPS 530 super mandate: COMPLIANT (type=%s)", fund_type
+                    )
+        except Exception as _super_exc:
+            logger.warning("Super mandate check failed (non-blocking): %s", _super_exc)
+
         # ARC-8: Wire macro context into PM agent so it can factor regime into allocations
         # Session 12: Also pass economy analysis (AU/US macro) for regime-aware construction
         macro_ctx_pm = self._get_macro_context()
@@ -1414,6 +1448,7 @@ class PipelineEngine:
             "pm_result": result.model_dump(),
             "esg_compliance": esg_result,
             "mandate_compliance": mandate_check.model_dump(),
+            "super_mandate_compliance": super_mandate_result,  # Session 14
             "baseline_weights": baseline_weights,
             "optimisation_results": optimisation_results,  # ACT-S7-4
             "rebalance_proposal": rebalance_proposal,  # ACT-S8-2

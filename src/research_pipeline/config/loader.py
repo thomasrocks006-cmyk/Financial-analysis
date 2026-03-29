@@ -8,6 +8,14 @@ from typing import Any, Literal, Optional
 import yaml
 from pydantic import BaseModel, Field
 
+# Session 14: ClientProfile imported lazily to avoid circular imports
+# Use Optional[Any] for the field type — validated at runtime.
+try:
+    from research_pipeline.schemas.client_profile import ClientProfile as _ClientProfile  # noqa: F401
+    _CLIENT_PROFILE_TYPE = Optional[_ClientProfile]
+except ImportError:  # pragma: no cover
+    _CLIENT_PROFILE_TYPE = Optional[Any]
+
 # ── Sector routing: maps analyst role → list of covered tickers ──────────────
 # ARC-5: externalised from engine.py hardcoded sets — edit here, engine picks up.
 # Tickers not in any list are handled by GenericSectorAnalystAgent as a fallback.
@@ -224,6 +232,8 @@ class PipelineConfig(BaseModel):
             "report_generation",
         ]
     )
+    # Session 14: optional AU client profile — drives super mandate + tax + disclosures
+    client_profile: Optional[Any] = Field(default=None)
 
 
 def load_pipeline_config(config_path: Path | str | None = None) -> PipelineConfig:

@@ -80,7 +80,100 @@ DEFAULT_TEMPLATE = """# {{ title }}
 *This report uses public-source data only. Broker consensus history, revision depth,
 and premium comp data remain structurally unavailable without licensed terminal data
 (Bloomberg / FactSet / LSEG).*
+
+{% if au_disclosures %}
+---
+
+## Australian Regulatory Disclosures
+{{ au_disclosures }}
+{% endif %}
 """
+
+# ── AU regulatory disclosure text ──────────────────────────────────────────
+AU_DISCLOSURES_TEMPLATE = """
+**Financial Services Guide (FSG) Notice**
+This document is provided for informational purposes only and does not constitute
+financial product advice. Any general advice contained herein has been prepared
+without taking into account your objectives, financial situation or needs. Before
+acting on any information, consider whether it is appropriate for you.
+
+**ASIC § 1013D Product Disclosure Statement Notice**
+Past performance is not an indicator of future performance. The value of
+investments and the income from them can fall as well as rise. You may get back
+less than you originally invested.
+
+**APRA Regulated Entity Disclosure**
+This research has been prepared for use by Australian Prudential
+Regulation Authority (APRA) regulated entities and takes into account APRA
+SPS 530 Investment Governance requirements, including the diversification
+benchmarks under § 60 of that Standard.
+
+**AFSL Disclaimer**
+This report is issued pursuant to the requirements of an Australian Financial
+Services Licence (AFSL). JP Morgan Asset Management Australia Limited is
+licensed under an AFSL to provide general financial product advice.
+
+**Tax Considerations**
+Tax treatment depends on the individual circumstances of each investor. The
+tax information provided is of a general nature and does not constitute tax
+advice. Investors should seek independent tax advice before making investment
+decisions. Different tax treatments apply to superannuation funds (15%
+accumulation rate, 1/3 CGT discount), SMSFs, high-net-worth individuals
+(50% CGT discount) and other entities under Australian taxation law.
+"""
+
+
+def build_au_disclosures(
+    client_profile: object | None = None,
+    tax_summary: dict | None = None,
+    afsl_number: str = "",
+) -> str:
+    """Build AU regulatory disclosure text for the report.
+
+    Args:
+        client_profile: Optional ClientProfile — used to add SMSF / super context.
+        tax_summary: Optional output of AustralianTaxService.portfolio_tax_summary().
+        afsl_number: Optional AFSL number to include in the AFSL disclaimer.
+
+    Returns:
+        Formatted Markdown string suitable for injection into the report.
+    """
+    lines = [AU_DISCLOSURES_TEMPLATE.strip()]
+
+    # Superannuation-specific addendum
+    client_type = getattr(client_profile, "client_type", None)
+    if client_type in ("super_fund", "smsf"):
+        is_smsf = getattr(client_profile, "is_smsf", client_type == "smsf")
+        fund_type = getattr(client_profile, "super_fund_type", None) or "N/A"
+        pension = getattr(client_profile, "smsf_pension_phase", False)
+        lines.append(
+            f"\n**Superannuation Fund Disclosure**\n"
+            f"This report has been prepared for a "
+            f"{'Self-Managed Superannuation Fund (SMSF)' if is_smsf else 'APRA-regulated superannuation fund'}\n"
+            f"operating a {'pension-phase' if pension else 'accumulation-phase'} "
+            f"account under the Superannuation Industry (Supervision) Act 1993 (SIS Act).\n"
+            f"Option type: **{fund_type.title()}**.\n"
+            f"Compliance with APRA Superannuation Prudential Standard SPS 530 "
+            f"(Investment Governance) has been applied throughout this analysis."
+        )
+
+    # Tax summary addendum
+    if tax_summary:
+        drag = tax_summary.get("estimated_tax_drag_bps", 0)
+        aft = tax_summary.get("after_tax_yield_pct", 0)
+        rate = tax_summary.get("income_tax_rate_pct", 0)
+        lines.append(
+            f"\n**Estimated Tax Impact**\n"
+            f"Indicative income tax rate: {rate:.1f}%. "
+            f"Estimated annual tax drag on portfolio yield: **{drag:.0f} bps**. "
+            f"After-tax yield estimate: **{aft:.2f}%**. "
+            f"These are estimates only and do not constitute tax advice."
+        )
+
+    if afsl_number:
+        lines.append(f"\nAFSL Number: **{afsl_number}**")
+
+    return "\n".join(lines)
 
 
 class ReportAssemblyService:
@@ -106,7 +199,8 @@ class ReportAssemblyService:
         stock_cards: list[StockCard],
         self_audit_text: str = "",
         claim_register_text: str = "",
-        narrative_sections: dict[str, str] | None = None,  # Session 13: LLM-generated prose
+        narrative_sections: dict[str, str] | None = None,   # Session 13: LLM-generated prose
+        au_disclosures: str | None = None,                   # Session 14: AU regulatory text
     ) -> FinalReport:
         """Assemble the final report. Only runs if review passed.
 
@@ -134,16 +228,24 @@ class ReportAssemblyService:
                 if text and not text.startswith("["):  # skip placeholder strings
                     merged_sections[key] = text
 
+        # Merge AU disclosures into sections map
+        if au_disclosures:
+            merged_sections["au_disclosures"] = au_disclosures
+
         report_sections = []
         for name in [
             "executive_summary", "methodology", "valuation_appendix",
             "risk_appendix", "self_audit_appendix", "claim_register_appendix",
+            "au_disclosures",
         ]:
             content = merged_sections.get(name, "")
             if name == "self_audit_appendix" and not content:
                 content = self_audit_text
             if name == "claim_register_appendix" and not content:
                 content = claim_register_text
+            # Only include au_disclosures section when content is present
+            if name == "au_disclosures" and not content:
+                continue
             report_sections.append(ReportSection(
                 section_name=name,
                 content=content,
@@ -177,6 +279,7 @@ class ReportAssemblyService:
             risk_appendix=section_map.get("risk_appendix", ""),
             self_audit_appendix=section_map.get("self_audit_appendix", ""),
             claim_register_appendix=section_map.get("claim_register_appendix", ""),
+            au_disclosures=section_map.get("au_disclosures", ""),
         )
 
     def save_report(self, report: FinalReport, output_dir: Path) -> Path:

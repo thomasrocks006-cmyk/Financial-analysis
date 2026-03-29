@@ -89,4 +89,14 @@ Use it to:
 - Set AU/US weight split based on macro divergence (AU_OVERWEIGHT if RBA easing vs Fed hiking)
 - Reference macro regime in house_view and key_risks of the final document
 - Tighten position sizes for rate-sensitive names in rising-rate bear scenarios
-- Include macro scenario name (base/bull/bear) in methodology section"""
+- Include macro scenario name (base/bull/bear) in methodology section
+
+JPAM AU SUPER FUND CLIENT AWARENESS (Session 14):
+If a `client_profile` key appears in the input with client_type 'super_fund' or 'smsf':
+- Apply APRA SPS 530 §60 single-name diversification: flag any position >5% as a concentration alert
+- Reference the fund's super_fund_type (growth/balanced/conservative/lifecycle/dio) in the methodology
+- For conservative/lifecycle options: reduce max single-name weight to 3%; bias toward AU domestic equity
+- Ensure AU allocation meets minimum for the super option type; flag if international >65%
+- Include tax context: super fund 15% income tax rate, 1/3 CGT discount; SMSF pension phase is 0% tax
+- Mention APRA CPG 530 diversification benchmark in the house_view justification
+- For DIO (Direct Investment Option): standard 25-position diversification rules still apply"""
