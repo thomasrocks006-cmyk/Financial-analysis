@@ -384,7 +384,7 @@ Wire a real qualitative data pipeline — turning earnings calls and news into s
 
 ---
 
-### E-11 · FastAPI Event-Streaming API Layer *(Frontend — gap ↑0.8)*
+### E-11 · FastAPI Event-Streaming API Layer *(Frontend — gap ↑0.8)* ✅ **COMPLETE — `7a62757`**
 
 Decouple the pipeline engine from any specific UI client by introducing a first-class HTTP API layer. This is the prerequisite for the premium Next.js frontend and also improves testability of the backend service contract.
 
@@ -536,7 +536,7 @@ Below is every polish item that separates "working prototype" from "institutiona
 - [ ] Phase 3: `RunRequest` Pydantic schema defined; `run_full_pipeline(request)` signature adopted
 - [ ] Phase 3: `ClientProfile` + mandate threaded into Stages 9, 12, 13
 - [ ] Phase 3: unified artifact layout under `reports/{run_id}/`; `storage.py` indexes engine run dir
-- [ ] Phase 4: FastAPI `src/api/` layer built; `POST /runs`, SSE `/runs/{id}/events`, artifact endpoints all tested (E-11)
+- [x] Phase 4: FastAPI `src/api/` layer built; `POST /runs`, SSE `/runs/{id}/events`, artifact endpoints all tested (E-11) — ✅ `7a62757`
 - [ ] Phase 5: Next.js `frontend/` project scaffolded with TailwindCSS + shadcn/ui (E-12)
 - [ ] Phase 5: `<PipelineTracker />` shows `running` state with elapsed timer (E-13)
 - [ ] Phase 5: `<LiveEventFeed />` streams agent + token events as they happen (E-13)
@@ -698,6 +698,7 @@ These are issues not previously covered by Parts A–H.
 | Session 12 | Macro economy + AU/US markets | ISS-12, ISS-13, ISS-14, ISS-22 — ✅ **`12c7086` complete** |
 | Session 13 | Depth & quality | ISS-16, ISS-23, ISS-27, ISS-28 — ✅ **`34d7949` complete** |
 | Session 14 | AU client context | ISS-29, ISS-30 — ✅ **`29272dd` complete** |
+| Session 15 | FastAPI API layer + engine event stream | E-11, Phase 2–4 — ✅ **`7a62757` complete** |
 | Future Ops / Session 15+ | Production hardening | ISS-34, ISS-35, ISS-36, ISS-37, ISS-38, ISS-39, ISS-40, ISS-41 |
 
 ### Extra watch-outs added to the polish checklist

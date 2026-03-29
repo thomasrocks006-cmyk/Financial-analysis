@@ -30,9 +30,9 @@
 | **PR #1 Core system improvements** | ⛔ **Do not merge as-is** |
 | **Frontend migration decision (Streamlit → Next.js + FastAPI)** | ✅ **DECIDED — March 28, 2026** |
 | **Phase 1 — adapter truthfulness** | ✅ **COMPLETE — `2b6a360`** |
-| **Phase 2 — engine event stream** | 🔲 **TODO — Session 12** |
-| **Phase 3 — unified storage + RunRequest** | 🔲 **TODO — Sessions 12–13** |
-| **Phase 4 — FastAPI layer (Session 15)** | 🔲 **PLANNED** |
+| **Phase 2 — engine event stream** | ✅ **COMPLETE — `7a62757`** |
+| **Phase 3 — unified storage + RunRequest** | ✅ **COMPLETE — `7a62757`** |
+| **Phase 4 — FastAPI layer (Session 15)** | ✅ **COMPLETE — `7a62757`** |
 | **Phase 5 + 6 — Next.js UI + charts (Session 16)** | 🔲 **PLANNED** |
 | **Phase 7 — traceability (Session 17)** | 🔲 **PLANNED** |
 
@@ -442,7 +442,22 @@ This fills the current **2/10 macro economy gap** (see ARCHITECTURE.md §13.2).
 
 ---
 
-## 12. Brainstorm Backlog (Future Sessions 15+)
+## 12. Session 15 — FastAPI Event-Streaming API Layer
+
+**Goal:** Decouple the pipeline engine from any specific UI client by introducing a first-class HTTP API layer — prerequisite for the Next.js premium frontend.
+
+| Phase | Task | Status |
+|---|---|---|
+| Phase 2 | `PipelineEvent` schema (11 event types) + engine `_emit()` + `_timed_stage` events | ✅ `7a62757` |
+| Phase 3 | `RunRequest` Pydantic schema (universe, model, client_profile, market, fields) | ✅ `7a62757` |
+| Phase 4 | `src/api/main.py` FastAPI app + lifespan + CORS + auth middleware | ✅ `7a62757` |
+| Phase 4 | `src/api/routes/runs.py` — POST/GET/DELETE /api/v1/runs + SSE /events | ✅ `7a62757` |
+| Phase 4 | `src/api/services/run_manager.py` — RunManager, ManagedRun, async event queues | ✅ `7a62757` |
+| Tests | `tests/test_session15.py` — 47 tests | ✅ `7a62757` — 904 passing |
+
+---
+
+## 13. Brainstorm Backlog (Future Sessions 16+)
 
 Items identified during Session 11 planning audit. Not yet scheduled.
 
@@ -604,7 +619,7 @@ An independent review of the current Streamlit frontend scored:
 
 | Session | Scope | Test target |
 |---|---|---|
-| Session 15 | FastAPI event-streaming API layer | API contract tests ~+25 |
+| Session 15 | FastAPI event-streaming API layer | API contract tests ~+25 | ✅ `7a62757` — 47 tests, 904 total |
 | Session 16 | Next.js premium UI build | Component + integration tests ~+20 |
 | Session 17 | Traceability, provenance, explainability | E2E + traceability tests ~+15 |
 
@@ -653,10 +668,10 @@ An independent review of the current Streamlit frontend scored:
 
 | Phase | Status |
 |---|---|
-| Phase 1 — adapter fixes | ✅ |
-| Phase 2 — engine event stream | 🔲 |
-| Phase 3 — storage + RunRequest | 🔲 |
-| Phase 4 — FastAPI layer | 🔲 |
+| Phase 2 — adapter fixes | ✅ |
+| Phase 2 — engine event stream | ✅ `7a62757` |
+| Phase 3 — storage + RunRequest | ✅ `7a62757` |
+| Phase 4 — FastAPI layer | ✅ `7a62757` |
 | Phase 5 — Next.js UI | 🔲 |
 | Phase 6 — visual analytics | 🔲 |
 | Phase 7 — traceability | 🔲 |
