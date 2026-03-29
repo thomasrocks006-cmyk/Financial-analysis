@@ -3806,5 +3806,549 @@
         "Configuration check"
       ]
     }
+  },
+  "run_20260329_133724_28fd0295": {
+    "run_id": "run_20260329_133724_28fd0295",
+    "timestamp": "2026-03-29T13:37:24.675479Z",
+    "universe": [
+      "NVDA",
+      "AMD",
+      "AVGO"
+    ],
+    "config_hash": "d5a3b76f2830b26c",
+    "agent_versions": {},
+    "prompt_versions": {},
+    "dataset_versions": {},
+    "status": "initialized",
+    "stages_completed": [],
+    "stages_failed": [],
+    "outputs_generated": [],
+    "final_gate_outcome": "",
+    "overrides": [],
+    "metadata": {},
+    "completed_at": null,
+    "self_audit_packet": null
+  },
+  "run_20260329_133724_b603924e": {
+    "run_id": "run_20260329_133724_b603924e",
+    "timestamp": "2026-03-29T13:37:24.680302Z",
+    "universe": [
+      "NVDA",
+      "AMD",
+      "AVGO"
+    ],
+    "config_hash": "7fc8a956dd59aac4",
+    "agent_versions": {
+      "orchestrator": "v8.0-c4dd1ef2",
+      "evidence_librarian": "v8.0-50f6d391",
+      "sector_analyst_compute": "v8.0-8e620a70",
+      "sector_analyst_power_energy": "v8.0-5404f2aa",
+      "sector_analyst_infrastructure": "v8.0-a2dda8f7",
+      "valuation_analyst": "v8.0-7924ea40",
+      "macro_strategist": "v8.0-8c1bbdb8",
+      "political_risk_analyst": "v8.0-38a19428",
+      "red_team_analyst": "v8.0-b70a0812",
+      "associate_reviewer": "v8.0-8e8562da",
+      "portfolio_manager": "v8.0-f5e353fa"
+    },
+    "prompt_versions": {},
+    "dataset_versions": {},
+    "status": "initialized",
+    "stages_completed": [],
+    "stages_failed": [],
+    "outputs_generated": [],
+    "final_gate_outcome": "",
+    "overrides": [],
+    "metadata": {},
+    "completed_at": null,
+    "self_audit_packet": {
+      "run_id": "run_20260329_133724_b603924e",
+      "generated_at": "2026-03-29T13:37:24.695878Z",
+      "total_claims": 0,
+      "tier1_claims": 0,
+      "tier2_claims": 0,
+      "tier3_claims": 0,
+      "tier4_claims": 0,
+      "pass_claims": 0,
+      "caveat_claims": 0,
+      "fail_claims": 0,
+      "methodology_tags_present": false,
+      "dates_complete": false,
+      "source_hygiene_score": 0.0,
+      "agents_succeeded": [],
+      "agents_failed": [],
+      "total_retries": 0,
+      "gates_passed": [],
+      "gates_failed": [
+        0
+      ],
+      "tickers_with_red_team": [],
+      "min_falsification_tests": 0,
+      "ic_approved": null,
+      "ic_vote_breakdown": {},
+      "mandate_compliant": null,
+      "esg_exclusions": [],
+      "stage_latencies_ms": {
+        "stage_0": 10.3,
+        "stage_14": 5.5
+      },
+      "total_pipeline_duration_s": 0.02,
+      "prompt_drift_reports": [],
+      "rebalancing_summary": {},
+      "publication_quality_score": 6.5,
+      "blockers": [
+        "Configuration check"
+      ]
+    }
+  },
+  "run_20260329_133724_647337ef": {
+    "run_id": "run_20260329_133724_647337ef",
+    "timestamp": "2026-03-29T13:37:24.706399Z",
+    "universe": [
+      "NVDA"
+    ],
+    "config_hash": "d5a3b76f2830b26c",
+    "agent_versions": {},
+    "prompt_versions": {},
+    "dataset_versions": {},
+    "status": "initialized",
+    "stages_completed": [],
+    "stages_failed": [],
+    "outputs_generated": [],
+    "final_gate_outcome": "",
+    "overrides": [],
+    "metadata": {},
+    "completed_at": null,
+    "self_audit_packet": null
+  },
+  "run_20260329_133724_e871566d": {
+    "run_id": "run_20260329_133724_e871566d",
+    "timestamp": "2026-03-29T13:37:24.711361Z",
+    "universe": [
+      "NVDA"
+    ],
+    "config_hash": "7fc8a956dd59aac4",
+    "agent_versions": {
+      "orchestrator": "v8.0-c4dd1ef2",
+      "evidence_librarian": "v8.0-50f6d391",
+      "sector_analyst_compute": "v8.0-8e620a70",
+      "sector_analyst_power_energy": "v8.0-5404f2aa",
+      "sector_analyst_infrastructure": "v8.0-a2dda8f7",
+      "valuation_analyst": "v8.0-7924ea40",
+      "macro_strategist": "v8.0-8c1bbdb8",
+      "political_risk_analyst": "v8.0-38a19428",
+      "red_team_analyst": "v8.0-b70a0812",
+      "associate_reviewer": "v8.0-8e8562da",
+      "portfolio_manager": "v8.0-f5e353fa"
+    },
+    "prompt_versions": {},
+    "dataset_versions": {},
+    "status": "initialized",
+    "stages_completed": [],
+    "stages_failed": [],
+    "outputs_generated": [],
+    "final_gate_outcome": "",
+    "overrides": [],
+    "metadata": {},
+    "completed_at": null,
+    "self_audit_packet": {
+      "run_id": "run_20260329_133724_e871566d",
+      "generated_at": "2026-03-29T13:37:24.726561Z",
+      "total_claims": 0,
+      "tier1_claims": 0,
+      "tier2_claims": 0,
+      "tier3_claims": 0,
+      "tier4_claims": 0,
+      "pass_claims": 0,
+      "caveat_claims": 0,
+      "fail_claims": 0,
+      "methodology_tags_present": false,
+      "dates_complete": false,
+      "source_hygiene_score": 0.0,
+      "agents_succeeded": [],
+      "agents_failed": [],
+      "total_retries": 0,
+      "gates_passed": [],
+      "gates_failed": [
+        0
+      ],
+      "tickers_with_red_team": [],
+      "min_falsification_tests": 0,
+      "ic_approved": null,
+      "ic_vote_breakdown": {},
+      "mandate_compliant": null,
+      "esg_exclusions": [],
+      "stage_latencies_ms": {
+        "stage_0": 10.1,
+        "stage_14": 5.7
+      },
+      "total_pipeline_duration_s": 0.02,
+      "prompt_drift_reports": [],
+      "rebalancing_summary": {},
+      "publication_quality_score": 6.5,
+      "blockers": [
+        "Configuration check"
+      ]
+    }
+  },
+  "run_20260329_133724_a0d8ac68": {
+    "run_id": "run_20260329_133724_a0d8ac68",
+    "timestamp": "2026-03-29T13:37:24.738120Z",
+    "universe": [
+      "NVDA"
+    ],
+    "config_hash": "d5a3b76f2830b26c",
+    "agent_versions": {},
+    "prompt_versions": {},
+    "dataset_versions": {},
+    "status": "initialized",
+    "stages_completed": [],
+    "stages_failed": [],
+    "outputs_generated": [],
+    "final_gate_outcome": "",
+    "overrides": [],
+    "metadata": {},
+    "completed_at": null,
+    "self_audit_packet": null
+  },
+  "run_20260329_133724_dca7ba94": {
+    "run_id": "run_20260329_133724_dca7ba94",
+    "timestamp": "2026-03-29T13:37:24.742968Z",
+    "universe": [
+      "NVDA"
+    ],
+    "config_hash": "7fc8a956dd59aac4",
+    "agent_versions": {
+      "orchestrator": "v8.0-c4dd1ef2",
+      "evidence_librarian": "v8.0-50f6d391",
+      "sector_analyst_compute": "v8.0-8e620a70",
+      "sector_analyst_power_energy": "v8.0-5404f2aa",
+      "sector_analyst_infrastructure": "v8.0-a2dda8f7",
+      "valuation_analyst": "v8.0-7924ea40",
+      "macro_strategist": "v8.0-8c1bbdb8",
+      "political_risk_analyst": "v8.0-38a19428",
+      "red_team_analyst": "v8.0-b70a0812",
+      "associate_reviewer": "v8.0-8e8562da",
+      "portfolio_manager": "v8.0-f5e353fa"
+    },
+    "prompt_versions": {},
+    "dataset_versions": {},
+    "status": "initialized",
+    "stages_completed": [],
+    "stages_failed": [],
+    "outputs_generated": [],
+    "final_gate_outcome": "",
+    "overrides": [],
+    "metadata": {},
+    "completed_at": null,
+    "self_audit_packet": {
+      "run_id": "run_20260329_133724_dca7ba94",
+      "generated_at": "2026-03-29T13:37:24.765371Z",
+      "total_claims": 0,
+      "tier1_claims": 0,
+      "tier2_claims": 0,
+      "tier3_claims": 0,
+      "tier4_claims": 0,
+      "pass_claims": 0,
+      "caveat_claims": 0,
+      "fail_claims": 0,
+      "methodology_tags_present": false,
+      "dates_complete": false,
+      "source_hygiene_score": 0.0,
+      "agents_succeeded": [],
+      "agents_failed": [],
+      "total_retries": 0,
+      "gates_passed": [],
+      "gates_failed": [
+        0
+      ],
+      "tickers_with_red_team": [],
+      "min_falsification_tests": 0,
+      "ic_approved": null,
+      "ic_vote_breakdown": {},
+      "mandate_compliant": null,
+      "esg_exclusions": [],
+      "stage_latencies_ms": {
+        "stage_0": 13.4,
+        "stage_14": 9.5
+      },
+      "total_pipeline_duration_s": 0.02,
+      "prompt_drift_reports": [],
+      "rebalancing_summary": {},
+      "publication_quality_score": 6.5,
+      "blockers": [
+        "Configuration check"
+      ]
+    }
+  },
+  "run_20260329_133724_5729f3b6": {
+    "run_id": "run_20260329_133724_5729f3b6",
+    "timestamp": "2026-03-29T13:37:24.785905Z",
+    "universe": [
+      "NVDA"
+    ],
+    "config_hash": "d5a3b76f2830b26c",
+    "agent_versions": {},
+    "prompt_versions": {},
+    "dataset_versions": {},
+    "status": "initialized",
+    "stages_completed": [],
+    "stages_failed": [],
+    "outputs_generated": [],
+    "final_gate_outcome": "",
+    "overrides": [],
+    "metadata": {},
+    "completed_at": null,
+    "self_audit_packet": null
+  },
+  "run_20260329_133724_147c1642": {
+    "run_id": "run_20260329_133724_147c1642",
+    "timestamp": "2026-03-29T13:37:24.792648Z",
+    "universe": [
+      "NVDA"
+    ],
+    "config_hash": "7fc8a956dd59aac4",
+    "agent_versions": {
+      "orchestrator": "v8.0-c4dd1ef2",
+      "evidence_librarian": "v8.0-50f6d391",
+      "sector_analyst_compute": "v8.0-8e620a70",
+      "sector_analyst_power_energy": "v8.0-5404f2aa",
+      "sector_analyst_infrastructure": "v8.0-a2dda8f7",
+      "valuation_analyst": "v8.0-7924ea40",
+      "macro_strategist": "v8.0-8c1bbdb8",
+      "political_risk_analyst": "v8.0-38a19428",
+      "red_team_analyst": "v8.0-b70a0812",
+      "associate_reviewer": "v8.0-8e8562da",
+      "portfolio_manager": "v8.0-f5e353fa"
+    },
+    "prompt_versions": {},
+    "dataset_versions": {},
+    "status": "initialized",
+    "stages_completed": [],
+    "stages_failed": [],
+    "outputs_generated": [],
+    "final_gate_outcome": "",
+    "overrides": [],
+    "metadata": {},
+    "completed_at": null,
+    "self_audit_packet": {
+      "run_id": "run_20260329_133724_147c1642",
+      "generated_at": "2026-03-29T13:37:24.817525Z",
+      "total_claims": 0,
+      "tier1_claims": 0,
+      "tier2_claims": 0,
+      "tier3_claims": 0,
+      "tier4_claims": 0,
+      "pass_claims": 0,
+      "caveat_claims": 0,
+      "fail_claims": 0,
+      "methodology_tags_present": false,
+      "dates_complete": false,
+      "source_hygiene_score": 0.0,
+      "agents_succeeded": [],
+      "agents_failed": [],
+      "total_retries": 0,
+      "gates_passed": [],
+      "gates_failed": [
+        0
+      ],
+      "tickers_with_red_team": [],
+      "min_falsification_tests": 0,
+      "ic_approved": null,
+      "ic_vote_breakdown": {},
+      "mandate_compliant": null,
+      "esg_exclusions": [],
+      "stage_latencies_ms": {
+        "stage_0": 18.4,
+        "stage_14": 7.0
+      },
+      "total_pipeline_duration_s": 0.03,
+      "prompt_drift_reports": [],
+      "rebalancing_summary": {},
+      "publication_quality_score": 6.5,
+      "blockers": [
+        "Configuration check"
+      ]
+    }
+  },
+  "run_20260329_133724_843c693a": {
+    "run_id": "run_20260329_133724_843c693a",
+    "timestamp": "2026-03-29T13:37:24.834316Z",
+    "universe": [
+      "NVDA"
+    ],
+    "config_hash": "d5a3b76f2830b26c",
+    "agent_versions": {},
+    "prompt_versions": {},
+    "dataset_versions": {},
+    "status": "initialized",
+    "stages_completed": [],
+    "stages_failed": [],
+    "outputs_generated": [],
+    "final_gate_outcome": "",
+    "overrides": [],
+    "metadata": {},
+    "completed_at": null,
+    "self_audit_packet": null
+  },
+  "run_20260329_133724_f5f4ba20": {
+    "run_id": "run_20260329_133724_f5f4ba20",
+    "timestamp": "2026-03-29T13:37:24.841164Z",
+    "universe": [
+      "NVDA"
+    ],
+    "config_hash": "7fc8a956dd59aac4",
+    "agent_versions": {
+      "orchestrator": "v8.0-c4dd1ef2",
+      "evidence_librarian": "v8.0-50f6d391",
+      "sector_analyst_compute": "v8.0-8e620a70",
+      "sector_analyst_power_energy": "v8.0-5404f2aa",
+      "sector_analyst_infrastructure": "v8.0-a2dda8f7",
+      "valuation_analyst": "v8.0-7924ea40",
+      "macro_strategist": "v8.0-8c1bbdb8",
+      "political_risk_analyst": "v8.0-38a19428",
+      "red_team_analyst": "v8.0-b70a0812",
+      "associate_reviewer": "v8.0-8e8562da",
+      "portfolio_manager": "v8.0-f5e353fa"
+    },
+    "prompt_versions": {},
+    "dataset_versions": {},
+    "status": "initialized",
+    "stages_completed": [],
+    "stages_failed": [],
+    "outputs_generated": [],
+    "final_gate_outcome": "",
+    "overrides": [],
+    "metadata": {},
+    "completed_at": null,
+    "self_audit_packet": {
+      "run_id": "run_20260329_133724_f5f4ba20",
+      "generated_at": "2026-03-29T13:37:24.859549Z",
+      "total_claims": 0,
+      "tier1_claims": 0,
+      "tier2_claims": 0,
+      "tier3_claims": 0,
+      "tier4_claims": 0,
+      "pass_claims": 0,
+      "caveat_claims": 0,
+      "fail_claims": 0,
+      "methodology_tags_present": false,
+      "dates_complete": false,
+      "source_hygiene_score": 0.0,
+      "agents_succeeded": [],
+      "agents_failed": [],
+      "total_retries": 0,
+      "gates_passed": [],
+      "gates_failed": [
+        0
+      ],
+      "tickers_with_red_team": [],
+      "min_falsification_tests": 0,
+      "ic_approved": null,
+      "ic_vote_breakdown": {},
+      "mandate_compliant": null,
+      "esg_exclusions": [],
+      "stage_latencies_ms": {
+        "stage_0": 13.0,
+        "stage_14": 6.1
+      },
+      "total_pipeline_duration_s": 0.02,
+      "prompt_drift_reports": [],
+      "rebalancing_summary": {},
+      "publication_quality_score": 6.5,
+      "blockers": [
+        "Configuration check"
+      ]
+    }
+  },
+  "run_20260329_133724_4b5e3088": {
+    "run_id": "run_20260329_133724_4b5e3088",
+    "timestamp": "2026-03-29T13:37:24.870040Z",
+    "universe": [
+      "NVDA"
+    ],
+    "config_hash": "0164e4109c5cd1bd",
+    "agent_versions": {},
+    "prompt_versions": {},
+    "dataset_versions": {},
+    "status": "initialized",
+    "stages_completed": [],
+    "stages_failed": [],
+    "outputs_generated": [],
+    "final_gate_outcome": "",
+    "overrides": [],
+    "metadata": {},
+    "completed_at": null,
+    "self_audit_packet": null
+  },
+  "run_20260329_133724_3732f35f": {
+    "run_id": "run_20260329_133724_3732f35f",
+    "timestamp": "2026-03-29T13:37:24.874956Z",
+    "universe": [
+      "NVDA"
+    ],
+    "config_hash": "7fc8a956dd59aac4",
+    "agent_versions": {
+      "orchestrator": "v8.0-c4dd1ef2",
+      "evidence_librarian": "v8.0-50f6d391",
+      "sector_analyst_compute": "v8.0-8e620a70",
+      "sector_analyst_power_energy": "v8.0-5404f2aa",
+      "sector_analyst_infrastructure": "v8.0-a2dda8f7",
+      "valuation_analyst": "v8.0-7924ea40",
+      "macro_strategist": "v8.0-8c1bbdb8",
+      "political_risk_analyst": "v8.0-38a19428",
+      "red_team_analyst": "v8.0-b70a0812",
+      "associate_reviewer": "v8.0-8e8562da",
+      "portfolio_manager": "v8.0-f5e353fa"
+    },
+    "prompt_versions": {},
+    "dataset_versions": {},
+    "status": "initialized",
+    "stages_completed": [],
+    "stages_failed": [],
+    "outputs_generated": [],
+    "final_gate_outcome": "",
+    "overrides": [],
+    "metadata": {},
+    "completed_at": null,
+    "self_audit_packet": {
+      "run_id": "run_20260329_133724_3732f35f",
+      "generated_at": "2026-03-29T13:37:24.891449Z",
+      "total_claims": 0,
+      "tier1_claims": 0,
+      "tier2_claims": 0,
+      "tier3_claims": 0,
+      "tier4_claims": 0,
+      "pass_claims": 0,
+      "caveat_claims": 0,
+      "fail_claims": 0,
+      "methodology_tags_present": false,
+      "dates_complete": false,
+      "source_hygiene_score": 0.0,
+      "agents_succeeded": [],
+      "agents_failed": [],
+      "total_retries": 0,
+      "gates_passed": [],
+      "gates_failed": [
+        0
+      ],
+      "tickers_with_red_team": [],
+      "min_falsification_tests": 0,
+      "ic_approved": null,
+      "ic_vote_breakdown": {},
+      "mandate_compliant": null,
+      "esg_exclusions": [],
+      "stage_latencies_ms": {
+        "stage_0": 10.9,
+        "stage_14": 6.0
+      },
+      "total_pipeline_duration_s": 0.02,
+      "prompt_drift_reports": [],
+      "rebalancing_summary": {},
+      "publication_quality_score": 6.5,
+      "blockers": [
+        "Configuration check"
+      ]
+    }
   }
 }
