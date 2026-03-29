@@ -23,7 +23,7 @@
 | **Architecture Repair (ARC-1 through ARC-10)** | ✅ **COMPLETE — `2b6a360`** |
 | **Session 11 (revised)** | ✅ **COMPLETE — `2b6a360`** |
 | **Session 12 — Macro Economy & Australia/US Markets** | ✅ **COMPLETE — `12c7086`** |
-| **Session 13 — Depth & Quality** | 🔲 **TODO** |
+| **Session 13 — Depth & Quality** | ✅ **COMPLETE — `34d7949`** |
 | **Session 14 — Superannuation & AU Client Context** | 🔲 **PLANNED** |
 | **PROJECT_ISSUES_ASSESSMENT.md (PR #2)** | ✅ **MERGED — March 28, 2026** |
 | **Residual issues (ISS-1, ISS-3, ISS-4, ISS-9, ISS-10, ISS-20)** | ✅ **COMPLETE — `2b6a360`** |
@@ -414,15 +414,15 @@ This fills the current **2/10 macro economy gap** (see ARCHITECTURE.md §13.2).
 
 **Goal:** Elevate output quality from "structurally correct" to "institutionally publishable".
 
-| Step | Task | Division | Effort |
-|---|---|---|---|
-| 1 | Agent prompt upgrades — rate/macro context injected into all 14 agent prompts | Global Research | Medium |
-| 2 | Valuation model depth — DCF sensitivity tables; EV/EBITDA vs P/E cross-validation | Quant Research | Medium |
-| 3 | Factor model live refit — OLS against real FRED factor data (Mkt-RF, SMB, HML) | Quant Research | High |
-| 4 | Report assembly — narrative paragraph generation for each section; no hardcoded strings | Client Solutions | Medium |
-| 5 | Live sector data routing — `SectorDataService`; real earnings/revenue from FMP | Global Research | High |
-| 6 | `tests/test_session13.py` — ~30 tests | Operations | Medium |
-| 7 | Full suite + commit | Operations | Low |
+| Step | Task | Division | Effort | Status |
+|---|---|---|---|---|
+| 1 | Agent prompt upgrades — rate/macro context injected into all 14 agent prompts | Global Research | Medium | ✅ `34d7949` |
+| 2 | Valuation model depth — DCF sensitivity tables; EV/EBITDA vs P/E cross-validation | Quant Research | Medium | ✅ `34d7949` |
+| 3 | Factor model live refit — OLS against real FRED factor data (Mkt-RF, SMB, HML) | Quant Research | High | ✅ `34d7949` |
+| 4 | Report assembly — narrative paragraph generation for each section; no hardcoded strings | Client Solutions | Medium | ✅ `34d7949` |
+| 5 | Live sector data routing — `SectorDataService`; real earnings/revenue from FMP | Global Research | High | ✅ `34d7949` |
+| 6 | `tests/test_session13.py` — 48 tests | Operations | Medium | ✅ `34d7949` |
+| 7 | Full suite + commit | Operations | Low | ✅ `34d7949` — 797 passing |
 
 ---
 

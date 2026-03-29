@@ -220,7 +220,7 @@ Add `MarketConfig` to `PipelineConfig`:
 
 ---
 
-## Part C — Session 13: Depth & Quality
+## Part C — Session 13: Depth & Quality ✅ COMPLETE — `34d7949`
 
 Making outputs institutionally publishable.
 
@@ -696,7 +696,7 @@ These are issues not previously covered by Parts A–H.
 |---|---|---|
 | Session 11 | ARC-1 through ARC-10 | ISS-1, ISS-3, ISS-4, ISS-9, ISS-10, ISS-20 — ✅ **`2b6a360` complete** |
 | Session 12 | Macro economy + AU/US markets | ISS-12, ISS-13, ISS-14, ISS-22 — ✅ **`12c7086` complete** |
-| Session 13 | Depth & quality | ISS-16, ISS-23, ISS-27, ISS-28 |
+| Session 13 | Depth & quality | ISS-16, ISS-23, ISS-27, ISS-28 — ✅ **`34d7949` complete** |
 | Session 14 | AU client context | ISS-29, ISS-30 |
 | Future Ops / Session 15+ | Production hardening | ISS-34, ISS-35, ISS-36, ISS-37, ISS-38, ISS-39, ISS-40, ISS-41 |
 
