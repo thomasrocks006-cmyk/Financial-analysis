@@ -378,10 +378,30 @@ hr { border-color: #21262d !important; }
 .uni-card .name    { font-size: 0.7rem; color: #8b949e; margin: 2px 0; }
 .uni-card .price   { font-size: 1.1rem; font-weight: 700; color: #58a6ff; }
 
-/* ── Expander styling ── */
-[data-testid="stExpander"] { background: #161b22 !important; border: 1px solid #21262d !important;
-                              border-radius: 8px !important; }
-[data-testid="stExpander"] summary { color: #c9d1d9 !important; }
+/* ── Supervisor health panel ── */
+.supervisor-panel {
+    background: #0f1923;
+    border: 1px solid #1f3a5f;
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-bottom: 10px;
+}
+.supervisor-panel .sup-header {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 0.72rem; text-transform: uppercase;
+    letter-spacing: 0.08em; color: #8b949e; margin-bottom: 8px;
+}
+.supervisor-panel .sup-badge {
+    display: inline-block; border-radius: 12px;
+    padding: 2px 10px; font-size: 0.74rem; font-weight: 600;
+}
+.sup-ok      { background: #0d2810; color: #3fb950; border: 1px solid #238636; }
+.sup-degraded{ background: #1c1810; color: #f0883e; border: 1px solid #bd561d; }
+.sup-failed  { background: #1c0f0f; color: #f85149; border: 1px solid #da3633; }
+.sup-unknown { background: #1c1c1c; color: #8b949e; border: 1px solid #30363d; }
+.supervisor-issue { color: #f85149; font-size: 0.80rem; padding: 3px 0; }
+.supervisor-warn  { color: #f0883e; font-size: 0.80rem; padding: 2px 0; }
+.supervisor-rem   { color: #58a6ff; font-size: 0.80rem; padding: 2px 0; }
 </style>
 """,
     unsafe_allow_html=True,
@@ -491,6 +511,86 @@ def _render_activity(placeholder, current_activity: str, running: bool) -> None:
         f"</div>"
     )
     placeholder.markdown(html, unsafe_allow_html=True)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# Supervisor health panel renderer
+# ─────────────────────────────────────────────────────────────────────────
+
+
+def _render_supervisor_panel(supervisor_report: dict) -> None:
+    """Render the pipeline supervisor health panel from a supervisor_report dict."""
+    if not supervisor_report:
+        return
+
+    overall = supervisor_report.get("overall_health", "unknown")
+    health_pct = supervisor_report.get("health_pct", 0)
+    stages_ok = supervisor_report.get("stages_ok", 0)
+    stages_degraded = supervisor_report.get("stages_degraded", 0)
+    stages_failed = supervisor_report.get("stages_failed", 0)
+    stages_skipped = supervisor_report.get("stages_skipped", 0)
+    critical_issues = supervisor_report.get("critical_issues", [])
+    all_warnings = supervisor_report.get("all_warnings", [])
+    remediation = supervisor_report.get("remediation_summary", [])
+    interrupted_at = supervisor_report.get("pipeline_interrupted_at")
+
+    badge_cls = {
+        "ok": "sup-ok",
+        "degraded": "sup-degraded",
+        "failed": "sup-failed",
+    }.get(overall, "sup-unknown")
+
+    badge_label = {
+        "ok": "✅ Healthy",
+        "degraded": "⚠️ Degraded",
+        "failed": "❌ Failed",
+    }.get(overall, "⬜ Unknown")
+
+    # Header row
+    h1, h2, h3, h4, h5 = st.columns([3, 1, 1, 1, 1])
+    h1.markdown(
+        f'<div class="supervisor-panel">'
+        f'<div class="sup-header">🤖 Pipeline Supervisor</div>'
+        f'<span class="sup-badge {badge_cls}">{badge_label}</span>'
+        f'<span style="font-size:0.78rem;color:#8b949e;margin-left:8px">{health_pct:.0f}% healthy</span>'
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+    h2.metric("✅ OK", stages_ok)
+    h3.metric("⚠️ Degraded", stages_degraded)
+    h4.metric("❌ Failed", stages_failed)
+    h5.metric("⬜ Skipped", stages_skipped)
+
+    if interrupted_at is not None:
+        st.warning(f"⛔ Pipeline interrupted at Stage {interrupted_at}")
+
+    # Issues, warnings, remediation
+    if critical_issues or all_warnings or remediation:
+        with st.expander(
+            f"🔍 Supervisor Details — {len(critical_issues)} issues · {len(all_warnings)} warnings",
+            expanded=bool(critical_issues),
+        ):
+            if critical_issues:
+                st.markdown("**Critical Issues**")
+                for issue in critical_issues[:10]:
+                    st.markdown(
+                        f'<div class="supervisor-issue">⚠ {issue}</div>',
+                        unsafe_allow_html=True,
+                    )
+            if remediation:
+                st.markdown("**Suggested Remediation**")
+                for rem in remediation[:8]:
+                    st.markdown(
+                        f'<div class="supervisor-rem">→ {rem}</div>',
+                        unsafe_allow_html=True,
+                    )
+            if all_warnings:
+                st.markdown("**Warnings**")
+                for warn in all_warnings[:8]:
+                    st.markdown(
+                        f'<div class="supervisor-warn">⚡ {warn}</div>',
+                        unsafe_allow_html=True,
+                    )
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -987,6 +1087,10 @@ with tab_pipeline:
                 f"Actual cost **{format_cost(c.total_cost_usd)}** · "
                 f"{c.total_input_tokens + c.total_output_tokens:,} tokens · Saved"
             )
+        # Show supervisor panel if available
+        if getattr(rr, "supervisor_report", None):
+            st.markdown("---")
+            _render_supervisor_panel(rr.supervisor_report)
 
     # ─────────────────────────────────────────────────────────────────────
     # Run pipeline
@@ -1273,6 +1377,16 @@ with tab_report:
                 st.caption("PDF unavailable (fpdf2 not installed)")
 
         st.markdown("---")
+
+        # ── Supervisor Health Panel ───────────────────────────────────────
+        _sup_report = None
+        if active_result and getattr(active_result, "supervisor_report", None):
+            _sup_report = active_result.supervisor_report
+        elif loaded and loaded.get("supervisor_report"):
+            _sup_report = loaded["supervisor_report"]
+        if _sup_report:
+            _render_supervisor_panel(_sup_report)
+            st.markdown("---")
 
         # Report body
         st.markdown('<div class="report-wrap">', unsafe_allow_html=True)

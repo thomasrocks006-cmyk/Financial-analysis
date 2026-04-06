@@ -17,10 +17,10 @@ class APIKeys:
     openai_api_key: str = ""  # optional — only needed if using OpenAI models
     google_api_key: str = ""  # optional — only needed if using Google Gemini models
     # Session 19 / DSQ-2+3: new primary and finance-event API keys
-    sec_api_key: str = ""      # sec-api.io — Tier 1 primary US filings
-    benzinga_api_key: str = "" # Benzinga — Tier 2 finance-native news + ratings
+    sec_api_key: str = ""  # sec-api.io — Tier 1 primary US filings
+    benzinga_api_key: str = ""  # Benzinga — Tier 2 finance-native news + ratings
     # GDR-1: Gemini Deep Research (Stage 4.5) — separate from google_api_key
-    gemini_api_key: str = ""   # GEMINI_API_KEY — used only by GeminiDeepResearchService
+    gemini_api_key: str = ""  # GEMINI_API_KEY — used only by GeminiDeepResearchService
 
     @classmethod
     def from_env(cls) -> "APIKeys":

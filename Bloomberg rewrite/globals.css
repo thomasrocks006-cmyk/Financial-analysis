@@ -1,0 +1,65 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* ── Bloomberg Terminal Design Tokens ──────────────────────────────── */
+:root {
+  --background:   #000000;
+  --surface:      #0a0a0a;
+  --surface-2:    #111111;
+  --surface-3:    #1a1a1a;
+  --border:       #444444;
+  --border-2:     #2a2a2a;
+
+  --text-primary:   #ffffff;
+  --text-secondary: #888888;
+  --text-muted:     #555555;
+  --text-label:     #ffff00;   /* Bloomberg yellow — all field labels */
+
+  --accent:         #ff6600;   /* Bloomberg orange */
+  --accent-hover:   #ff8533;
+  --accent-faint:   #1a0d00;
+
+  --success:        #00cc44;
+  --success-faint:  #001a0a;
+  --warning:        #ffaa00;
+  --error:          #ff3333;
+  --error-faint:    #1a0000;
+  --info:           #00ccff;
+}
+
+/* ── Base ───────────────────────────────────────────────────────────── */
+body {
+  background-color: var(--background);
+  color: var(--text-primary);
+  font-family: 'Courier New', 'Lucida Console', monospace;
+}
+
+/* ── Scrollbar ──────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: var(--background); }
+::-webkit-scrollbar-thumb { background: var(--border); }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ── Stage status animations ────────────────────────────────────────── */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.2; }
+}
+.stage-running { animation: pulse-dot 1s ease-in-out infinite; }
+
+/* ── Bloomberg report content styles ────────────────────────────────── */
+.report-content h1 { font-size: 1.4rem; font-weight: 400; margin: 2rem 0 .75rem; color: var(--accent); letter-spacing: .05em; text-transform: uppercase; border-bottom: 1px solid var(--border); padding-bottom: .5rem; }
+.report-content h2 { font-size: 1.1rem; font-weight: 400; margin: 1.5rem 0 .5rem; color: var(--text-label); letter-spacing: .05em; text-transform: uppercase; }
+.report-content h3 { font-size: .95rem; font-weight: 400; margin: 1rem 0 .4rem; color: var(--info); letter-spacing: .04em; }
+.report-content p  { margin: .5rem 0; color: var(--text-secondary); line-height: 1.8; }
+.report-content ul, .report-content ol { margin: .5rem 0; padding-left: 1.5rem; color: var(--text-secondary); }
+.report-content li { margin: .2rem 0; }
+.report-content table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: .85rem; }
+.report-content th { background: var(--surface-2); padding: 4px 8px; text-align: left; color: var(--text-label); font-weight: 400; border-bottom: 1px solid var(--accent); font-size: .75rem; letter-spacing: .08em; }
+.report-content td { padding: 4px 8px; border-bottom: 1px solid var(--border-2); color: var(--text-secondary); }
+.report-content tr:nth-child(even) td { background: var(--surface); }
+.report-content blockquote { border-left: 2px solid var(--accent); padding-left: 1rem; margin: 1rem 0; color: var(--text-muted); }
+.report-content code { background: var(--surface-2); padding: .1rem .3rem; color: var(--info); font-size: .85em; }
+.report-content pre  { background: var(--surface-2); padding: .75rem 1rem; overflow-x: auto; margin: 1rem 0; border-left: 2px solid var(--accent); }
+.report-content hr   { border-color: var(--border); margin: 1.5rem 0; }
+.report-content strong { color: var(--text-primary); font-weight: 400; }
