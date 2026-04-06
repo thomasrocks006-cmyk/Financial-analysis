@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { BarChart3, LineChart, Radar, Sigma } from "lucide-react";
 import { getRunStatus, listRuns } from "@/lib/api";
@@ -9,9 +10,11 @@ import { QuantPanel } from "@/components/quant/quant-panel";
 import { usePipelineStore } from "@/lib/store";
 import { formatTimestamp } from "@/lib/utils";
 
-export default function QuantPage() {
+function QuantPageContent() {
   const { activeRunId } = usePipelineStore();
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(activeRunId);
+  const searchParams = useSearchParams();
+  const linkedRunId = searchParams.get("run_id");
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(linkedRunId || activeRunId);
 
   const { data: runsData } = useQuery({
     queryKey: ["runs"],
@@ -19,7 +22,13 @@ export default function QuantPage() {
     refetchInterval: 5000,
   });
 
-  const candidateRunId = selectedRunId || activeRunId || runsData?.runs[0]?.run_id || null;
+  const candidateRunId = selectedRunId || linkedRunId || activeRunId || runsData?.runs[0]?.run_id || null;
+
+  useEffect(() => {
+    if (linkedRunId) {
+      setSelectedRunId(linkedRunId);
+    }
+  }, [linkedRunId]);
 
   useEffect(() => {
     if (!selectedRunId && candidateRunId) {
@@ -51,6 +60,14 @@ export default function QuantPage() {
           <div className="mt-1 text-[10px] uppercase tracking-[.08em] text-[var(--text-muted)]">
             VaR · factors · mandate compliance · rebalancing signals
           </div>
+          {linkedRunId && (
+            <div className="mt-2 flex items-center gap-2 text-[10px] text-[var(--text-muted)]">
+              <span>Linked from run detail:</span>
+              <Link href={`/runs/${linkedRunId}`} className="text-[var(--accent)] hover:underline">
+                {linkedRunId}
+              </Link>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <select
@@ -84,7 +101,7 @@ export default function QuantPage() {
       </div>
 
       <div className="grid gap-[1px] bg-[var(--border)] xl:grid-cols-[0.82fr_1.18fr]">
-        <div className="bg-[var(--surface)]">
+        <div id="run-selector" className="bg-[var(--surface)] scroll-mt-24">
           <div className="bg-[var(--surface-2)] px-4 py-1.5 text-[9px] uppercase tracking-[.1em] text-[var(--text-label)]">Run Selector</div>
           <div className="space-y-2 px-4 py-3 text-[11px] text-[var(--text-secondary)]">
             {(runsData?.runs || []).length > 0 ? (runsData?.runs || []).map((run) => (
@@ -105,5 +122,13 @@ export default function QuantPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function QuantPage() {
+  return (
+    <Suspense fallback={<div className="px-4 py-6 text-sm text-[var(--text-muted)]">Loading quant lab…</div>}>
+      <QuantPageContent />
+    </Suspense>
   );
 }

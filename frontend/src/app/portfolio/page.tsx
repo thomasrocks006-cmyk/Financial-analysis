@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { BriefcaseBusiness, FolderOpen, Radar, Target } from "lucide-react";
 import { getQuant, getRunStatus, listRuns, listSavedRuns } from "@/lib/api";
@@ -15,13 +16,21 @@ function convictionBand(index: number) {
   return Math.max(58, 92 - index * 4);
 }
 
-export default function PortfolioPage() {
+function PortfolioPageContent() {
   const store = usePipelineStore();
+  const searchParams = useSearchParams();
+  const linkedRunId = searchParams.get("run_id");
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const { data: activeRuns } = useQuery({ queryKey: ["runs"], queryFn: listRuns, refetchInterval: 5000 });
   const { data: savedRuns } = useQuery({ queryKey: ["saved-runs"], queryFn: listSavedRuns });
 
-  const candidateRunId = selectedRunId || activeRuns?.runs[0]?.run_id || null;
+  const candidateRunId = selectedRunId || linkedRunId || activeRuns?.runs[0]?.run_id || null;
+
+  useEffect(() => {
+    if (linkedRunId) {
+      setSelectedRunId(linkedRunId);
+    }
+  }, [linkedRunId]);
 
   useEffect(() => {
     if (!selectedRunId && activeRuns?.runs?.[0]?.run_id) {
@@ -103,6 +112,14 @@ export default function PortfolioPage() {
           <div className="mt-1 text-[10px] uppercase tracking-[.08em] text-[var(--text-muted)]">
             Allocation blotter · benchmark framing · saved packet queue
           </div>
+          {linkedRunId && (
+            <div className="mt-2 flex items-center gap-2 text-[10px] text-[var(--text-muted)]">
+              <span>Linked from run detail:</span>
+              <Link href={`/runs/${linkedRunId}`} className="text-[var(--accent)] hover:underline">
+                {linkedRunId}
+              </Link>
+            </div>
+          )}
         </div>
         <div className="border border-[var(--border)] px-2 py-1 text-[10px] text-[var(--text-secondary)]">
           API: {getApiTargetLabel()}
@@ -189,7 +206,7 @@ export default function PortfolioPage() {
               )}
             </div>
 
-            <div className="border border-[var(--border)] p-3">
+            <div id="construction-overlay" className="border border-[var(--border)] p-3 scroll-mt-24">
               <div className="text-[10px] uppercase tracking-[.08em] text-[var(--accent)]">Construction overlay</div>
               <div className="mt-2 grid grid-cols-2 gap-2 text-[10px]">
                 <div className="border border-[var(--border-2)] px-2 py-2">
@@ -263,5 +280,13 @@ export default function PortfolioPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function PortfolioPage() {
+  return (
+    <Suspense fallback={<div className="px-4 py-6 text-sm text-[var(--text-muted)]">Loading portfolio workbench…</div>}>
+      <PortfolioPageContent />
+    </Suspense>
   );
 }

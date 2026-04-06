@@ -33,10 +33,96 @@ import {
   GitBranch,
   TrendingDown,
   FileDown,
+  ArrowUpRight,
 } from "lucide-react";
 import Link from "next/link";
 import { ProvenancePanel } from "@/components/provenance/provenance-panel";
 import { QuantPanel } from "@/components/quant/quant-panel";
+
+type DeskShortcut = {
+  href: string;
+  label: string;
+  detail: string;
+};
+
+function getDeskShortcuts(runId: string): DeskShortcut[] {
+  return [
+    {
+      href: `/audit?run_id=${runId}#gate-console`,
+      label: "AUDIT DESK",
+      detail: "Open gate review, blockers, and IC vote context for this run.",
+    },
+    {
+      href: `/quant?run_id=${runId}#run-selector`,
+      label: "QUANT LAB",
+      detail: "Jump into factor, VaR, attribution, and optimisation outputs.",
+    },
+    {
+      href: `/portfolio?run_id=${runId}#construction-overlay`,
+      label: "PORTFOLIO",
+      detail: "Carry this run into the construction overlay and blotter workbench.",
+    },
+    {
+      href: `/monitor?run_id=${runId}`,
+      label: "MONITOR",
+      detail: "Return to the terminal monitor with the current run in context.",
+    },
+  ];
+}
+
+function getStageDeskShortcuts(runId: string, stageNum: number): DeskShortcut[] {
+  const shortcuts: Record<number, DeskShortcut[]> = {
+    5: [
+      {
+        href: `/audit?run_id=${runId}#run-ledger`,
+        label: "OPEN AUDIT LEDGER",
+        detail: "Review claim mix and source posture for the evidence stage.",
+      },
+    ],
+    9: [
+      {
+        href: `/quant?run_id=${runId}#run-selector`,
+        label: "OPEN QUANT LAB",
+        detail: "Inspect VaR, factor tilt, ETF overlap, and scenario outputs.",
+      },
+    ],
+    10: [
+      {
+        href: `/audit?run_id=${runId}#gate-console`,
+        label: "OPEN AUDIT DESK",
+        detail: "Review red-team challenge posture alongside downstream blockers.",
+      },
+    ],
+    11: [
+      {
+        href: `/audit?run_id=${runId}#gate-console`,
+        label: "OPEN REVIEW GATES",
+        detail: "Trace the publish gate decision and IC posture for this run.",
+      },
+    ],
+    12: [
+      {
+        href: `/portfolio?run_id=${runId}#construction-overlay`,
+        label: "OPEN CONSTRUCTION",
+        detail: "Carry stage 12 outputs into portfolio sizing and rebalance review.",
+      },
+      {
+        href: `/quant?run_id=${runId}#run-selector`,
+        label: "OPEN QUANT OVERLAY",
+        detail: "Cross-check optimisation and attribution against the same run.",
+      },
+    ],
+    14: [
+      {
+        href: `/monitor?run_id=${runId}`,
+        label: "OPEN MONITOR",
+        detail: "Return to the terminal monitor and live run queue.",
+      },
+    ],
+  };
+
+  return shortcuts[stageNum] || [];
+}
 
 export default function RunDetailPage() {
   const params = useParams();
@@ -120,6 +206,7 @@ export default function RunDetailPage() {
   const gatePassCount = auditPacket?.gates_passed?.length || 0;
   const gateFailCount = auditPacket?.gates_failed?.length || 0;
   const icVotes = Object.entries(auditPacket?.ic_vote_breakdown || {});
+  const deskShortcuts = getDeskShortcuts(runId);
 
   return (
     <div className="space-y-6">
@@ -239,6 +326,22 @@ export default function RunDetailPage() {
             ))}
           </div>
         </div>
+      </div>
+
+      <div className="grid gap-[1px] bg-[var(--border)] lg:grid-cols-4">
+        {deskShortcuts.map((shortcut) => (
+          <Link
+            key={shortcut.label}
+            href={shortcut.href}
+            className="bg-[var(--surface)] px-4 py-4 transition-colors hover:bg-[var(--surface-2)]"
+          >
+            <div className="flex items-center justify-between text-[10px] tracking-[.08em] uppercase text-[var(--accent)]">
+              <span>{shortcut.label}</span>
+              <ArrowUpRight className="h-3.5 w-3.5" />
+            </div>
+            <div className="mt-2 text-[11px] text-[var(--text-secondary)]">{shortcut.detail}</div>
+          </Link>
+        ))}
       </div>
 
       {/* Tab bar */}
@@ -605,6 +708,23 @@ export default function RunDetailPage() {
                     ) : (
                       <div className="text-xs text-[var(--text-muted)]">No structured output was persisted for this stage.</div>
                     )}
+                  </div>
+                )}
+                {showStageDetail === stage.stage_num && getStageDeskShortcuts(runId, stage.stage_num).length > 0 && (
+                  <div className="mt-4 grid gap-2 lg:grid-cols-2">
+                    {getStageDeskShortcuts(runId, stage.stage_num).map((shortcut) => (
+                      <Link
+                        key={`${stage.stage_num}-${shortcut.label}`}
+                        href={shortcut.href}
+                        className="border border-[var(--border)] bg-[var(--surface-2)] px-3 py-3 text-left transition-colors hover:bg-[var(--surface)]"
+                      >
+                        <div className="flex items-center justify-between text-[10px] tracking-[.08em] uppercase text-[var(--accent)]">
+                          <span>{shortcut.label}</span>
+                          <ArrowUpRight className="h-3.5 w-3.5" />
+                        </div>
+                        <div className="mt-2 text-[11px] text-[var(--text-secondary)]">{shortcut.detail}</div>
+                      </Link>
+                    ))}
                   </div>
                 )}
               </div>
