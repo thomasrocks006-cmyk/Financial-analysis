@@ -8,6 +8,9 @@ import { STAGE_COUNT } from "@/lib/types";
 
 const navItems = [
   { href: "/monitor",   label: "MONITOR",      key: "F1" },
+  { href: "/portfolio", label: "PORTFOLIO",    key: "F5" },
+  { href: "/audit",     label: "AUDIT",        key: "F6" },
+  { href: "/quant",     label: "QUANT",        key: "F7" },
   { href: "/runs/new",  label: "NEW RUN",       key: "F9" },
   { href: "/runs",      label: "ACTIVE RUNS",   key: "F3" },
   { href: "/saved",     label: "SAVED REPORTS", key: "F4" },
@@ -72,6 +75,8 @@ export function Sidebar() {
           const isActive =
             href === "/monitor"
               ? pathname === "/" || pathname.startsWith("/monitor")
+              : href === "/portfolio" || href === "/audit" || href === "/quant"
+              ? pathname.startsWith(href)
               : pathname.startsWith(href);
           return (
             <Link

@@ -27,10 +27,10 @@ const QUICK_ACTIONS = [
 ];
 
 const DESK_MODULES = [
-  { label: "REPORT WORKBENCH", detail: "Open completed packets, download markdown/PDF, review outputs.", href: "/saved" },
-  { label: "AUDIT CONSOLE", detail: "Inspect gates, blockers, quality score, and IC signals.", href: "/runs" },
-  { label: "PROVENANCE MAP", detail: "Trace report sections back to stages, sources, and assumptions.", href: "/runs" },
-  { label: "QUANT LAB", detail: "Review VaR, factor exposures, attribution, optimisation, and ESG context.", href: "/runs" },
+  { label: "PORTFOLIO WORKBENCH", detail: "Open the dedicated portfolio blotter, watchlist, and allocation surface.", href: "/portfolio" },
+  { label: "AUDIT CONSOLE", detail: "Inspect gates, blockers, quality score, and IC signals.", href: "/audit" },
+  { label: "PROVENANCE MAP", detail: "Trace report sections back to stages, sources, and assumptions from run detail.", href: "/runs" },
+  { label: "QUANT LAB", detail: "Review VaR, factor exposures, attribution, optimisation, and ESG context.", href: "/quant" },
 ];
 
 const STARTUP_CHECKLIST = [

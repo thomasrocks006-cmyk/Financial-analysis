@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 const ROUTE_MAP: Record<string, string> = {
   DASHBOARD:  "/",
   MONITOR:    "/monitor",
-  PORTFOLIO:  "/",
+  PORTFOLIO:  "/portfolio",
   "NEW RUN":  "/runs/new",
   "NEW":      "/runs/new",
   RUNS:       "/runs",
@@ -16,8 +16,8 @@ const ROUTE_MAP: Record<string, string> = {
   SAVED:      "/saved",
   SETTINGS:   "/settings",
   REPORT:     "/saved",
-  AUDIT:      "/saved",
-  QUANT:      "/saved",
+  AUDIT:      "/audit",
+  QUANT:      "/quant",
 };
 
 const MKT_DATA = [
@@ -72,7 +72,7 @@ export function TopBar() {
           value={cmd}
           onChange={(e) => setCmd(e.target.value.toUpperCase())}
           onKeyDown={handleCmd}
-          placeholder="COMMAND — TYPE SCREEN NAME + ENTER  (DASHBOARD  NEW RUN  RUNS  SAVED  SETTINGS)"
+          placeholder="COMMAND — TYPE SCREEN NAME + ENTER  (MONITOR  PORTFOLIO  AUDIT  QUANT  NEW RUN)"
           className="flex-1 bg-transparent border-none outline-none text-[var(--text-label)] text-[11px] tracking-[.04em] placeholder:text-[var(--text-muted)] placeholder:text-[10px]"
         />
 
