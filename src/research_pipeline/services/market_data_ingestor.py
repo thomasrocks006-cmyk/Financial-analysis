@@ -88,17 +88,19 @@ class MarketDataIngestor:
             {"symbol": ticker, "apikey": self.fmp_key, "limit": 4},
         )
         results = []
-        for row in (data or []):
+        for row in data or []:
             if not isinstance(row, dict):
                 continue
-            results.append(AnalystEstimate(
-                ticker=ticker,
-                period=row.get("date", "unknown"),
-                source="fmp",
-                eps_estimate=row.get("estimatedEpsAvg"),
-                revenue_estimate=row.get("estimatedRevenueAvg"),
-                num_analysts=row.get("numberAnalystEstimatedRevenue"),
-            ))
+            results.append(
+                AnalystEstimate(
+                    ticker=ticker,
+                    period=row.get("date", "unknown"),
+                    source="fmp",
+                    eps_estimate=row.get("estimatedEpsAvg"),
+                    revenue_estimate=row.get("estimatedRevenueAvg"),
+                    num_analysts=row.get("numberAnalystEstimatedRevenue"),
+                )
+            )
         return results
 
     async def fetch_fmp_price_targets(self, ticker: str) -> ConsensusSnapshot:
@@ -130,8 +132,8 @@ class MarketDataIngestor:
         return MarketSnapshot(
             ticker=ticker,
             source="finnhub",
-            price=data.get("c"),       # current price
-            market_cap=None,           # not provided by /quote
+            price=data.get("c"),  # current price
+            market_cap=None,  # not provided by /quote
             ev=None,
             trailing_pe=None,
             forward_pe=None,
@@ -145,10 +147,18 @@ class MarketDataIngestor:
             {"symbol": ticker, "token": self.finnhub_key},
         )
         row = data[0] if data else {}
-        total = sum([
-            row.get("strongBuy", 0), row.get("buy", 0),
-            row.get("hold", 0), row.get("sell", 0), row.get("strongSell", 0),
-        ]) or 1
+        total = (
+            sum(
+                [
+                    row.get("strongBuy", 0),
+                    row.get("buy", 0),
+                    row.get("hold", 0),
+                    row.get("sell", 0),
+                    row.get("strongSell", 0),
+                ]
+            )
+            or 1
+        )
         return RatingsSnapshot(
             ticker=ticker,
             source="finnhub",
@@ -183,14 +193,16 @@ class MarketDataIngestor:
         )
         results = []
         for row in (data or {}).get("earningsCalendar", []):
-            results.append(EarningsEvent(
-                ticker=row.get("symbol", ""),
-                date=datetime.fromisoformat(row.get("date", "2000-01-01")),
-                eps_estimate=row.get("epsEstimate"),
-                eps_actual=row.get("epsActual"),
-                surprise_pct=row.get("surprisePercent"),
-                source="finnhub",
-            ))
+            results.append(
+                EarningsEvent(
+                    ticker=row.get("symbol", ""),
+                    date=datetime.fromisoformat(row.get("date", "2000-01-01")),
+                    eps_estimate=row.get("epsEstimate"),
+                    eps_actual=row.get("epsActual"),
+                    surprise_pct=row.get("surprisePercent"),
+                    source="finnhub",
+                )
+            )
         return results
 
     # ── yfinance fallback ─────────────────────────────────────────────
@@ -212,10 +224,10 @@ class MarketDataIngestor:
             yticker = yf.Ticker(ticker)
             fi = yticker.fast_info
             return {
-                "price":       getattr(fi, "last_price", None),
-                "market_cap":  getattr(fi, "market_cap", None),
+                "price": getattr(fi, "last_price", None),
+                "market_cap": getattr(fi, "market_cap", None),
                 "trailing_pe": getattr(fi, "pe_ratio", None),
-                "forward_pe":  getattr(fi, "forward_pe", None),
+                "forward_pe": getattr(fi, "forward_pe", None),
             }
 
         data = await asyncio.to_thread(_blocking_fetch)
@@ -245,25 +257,22 @@ class MarketDataIngestor:
         now = datetime.now(timezone.utc)
         result: dict[str, Any] = {
             "ticker": ticker,
-            "source": "fmp_finnhub",   # satisfies DataQA lineage check
+            "source": "fmp_finnhub",  # satisfies DataQA lineage check
             "timestamp": now.isoformat(),
             "errors": {},
         }
 
         # FMP — treated as primary but optional (free tier covers limited universe)
         for fetch_fn, key in [
-            (self.fetch_fmp_quote,             "fmp_quote"),
-            (self.fetch_fmp_price_targets,      "fmp_targets"),
-            (self.fetch_fmp_analyst_estimates,  "fmp_estimates"),
-            (self.fetch_fmp_ratios,             "fmp_ratios"),   # DSQ-13: ROE, ROIC, FCF yield, margins
+            (self.fetch_fmp_quote, "fmp_quote"),
+            (self.fetch_fmp_price_targets, "fmp_targets"),
+            (self.fetch_fmp_analyst_estimates, "fmp_estimates"),
+            (self.fetch_fmp_ratios, "fmp_ratios"),  # DSQ-13: ROE, ROIC, FCF yield, margins
         ]:
             try:
                 value = await fetch_fn(ticker)
                 if isinstance(value, list):
-                    result[key] = [
-                        e.model_dump() if hasattr(e, "model_dump") else e
-                        for e in value
-                    ]
+                    result[key] = [e.model_dump() if hasattr(e, "model_dump") else e for e in value]
                 elif hasattr(value, "model_dump"):
                     result[key] = value.model_dump()
                 else:
@@ -276,9 +285,9 @@ class MarketDataIngestor:
 
         # Finnhub — free tier covers all tickers; primary fallback for price
         for fetch_fn, key in [
-            (self.fetch_finnhub_quote,          "finnhub_quote"),
-            (self.fetch_finnhub_recommendation,  "finnhub_recommendation"),
-            (self.fetch_finnhub_price_target,    "finnhub_targets"),
+            (self.fetch_finnhub_quote, "finnhub_quote"),
+            (self.fetch_finnhub_recommendation, "finnhub_recommendation"),
+            (self.fetch_finnhub_price_target, "finnhub_targets"),
         ]:
             try:
                 result[key] = (await fetch_fn(ticker)).model_dump()
@@ -303,12 +312,15 @@ class MarketDataIngestor:
 
         return result
 
-    async def ingest_universe(self, tickers: list[str], max_concurrent: int = 5) -> list[dict[str, Any]]:
+    async def ingest_universe(
+        self, tickers: list[str], max_concurrent: int = 5
+    ) -> list[dict[str, Any]]:
         """Ingest all tickers concurrently using asyncio.gather with a semaphore for rate control.
 
         max_concurrent limits simultaneous outbound requests to avoid hitting API rate limits.
         """
         import asyncio
+
         semaphore = asyncio.Semaphore(max_concurrent)
 
         async def _ingest_with_sem(ticker: str) -> dict[str, Any]:

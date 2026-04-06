@@ -41,11 +41,13 @@ router = APIRouter(prefix="/runs", tags=["runs"])
 
 # ── Dependency: inject RunManager from app state ─────────────────────────────
 
+
 def get_run_manager(request: Request) -> RunManager:
     return request.app.state.run_manager
 
 
 # ── POST /runs — start a new run ─────────────────────────────────────────────
+
 
 @router.post(
     "",
@@ -70,6 +72,7 @@ async def start_run(
 
 # ── GET /runs — list all runs ────────────────────────────────────────────────
 
+
 @router.get("", summary="List all pipeline runs")
 async def list_runs(
     manager: RunManager = Depends(get_run_manager),
@@ -78,6 +81,7 @@ async def list_runs(
 
 
 # ── GET /runs/{run_id} — run status ─────────────────────────────────────────
+
 
 @router.get("/{run_id}", summary="Get run status and summary")
 async def get_run_status(
@@ -97,6 +101,7 @@ async def get_run_status(
 
 
 # ── GET /runs/{run_id}/result — full result ──────────────────────────────────
+
 
 @router.get("/{run_id}/result", summary="Get the full pipeline result")
 async def get_result(
@@ -128,6 +133,7 @@ async def get_result(
 
 # ── DELETE /runs/{run_id} ────────────────────────────────────────────────────
 
+
 @router.delete("/{run_id}", summary="Cancel and delete a run")
 async def delete_run(
     run_id: str,
@@ -140,6 +146,7 @@ async def delete_run(
 
 
 # ── GET /runs/{run_id}/events — SSE stream ───────────────────────────────────
+
 
 @router.get("/{run_id}/events", summary="Stream pipeline events via SSE")
 async def stream_events(
@@ -156,7 +163,11 @@ async def stream_events(
         yield _sse("connected", {"run_id": run_id, "status": run.status})
 
         async for event in manager.event_stream(run_id):
-            payload = event.to_sse_data() if hasattr(event, "to_sse_data") else json.dumps({"heartbeat": True})
+            payload = (
+                event.to_sse_data()
+                if hasattr(event, "to_sse_data")
+                else json.dumps({"heartbeat": True})
+            )
             yield _sse(event.event_type if hasattr(event, "event_type") else "heartbeat", payload)
 
         # Terminal event
@@ -184,6 +195,7 @@ def _sse(event_name: str, data: Any) -> str:
 
 # ── GET /runs/{run_id}/report — report markdown ─────────────────────────────
 
+
 @router.get("/{run_id}/report", summary="Get pipeline report markdown")
 async def get_report(
     run_id: str,
@@ -201,7 +213,9 @@ async def get_report(
     report_md = ""
     if run.result:
         # Try engine result first
-        stage13 = run.result.get("stage_outputs", {}).get("13", run.result.get("stage_outputs", {}).get(13, {}))
+        stage13 = run.result.get("stage_outputs", {}).get(
+            "13", run.result.get("stage_outputs", {}).get(13, {})
+        )
         if isinstance(stage13, dict):
             report_md = stage13.get("report_markdown", stage13.get("report", ""))
             if not report_md and "report_path" in stage13:
@@ -222,6 +236,7 @@ async def get_report(
 
 # ── GET /runs/{run_id}/stages — all stages ──────────────────────────────────
 
+
 @router.get("/{run_id}/stages", summary="List all stages with timing and gate status")
 async def get_stages(
     run_id: str,
@@ -235,6 +250,7 @@ async def get_stages(
 
 
 # ── GET /runs/{run_id}/stages/{stage_num} — single stage ────────────────────
+
 
 @router.get("/{run_id}/stages/{stage_num}", summary="Get single stage detail")
 async def get_stage_detail(
@@ -256,6 +272,7 @@ async def get_stage_detail(
 
 # ── GET /runs/{run_id}/audit — self-audit packet ────────────────────────────
 
+
 @router.get("/{run_id}/audit", summary="Get self-audit packet")
 async def get_audit(
     run_id: str,
@@ -269,6 +286,7 @@ async def get_audit(
 
 
 # ── GET /runs/{run_id}/timings — stage timing breakdown ─────────────────────
+
 
 @router.get("/{run_id}/timings", summary="Get per-stage timing breakdown")
 async def get_timings(
@@ -284,6 +302,7 @@ async def get_timings(
 
 # ── GET /runs/{run_id}/artifacts — list output artifact files ────────────────
 
+
 @router.get("/{run_id}/artifacts", summary="List artifact files for a run")
 async def list_artifacts(
     run_id: str,
@@ -297,6 +316,7 @@ async def list_artifacts(
 
 
 # ── GET /runs/{run_id}/provenance — traceability & provenance packet ─────────
+
 
 @router.get("/{run_id}/provenance", summary="Get traceability & provenance packet")
 async def get_provenance(
@@ -317,6 +337,7 @@ async def get_provenance(
 
 
 # ── GET /runs/{run_id}/report/pdf — download PDF report ──────────────────────
+
 
 @router.get("/{run_id}/report/pdf", summary="Download the research report as a PDF")
 async def get_report_pdf(
@@ -343,6 +364,7 @@ async def get_report_pdf(
     run_label = run.request.run_label or ""
 
     from api.services.pdf_service import generate_report_pdf  # noqa: PLC0415
+
     pdf_bytes = generate_report_pdf(run_id, tickers, report_md, run_label)
 
     if not pdf_bytes:
@@ -360,7 +382,11 @@ async def get_report_pdf(
 
 # ── GET /runs/{run_id}/quant — quant analytics ────────────────────────────────
 
-@router.get("/{run_id}/quant", summary="Get quant analytics (VaR, ETF overlap, factor exposures, attribution)")
+
+@router.get(
+    "/{run_id}/quant",
+    summary="Get quant analytics (VaR, ETF overlap, factor exposures, attribution)",
+)
 async def get_quant(
     run_id: str,
     manager: RunManager = Depends(get_run_manager),
@@ -389,6 +415,7 @@ async def list_saved_runs(
 ) -> dict[str, Any]:
     try:
         from frontend.storage import list_saved_runs as _list_saved  # noqa: PLC0415
+
         runs = _list_saved()
         return {"runs": runs, "count": len(runs)}
     except ImportError:
@@ -401,6 +428,7 @@ async def load_saved_run(
 ) -> dict[str, Any]:
     try:
         from frontend.storage import load_run  # noqa: PLC0415
+
         data = load_run(run_id)
         if data is None:
             raise HTTPException(status_code=404, detail=f"Saved run not found: {run_id}")
@@ -416,6 +444,7 @@ async def delete_saved_run(
     """Delete a saved run's files from disk and remove it from the run registry."""
     try:
         from frontend.storage import delete_run  # noqa: PLC0415
+
         deleted = delete_run(run_id)
         if not deleted:
             raise HTTPException(status_code=404, detail=f"Saved run not found: {run_id}")

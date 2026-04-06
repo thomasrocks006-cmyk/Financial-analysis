@@ -3,6 +3,7 @@
 Falls back gracefully to an empty dict so callers can degrade to synthetic data
 when the network is unavailable or a ticker is unlisted.
 """
+
 from __future__ import annotations
 
 import logging
@@ -152,9 +153,7 @@ class LiveReturnStore:
             logger.warning("LiveReturnStore failed for %d tickers: %s", len(failed), failed)
         return result
 
-    def _download_individual(
-        self, yf, tickers: list[str], period: str
-    ) -> dict[str, list[float]]:
+    def _download_individual(self, yf, tickers: list[str], period: str) -> dict[str, list[float]]:
         """ACT-S9-4: Ticker-by-ticker fallback when batch download fails partially.
 
         Attempts a separate yfinance download for each ticker so that a

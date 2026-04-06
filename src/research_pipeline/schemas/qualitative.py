@@ -22,12 +22,13 @@ from pydantic import BaseModel, Field
 
 # ── Tier classification ──────────────────────────────────────────────────
 
+
 class QualSourceTier(int, Enum):
-    SEC_FILING = 1          # Primary regulatory document
-    EARNINGS_TRANSCRIPT = 2 # Direct management commentary
-    ANALYST_ACTION = 3      # Third-party analyst commentary
-    PRESS_RELEASE = 3       # Company-issued comms (not SEC)
-    NEWS_AGGREGATED = 4     # Aggregated news / sentiment
+    SEC_FILING = 1  # Primary regulatory document
+    EARNINGS_TRANSCRIPT = 2  # Direct management commentary
+    ANALYST_ACTION = 3  # Third-party analyst commentary
+    PRESS_RELEASE = 3  # Company-issued comms (not SEC)
+    NEWS_AGGREGATED = 4  # Aggregated news / sentiment
 
 
 class InsiderDirection(str, Enum):
@@ -43,21 +44,23 @@ class SentimentLabel(str, Enum):
 
 
 class CoverageDepth(str, Enum):
-    DEEP = "deep"       # ≥15 signals, ≤1 gap
+    DEEP = "deep"  # ≥15 signals, ≤1 gap
     MODERATE = "moderate"  # ≥8 signals, ≤3 gaps
-    THIN = "thin"       # ≥3 signals
-    MINIMAL = "minimal" # <3 signals
+    THIN = "thin"  # ≥3 signals
+    MINIMAL = "minimal"  # <3 signals
 
 
 # ── Source 1 & 2: News and Press Releases ────────────────────────────────
 
+
 class NewsItem(BaseModel):
     """A single news item from FMP or Finnhub (deduplicated by headline hash)."""
+
     ticker: str
     headline: str
     summary: str = ""
     published_at: Optional[datetime] = None
-    source: str = ""                  # e.g. "FMP", "Finnhub"
+    source: str = ""  # e.g. "FMP", "Finnhub"
     url: str = ""
     sentiment_label: Optional[SentimentLabel] = None
     sentiment_score: Optional[float] = None  # [-1.0, 1.0]
@@ -69,13 +72,17 @@ class NewsItem(BaseModel):
         if not self.published_at:
             return False
         now = datetime.now(timezone.utc)
-        delta = now - (self.published_at if self.published_at.tzinfo else
-                       self.published_at.replace(tzinfo=timezone.utc))
+        delta = now - (
+            self.published_at
+            if self.published_at.tzinfo
+            else self.published_at.replace(tzinfo=timezone.utc)
+        )
         return delta.days <= 30
 
 
 class PressRelease(BaseModel):
     """Official company press release (not an SEC regulatory filing)."""
+
     ticker: str
     title: str
     date: Optional[datetime] = None
@@ -86,14 +93,16 @@ class PressRelease(BaseModel):
 
 # ── Source 3: Earnings Transcripts ────────────────────────────────────────
 
+
 class EarningsTranscript(BaseModel):
     """Most recent earnings call transcript — highest value qualitative source."""
+
     ticker: str
-    quarter: str = ""    # e.g. "Q3"
+    quarter: str = ""  # e.g. "Q3"
     year: int = 0
     date: Optional[datetime] = None
-    content: str = ""                         # Full or partial transcript text
-    management_commentary: str = ""           # Extracted guidance/commentary
+    content: str = ""  # Full or partial transcript text
+    management_commentary: str = ""  # Extracted guidance/commentary
     key_guidance_phrases: list[str] = Field(default_factory=list)
     source_tier: int = QualSourceTier.EARNINGS_TRANSCRIPT.value
 
@@ -104,10 +113,12 @@ class EarningsTranscript(BaseModel):
 
 # ── Source 4: SEC Filings ────────────────────────────────────────────────
 
+
 class SECFiling(BaseModel):
     """SEC filing entry (8-K, 10-K, 10-Q, 4, SC 13G etc.)."""
+
     ticker: str
-    filing_type: str          # "8-K", "10-K", "10-Q", "4"
+    filing_type: str  # "8-K", "10-K", "10-Q", "4"
     filed_date: Optional[datetime] = None
     period_of_report: str = ""
     filing_url: str = ""
@@ -122,11 +133,13 @@ class SECFiling(BaseModel):
 
 # ── Source 5: Analyst Actions ────────────────────────────────────────────
 
+
 class AnalystAction(BaseModel):
     """Single analyst upgrade/downgrade or initiation."""
+
     ticker: str
     firm: str
-    action: str = ""         # "upgrade", "downgrade", "initiation", "reiteration"
+    action: str = ""  # "upgrade", "downgrade", "initiation", "reiteration"
     previous_grade: str = ""
     new_grade: str = ""
     action_date: Optional[datetime] = None
@@ -144,6 +157,7 @@ class AnalystAction(BaseModel):
 
 # ── Source 6: Insider Transactions ───────────────────────────────────────
 
+
 class InsiderTransactionRecord(BaseModel):
     """Single insider buy or sell transaction sourced from FMP/Finnhub (SEC Form 4).
 
@@ -151,9 +165,10 @@ class InsiderTransactionRecord(BaseModel):
     ``InsiderTransaction`` below, which is populated by ``SECApiService`` directly
     from EDGAR Form 3/4/5 filings.
     """
+
     ticker: str
     reporter_name: str = ""
-    role: str = ""              # CEO, CFO, Director, 10% Owner etc.
+    role: str = ""  # CEO, CFO, Director, 10% Owner etc.
     direction: InsiderDirection = InsiderDirection.OTHER
     shares: float = 0.0
     price_per_share: float = 0.0
@@ -165,6 +180,7 @@ class InsiderTransactionRecord(BaseModel):
 
 class InsiderActivitySummary(BaseModel):
     """Aggregated insider activity summary for a ticker."""
+
     ticker: str
     transactions: list[InsiderTransactionRecord] = Field(default_factory=list)
     total_bought_usd: float = 0.0
@@ -185,15 +201,17 @@ class InsiderActivitySummary(BaseModel):
 
 # ── SEC API primary-source schemas (DSQ-2 / DSQ-4) ───────────────────────
 
+
 class FilingMetadata(BaseModel):
     """Metadata for a single SEC EDGAR filing retrieved via SECApiService.
 
     Covers 10-K, 10-Q, and 8-K filings for US-listed companies.  ASX tickers
     fall back to ``SECFiling`` (FMP-sourced) since EDGAR does not cover them.
     """
+
     ticker: str
-    form_type: str              # "10-K", "10-Q", "8-K"
-    accession_number: str       # EDGAR accession number — unique filing key
+    form_type: str  # "10-K", "10-Q", "8-K"
+    accession_number: str  # EDGAR accession number — unique filing key
     filed_at: datetime
     period_of_report: str = ""
     is_material_event: bool = False
@@ -207,9 +225,10 @@ class MaterialEvent(BaseModel):
     ``is_adverse`` is set True for restatements, going-concern disclosures,
     class-action notices, and other adverse corporate events.
     """
+
     ticker: str
     accession_number: str
-    event_type: str             # "earnings", "guidance_change", "restatement", "m_and_a", etc.
+    event_type: str  # "earnings", "guidance_change", "restatement", "m_and_a", etc.
     filed_at: datetime
     summary: str = ""
     full_text_url: str = ""
@@ -225,14 +244,15 @@ class InsiderTransaction(BaseModel):
     insiders transacted in the same direction within the same rolling 30-day
     window.
     """
+
     ticker: str
     insider_name: str = ""
-    title: str = ""             # CEO, CFO, Director, 10% Owner, etc.
+    title: str = ""  # CEO, CFO, Director, 10% Owner, etc.
     transaction_type: str = ""  # "buy", "sell", "gift", etc.
     shares: int = 0
     price_per_share: float = 0.0
     transaction_date: Optional[datetime] = None
-    form_type: str = "Form 4"   # "Form 3", "Form 4", "Form 5"
+    form_type: str = "Form 4"  # "Form 3", "Form 4", "Form 5"
     is_cluster_signal: bool = False
     source_tier: int = QualSourceTier.SEC_FILING.value
 
@@ -244,10 +264,11 @@ class FilingSection(BaseModel):
     ``section_code`` follows SEC item numbering: "1A" (Risk Factors),
     "7" (MD&A), "7A" (Quantitative Disclosures About Market Risk).
     """
+
     ticker: str
     form_type: str
     accession_number: str
-    section_code: str           # "1A", "7", "7A"
+    section_code: str  # "1A", "7", "7A"
     section_title: str = ""
     content_chunks: list[str] = Field(default_factory=list)  # each <4 000 tokens
     total_tokens: int = 0
@@ -256,10 +277,12 @@ class FilingSection(BaseModel):
 
 # ── Source 7: Analyst Estimates ──────────────────────────────────────────
 
+
 class EstimatePeriod(BaseModel):
     """Forward consensus estimates for a single forecast period."""
-    period_label: str          # "current_quarter", "current_year", "next_year"
-    fiscal_period: str = ""    # e.g. "2026Q1"
+
+    period_label: str  # "current_quarter", "current_year", "next_year"
+    fiscal_period: str = ""  # e.g. "2026Q1"
     estimated_revenue_avg: Optional[float] = None
     estimated_revenue_low: Optional[float] = None
     estimated_revenue_high: Optional[float] = None
@@ -271,14 +294,22 @@ class EstimatePeriod(BaseModel):
 
     @property
     def revenue_spread_pct(self) -> Optional[float]:
-        if (self.estimated_revenue_low and self.estimated_revenue_high
-                and self.estimated_revenue_low > 0):
-            return (self.estimated_revenue_high - self.estimated_revenue_low) / self.estimated_revenue_low * 100
+        if (
+            self.estimated_revenue_low
+            and self.estimated_revenue_high
+            and self.estimated_revenue_low > 0
+        ):
+            return (
+                (self.estimated_revenue_high - self.estimated_revenue_low)
+                / self.estimated_revenue_low
+                * 100
+            )
         return None
 
 
 class AnalystEstimates(BaseModel):
     """All forward consensus estimates for a ticker."""
+
     ticker: str
     current_quarter: Optional[EstimatePeriod] = None
     current_year: Optional[EstimatePeriod] = None
@@ -291,10 +322,12 @@ class AnalystEstimates(BaseModel):
 
 # ── Source 8: Sentiment Signals ──────────────────────────────────────────
 
+
 class SentimentSignals(BaseModel):
     """Aggregated social and news sentiment for a ticker."""
+
     ticker: str
-    news_sentiment_score: Optional[float] = None   # [-1.0, 1.0]
+    news_sentiment_score: Optional[float] = None  # [-1.0, 1.0]
     stocktwits_sentiment_score: Optional[float] = None
     stocktwits_posts: int = 0
     reddit_sentiment_score: Optional[float] = None
@@ -302,11 +335,15 @@ class SentimentSignals(BaseModel):
 
     @property
     def composite_sentiment_label(self) -> SentimentLabel:
-        scores = [s for s in [
-            self.news_sentiment_score,
-            self.stocktwits_sentiment_score,
-            self.reddit_sentiment_score,
-        ] if s is not None]
+        scores = [
+            s
+            for s in [
+                self.news_sentiment_score,
+                self.stocktwits_sentiment_score,
+                self.reddit_sentiment_score,
+            ]
+            if s is not None
+        ]
         if not scores:
             return SentimentLabel.NEUTRAL
         avg = sum(scores) / len(scores)
@@ -319,12 +356,14 @@ class SentimentSignals(BaseModel):
 
 # ── Full Qualitative Package ─────────────────────────────────────────────
 
+
 class QualitativePackage(BaseModel):
     """Complete qualitative intelligence package for a single ticker.
 
     This is the canonical backend data contract — analogous to MarketSnapshot
     in market_data.py. All downstream agents receive this type.
     """
+
     ticker: str
     ingested_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     news_items: list[NewsItem] = Field(default_factory=list)
@@ -337,7 +376,7 @@ class QualitativePackage(BaseModel):
     )
     analyst_estimates: Optional[AnalystEstimates] = None
     sentiment: Optional[SentimentSignals] = None
-    coverage_gaps: list[str] = Field(default_factory=list)   # names of sources that failed
+    coverage_gaps: list[str] = Field(default_factory=list)  # names of sources that failed
 
     @property
     def signal_count(self) -> int:
@@ -377,18 +416,24 @@ class QualitativePackage(BaseModel):
     def to_prompt_block(self) -> str:
         """Render qualitative package as a structured text block for LLM ingestion."""
         sections: list[str] = [f"═══ QUALITATIVE INTELLIGENCE: {self.ticker} ═══"]
-        sections.append(f"Coverage depth: {self.coverage_depth.value.upper()} "
-                        f"| Signal count: {self.signal_count} "
-                        f"| Tier 1 (SEC): {'YES' if self.tier1_sources_present else 'NO'} "
-                        f"| Tier 2 (transcript): {'YES' if self.tier2_sources_present else 'NO'}")
+        sections.append(
+            f"Coverage depth: {self.coverage_depth.value.upper()} "
+            f"| Signal count: {self.signal_count} "
+            f"| Tier 1 (SEC): {'YES' if self.tier1_sources_present else 'NO'} "
+            f"| Tier 2 (transcript): {'YES' if self.tier2_sources_present else 'NO'}"
+        )
 
         # SEC filings (highest tier)
         if self.sec_filings:
             material = [f for f in self.sec_filings if f.is_primary_document]
-            sections.append(f"\n### SEC Filings ({len(self.sec_filings)} total, {len(material)} primary)")
+            sections.append(
+                f"\n### SEC Filings ({len(self.sec_filings)} total, {len(material)} primary)"
+            )
             for f in self.sec_filings[:6]:
                 date_str = f.filed_date.strftime("%Y-%m-%d") if f.filed_date else "N/A"
-                sections.append(f"  - {f.filing_type} filed {date_str}: {f.description or f.filing_url}")
+                sections.append(
+                    f"  - {f.filing_type} filed {date_str}: {f.description or f.filing_url}"
+                )
         else:
             sections.append("\n### SEC Filings: NONE — coverage gap (Tier 1)")
 
@@ -434,7 +479,9 @@ class QualitativePackage(BaseModel):
                 f"net {net_dir}: ${ia.net_usd:+,.0f})"
             )
             for tx in ia.transactions[:8]:
-                date_str = tx.transaction_date.strftime("%Y-%m-%d") if tx.transaction_date else "N/A"
+                date_str = (
+                    tx.transaction_date.strftime("%Y-%m-%d") if tx.transaction_date else "N/A"
+                )
                 sections.append(
                     f"  - {tx.direction.value.upper()}: {tx.reporter_name} ({tx.role}) "
                     f"{tx.shares:,.0f} shares @ ${tx.price_per_share:.2f} ({date_str})"
@@ -449,10 +496,16 @@ class QualitativePackage(BaseModel):
                 self.analyst_estimates.next_year,
             ]:
                 if period:
-                    rev = f"${period.estimated_revenue_avg/1e9:.2f}B" if period.estimated_revenue_avg else "N/A"
+                    rev = (
+                        f"${period.estimated_revenue_avg / 1e9:.2f}B"
+                        if period.estimated_revenue_avg
+                        else "N/A"
+                    )
                     eps = f"${period.estimated_eps_avg:.2f}" if period.estimated_eps_avg else "N/A"
-                    sections.append(f"  - {period.period_label}: Rev {rev}, EPS {eps} "
-                                    f"({period.num_analysts_revenue} analysts)")
+                    sections.append(
+                        f"  - {period.period_label}: Rev {rev}, EPS {eps} "
+                        f"({period.num_analysts_revenue} analysts)"
+                    )
 
         # Sentiment
         if self.sentiment:
@@ -462,8 +515,10 @@ class QualitativePackage(BaseModel):
             if s.news_sentiment_score is not None:
                 sections.append(f"  - News score: {s.news_sentiment_score:+.2f}")
             if s.stocktwits_sentiment_score is not None:
-                sections.append(f"  - StockTwits: {s.stocktwits_sentiment_score:+.2f} "
-                                 f"({s.stocktwits_posts} posts)")
+                sections.append(
+                    f"  - StockTwits: {s.stocktwits_sentiment_score:+.2f} "
+                    f"({s.stocktwits_posts} posts)"
+                )
 
         # Coverage gaps
         if self.coverage_gaps:

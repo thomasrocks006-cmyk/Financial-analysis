@@ -116,7 +116,6 @@ RULES:
 
     def format_input(self, inputs: dict[str, Any]) -> str:
         """Build the formatted input string for ASX sector analysis."""
-        import json
 
         tickers = inputs.get("tickers", [])
         market_data = inputs.get("market_data", [])
@@ -161,8 +160,10 @@ RULES:
             for md in market_data[:15]:
                 if isinstance(md, dict) and md.get("ticker") in tickers:
                     price = md.get("price") or (md.get("market_data") or {}).get("price", "N/A")
-                    cap = md.get("market_cap") or (md.get("market_data") or {}).get("market_cap", "N/A")
-                    parts.append(f"  {md.get('ticker','?')}: price={price} market_cap={cap}")
+                    cap = md.get("market_cap") or (md.get("market_data") or {}).get(
+                        "market_cap", "N/A"
+                    )
+                    parts.append(f"  {md.get('ticker', '?')}: price={price} market_cap={cap}")
 
         return "\n".join(parts)
 
@@ -175,23 +176,44 @@ ASX_TICKER_SUFFIXES = (".AX", ".ASX")
 # Explicit AU universe — can be extended via MarketConfig
 DEFAULT_ASX_UNIVERSE: list[str] = [
     # Big-4 banks
-    "CBA.AX", "WBC.AX", "NAB.AX", "ANZ.AX",
+    "CBA.AX",
+    "WBC.AX",
+    "NAB.AX",
+    "ANZ.AX",
     # Resources / materials
-    "BHP.AX", "RIO.AX", "FMG.AX", "S32.AX", "MIN.AX",
+    "BHP.AX",
+    "RIO.AX",
+    "FMG.AX",
+    "S32.AX",
+    "MIN.AX",
     # Energy
-    "WDS.AX", "STO.AX", "ORG.AX", "AGL.AX",
+    "WDS.AX",
+    "STO.AX",
+    "ORG.AX",
+    "AGL.AX",
     # Healthcare
-    "CSL.AX", "RHC.AX",
+    "CSL.AX",
+    "RHC.AX",
     # Industrials / infrastructure
-    "BXB.AX", "TCL.AX", "ALX.AX",
+    "BXB.AX",
+    "TCL.AX",
+    "ALX.AX",
     # Technology / data centres
-    "WTC.AX", "NXT.AX", "XRO.AX",
+    "WTC.AX",
+    "NXT.AX",
+    "XRO.AX",
     # Consumer
-    "WOW.AX", "COL.AX", "JBH.AX",
+    "WOW.AX",
+    "COL.AX",
+    "JBH.AX",
     # Insurance / diversified financials
-    "IAG.AX", "SUN.AX", "MQG.AX",
+    "IAG.AX",
+    "SUN.AX",
+    "MQG.AX",
     # REITs
-    "DXS.AX", "GMG.AX", "CHC.AX",
+    "DXS.AX",
+    "GMG.AX",
+    "CHC.AX",
 ]
 
 

@@ -17,7 +17,6 @@ The mocking strategy:
 
 from __future__ import annotations
 
-import asyncio
 import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -31,6 +30,7 @@ from research_pipeline.pipeline.engine import PipelineEngine
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def smoke_settings(tmp_path: Path) -> Settings:
@@ -54,7 +54,7 @@ def smoke_config() -> PipelineConfig:
     return PipelineConfig()
 
 
-SMOKE_UNIVERSE = ["NVDA", "AVGO", "TSM"]   # must be ≥ 3 for gate_1; all compute tickers
+SMOKE_UNIVERSE = ["NVDA", "AVGO", "TSM"]  # must be ≥ 3 for gate_1; all compute tickers
 
 
 def _ingest_result(ticker: str) -> dict:
@@ -66,6 +66,7 @@ def _ingest_result(ticker: str) -> dict:
       - timestamp within 24 h (data_qa timestamp check)
     """
     from datetime import datetime, timezone
+
     return {
         "ticker": ticker,
         "source": "fmp",
@@ -103,143 +104,216 @@ def _sector_output(ticker: str) -> dict:
 def _make_agent_mocks(run_id: str) -> dict[str, AsyncMock]:
     """Build AsyncMock factories for all agent.run() methods."""
     return {
-        "orchestrator": AsyncMock(return_value=_agent_result(
-            "orchestrator", run_id,
-            {"status": "proceed", "universe": SMOKE_UNIVERSE},
-        )),
-        "evidence": AsyncMock(return_value=_agent_result(
-            "evidence_librarian", run_id,
-            {"claims": [
+        "orchestrator": AsyncMock(
+            return_value=_agent_result(
+                "orchestrator",
+                run_id,
+                {"status": "proceed", "universe": SMOKE_UNIVERSE},
+            )
+        ),
+        "evidence": AsyncMock(
+            return_value=_agent_result(
+                "evidence_librarian",
+                run_id,
                 {
-                    "claim_id": "CLM-001",
-                    "ticker": "NVDA",
-                    "claim_text": "NVDA data-center revenue was $18.4B in Q4 FY2025.",
-                    "evidence_class": "primary_fact",
-                    "source_id": "SRC-NVDA-10K-2025",
-                    "confidence": "high",
+                    "claims": [
+                        {
+                            "claim_id": "CLM-001",
+                            "ticker": "NVDA",
+                            "claim_text": "NVDA data-center revenue was $18.4B in Q4 FY2025.",
+                            "evidence_class": "primary_fact",
+                            "source_id": "SRC-NVDA-10K-2025",
+                            "confidence": "high",
+                            "status": "pass",
+                        }
+                    ]
+                },
+            )
+        ),
+        "compute": AsyncMock(
+            return_value=_agent_result(
+                "sector_analyst_compute",
+                run_id,
+                {"sector_outputs": [_sector_output(t) for t in SMOKE_UNIVERSE]},
+            )
+        ),
+        "power": AsyncMock(
+            return_value=_agent_result(
+                "sector_analyst_power",
+                run_id,
+                {"sector_outputs": []},
+            )
+        ),
+        "infra": AsyncMock(
+            return_value=_agent_result(
+                "sector_analyst_infrastructure",
+                run_id,
+                {"sector_outputs": []},
+            )
+        ),
+        "valuation": AsyncMock(
+            return_value=_agent_result(
+                "valuation_analyst",
+                run_id,
+                {
+                    "valuations": [
+                        {
+                            "ticker": "NVDA",
+                            "date": "2026-03-28",
+                            "section_5_scenarios": [
+                                {
+                                    "case": "base",
+                                    "probability_pct": 50,
+                                    "revenue_cagr": "20%",
+                                    "exit_multiple": "30x",
+                                    "exit_multiple_rationale": "sector median",
+                                    "implied_return_1y": "15%",
+                                    "implied_return_3y": "50% [HOUSE VIEW]",
+                                    "key_assumption": "data center demand holds",
+                                    "what_breaks_it": "hyperscaler capex cut",
+                                }
+                            ],
+                            "entry_quality": "ACCEPTABLE",
+                            "methodology_tag": "HOUSE VIEW",
+                        }
+                    ]
+                },
+            )
+        ),
+        "macro": AsyncMock(
+            return_value=_agent_result(
+                "macro_strategist",
+                run_id,
+                {
+                    "regime": "expansion",
+                    "rate_outlook": "neutral",
+                    "usd_outlook": "stable",
+                    "equity_risk_premium": 5.0,
+                },
+            )
+        ),
+        "political": AsyncMock(
+            return_value=_agent_result(
+                "political_risk",
+                run_id,
+                {"risk_level": "low", "key_risks": ["US-China tech tensions"]},
+            )
+        ),
+        "red_team": AsyncMock(
+            return_value=_agent_result(
+                "red_team_analyst",
+                run_id,
+                {
+                    "assessments": [
+                        {
+                            "ticker": "NVDA",
+                            "section_2_falsification_tests": [
+                                {"test_id": "FT-1", "test": "Hyperscaler spend cut >30%"},
+                                {"test_id": "FT-2", "test": "AMD/Intel regain GPU share"},
+                                {"test_id": "FT-3", "test": "Export controls tighten further"},
+                            ],
+                            "required_tests": {"hyperscaler_dependency": True},
+                        }
+                    ]
+                },
+            )
+        ),
+        "reviewer": AsyncMock(
+            return_value=_agent_result(
+                "associate_reviewer",
+                run_id,
+                {
                     "status": "pass",
-                }
-            ]},
-        )),
-        "compute": AsyncMock(return_value=_agent_result(
-            "sector_analyst_compute", run_id,
-            {"sector_outputs": [_sector_output(t) for t in SMOKE_UNIVERSE]},
-        )),
-        "power": AsyncMock(return_value=_agent_result(
-            "sector_analyst_power", run_id,
-            {"sector_outputs": []},
-        )),
-        "infra": AsyncMock(return_value=_agent_result(
-            "sector_analyst_infrastructure", run_id,
-            {"sector_outputs": []},
-        )),
-        "valuation": AsyncMock(return_value=_agent_result(
-            "valuation_analyst", run_id,
-            {"valuations": [{
-                "ticker": "NVDA",
-                "date": "2026-03-28",
-                "section_5_scenarios": [{
-                    "case": "base", "probability_pct": 50,
-                    "revenue_cagr": "20%", "exit_multiple": "30x",
-                    "exit_multiple_rationale": "sector median",
-                    "implied_return_1y": "15%",
-                    "implied_return_3y": "50% [HOUSE VIEW]",
-                    "key_assumption": "data center demand holds",
-                    "what_breaks_it": "hyperscaler capex cut",
-                }],
-                "entry_quality": "ACCEPTABLE",
-                "methodology_tag": "HOUSE VIEW",
-            }]},
-        )),
-        "macro": AsyncMock(return_value=_agent_result(
-            "macro_strategist", run_id,
-            {"regime": "expansion", "rate_outlook": "neutral",
-             "usd_outlook": "stable", "equity_risk_premium": 5.0},
-        )),
-        "political": AsyncMock(return_value=_agent_result(
-            "political_risk", run_id,
-            {"risk_level": "low", "key_risks": ["US-China tech tensions"]},
-        )),
-        "red_team": AsyncMock(return_value=_agent_result(
-            "red_team_analyst", run_id,
-            {"assessments": [{
-                "ticker": "NVDA",
-                "section_2_falsification_tests": [
-                    {"test_id": "FT-1", "test": "Hyperscaler spend cut >30%"},
-                    {"test_id": "FT-2", "test": "AMD/Intel regain GPU share"},
-                    {"test_id": "FT-3", "test": "Export controls tighten further"},
-                ],
-                "required_tests": {"hyperscaler_dependency": True},
-            }]},
-        )),
-        "reviewer": AsyncMock(return_value=_agent_result(
-            "associate_reviewer", run_id,
-            {"status": "pass", "publication_status": "pass", "issues": [],
-             "required_corrections": []},
-        )),
-        "portfolio": AsyncMock(return_value=_agent_result(
-            "portfolio_manager", run_id,
-            {"variants": [
-                {"name": "balanced", "positions": [
-                    {"ticker": "NVDA", "weight_pct": 35.0},
-                    {"ticker": "AVGO", "weight_pct": 30.0},
-                    {"ticker": "TSM",  "weight_pct": 35.0},
-                ]},
-                {"name": "higher_return", "positions": [
-                    {"ticker": "NVDA", "weight_pct": 50.0},
-                    {"ticker": "AVGO", "weight_pct": 30.0},
-                    {"ticker": "TSM",  "weight_pct": 20.0},
-                ]},
-                {"name": "lower_volatility", "positions": [
-                    {"ticker": "NVDA", "weight_pct": 25.0},
-                    {"ticker": "AVGO", "weight_pct": 35.0},
-                    {"ticker": "TSM",  "weight_pct": 40.0},
-                ]},
-            ]},
-        )),
-        "quant": AsyncMock(return_value=_agent_result(
-            "quant_research_analyst", run_id,
-            {
-                "risk_signal": "neutral",
-                "primary_concern": "Concentration risk in compute names",
-                "recommended_action": "Monitor NVDA weight",
-                "section_1_factor_interpretation": {"dominant_factors": ["momentum"]},
-                "section_2_risk_assessment": {"var_95_commentary": "Moderate VaR"},
-                "section_3_benchmark_divergence": {
-                    "etf_differentiation_score": 60,
-                    "etf_replication_risk": False,
-                    "tracking_error_commentary": "High active share",
-                    "active_bets_narrative": "NVDA +12% vs NDX",
-                    "information_ratio_signal": "IR=0.7",
-                    "etf_overlap_summary": "60% differentiated",
+                    "publication_status": "pass",
+                    "issues": [],
+                    "required_corrections": [],
                 },
-                "section_4_construction_signal": {
-                    "factor_tilt_recommendation": "Maintain",
-                    "concentration_recommendation": "Trim NVDA",
-                    "benchmark_recommendation": "Differentiated",
-                    "constructive_changes": [],
+            )
+        ),
+        "portfolio": AsyncMock(
+            return_value=_agent_result(
+                "portfolio_manager",
+                run_id,
+                {
+                    "variants": [
+                        {
+                            "name": "balanced",
+                            "positions": [
+                                {"ticker": "NVDA", "weight_pct": 35.0},
+                                {"ticker": "AVGO", "weight_pct": 30.0},
+                                {"ticker": "TSM", "weight_pct": 35.0},
+                            ],
+                        },
+                        {
+                            "name": "higher_return",
+                            "positions": [
+                                {"ticker": "NVDA", "weight_pct": 50.0},
+                                {"ticker": "AVGO", "weight_pct": 30.0},
+                                {"ticker": "TSM", "weight_pct": 20.0},
+                            ],
+                        },
+                        {
+                            "name": "lower_volatility",
+                            "positions": [
+                                {"ticker": "NVDA", "weight_pct": 25.0},
+                                {"ticker": "AVGO", "weight_pct": 35.0},
+                                {"ticker": "TSM", "weight_pct": 40.0},
+                            ],
+                        },
+                    ]
                 },
-                "analyst_confidence": "medium",
-                "data_quality_note": "Synthetic returns used",
-            },
-        )),
-        "fixed_income": AsyncMock(return_value=_agent_result(
-            "fixed_income_analyst", run_id,
-            {
-                "yield_curve_regime": "normal",
-                "10y_yield_context": "4.3% — neutral for equities",
-                "cost_of_capital_trend": "stable",
-                "rate_sensitivity_score": 5.0,
-                "key_risks": ["rate hike risk"],
-                "offsetting_factors": ["strong earnings growth"],
-                "sector_rotation_read": "neutral",
-                "methodology_note": "Smoke test mock — no live yield data",
-            },
-        )),
+            )
+        ),
+        "quant": AsyncMock(
+            return_value=_agent_result(
+                "quant_research_analyst",
+                run_id,
+                {
+                    "risk_signal": "neutral",
+                    "primary_concern": "Concentration risk in compute names",
+                    "recommended_action": "Monitor NVDA weight",
+                    "section_1_factor_interpretation": {"dominant_factors": ["momentum"]},
+                    "section_2_risk_assessment": {"var_95_commentary": "Moderate VaR"},
+                    "section_3_benchmark_divergence": {
+                        "etf_differentiation_score": 60,
+                        "etf_replication_risk": False,
+                        "tracking_error_commentary": "High active share",
+                        "active_bets_narrative": "NVDA +12% vs NDX",
+                        "information_ratio_signal": "IR=0.7",
+                        "etf_overlap_summary": "60% differentiated",
+                    },
+                    "section_4_construction_signal": {
+                        "factor_tilt_recommendation": "Maintain",
+                        "concentration_recommendation": "Trim NVDA",
+                        "benchmark_recommendation": "Differentiated",
+                        "constructive_changes": [],
+                    },
+                    "analyst_confidence": "medium",
+                    "data_quality_note": "Synthetic returns used",
+                },
+            )
+        ),
+        "fixed_income": AsyncMock(
+            return_value=_agent_result(
+                "fixed_income_analyst",
+                run_id,
+                {
+                    "yield_curve_regime": "normal",
+                    "10y_yield_context": "4.3% — neutral for equities",
+                    "cost_of_capital_trend": "stable",
+                    "rate_sensitivity_score": 5.0,
+                    "key_risks": ["rate hike risk"],
+                    "offsetting_factors": ["strong earnings growth"],
+                    "sector_rotation_read": "neutral",
+                    "methodology_note": "Smoke test mock — no live yield data",
+                },
+            )
+        ),
     }
 
 
 # ── Smoke tests ───────────────────────────────────────────────────────────
+
 
 class TestPipelineEngineSmokeTest:
     """Full end-to-end pipeline smoke test with all external calls mocked."""
@@ -266,15 +340,22 @@ class TestPipelineEngineSmokeTest:
         # mandates (33% single-name > 15% max, 3/8 min positions).  These services
         # are deterministic — mock them so smoke tests verify orchestration not rules.
         from research_pipeline.schemas.governance import (
-            CommitteeRecord, CommitteeVote, MandateCheckResult,
+            CommitteeRecord,
+            CommitteeVote,
+            MandateCheckResult,
         )
+
         _mandate_ok = MandateCheckResult(
-            run_id="smoke", mandate_id="smoke-mandate", is_compliant=True,
+            run_id="smoke",
+            mandate_id="smoke-mandate",
+            is_compliant=True,
         )
         engine.mandate_engine.check_compliance = MagicMock(return_value=_mandate_ok)
         _ic_approved = CommitteeRecord(
-            record_id="IC-smoke", run_id="smoke",
-            outcome=CommitteeVote.APPROVE, quorum_met=True,
+            record_id="IC-smoke",
+            run_id="smoke",
+            outcome=CommitteeVote.APPROVE,
+            quorum_met=True,
             minutes="Approved — smoke test mock",
         )
         engine.investment_committee.evaluate_and_vote = MagicMock(return_value=_ic_approved)
@@ -285,7 +366,9 @@ class TestPipelineEngineSmokeTest:
         engine = self._build_engine(smoke_settings, smoke_config)
         ingest_data = [_ingest_result(t) for t in SMOKE_UNIVERSE]
 
-        with patch.object(engine.ingestor, "ingest_universe", new=AsyncMock(return_value=ingest_data)):
+        with patch.object(
+            engine.ingestor, "ingest_universe", new=AsyncMock(return_value=ingest_data)
+        ):
             mocks = _make_agent_mocks("SMOKE-001")
             # Pre-set run_record so mocks can reference a stable run_id
             self._patch_agents(engine, mocks)
@@ -300,7 +383,9 @@ class TestPipelineEngineSmokeTest:
         engine = self._build_engine(smoke_settings, smoke_config)
         ingest_data = [_ingest_result(t) for t in SMOKE_UNIVERSE]
 
-        with patch.object(engine.ingestor, "ingest_universe", new=AsyncMock(return_value=ingest_data)):
+        with patch.object(
+            engine.ingestor, "ingest_universe", new=AsyncMock(return_value=ingest_data)
+        ):
             mocks = _make_agent_mocks("SMOKE-002")
             self._patch_agents(engine, mocks)
             await engine.run_full_pipeline(SMOKE_UNIVERSE)
@@ -315,7 +400,9 @@ class TestPipelineEngineSmokeTest:
         engine = self._build_engine(smoke_settings, smoke_config)
         ingest_data = [_ingest_result(t) for t in SMOKE_UNIVERSE]
 
-        with patch.object(engine.ingestor, "ingest_universe", new=AsyncMock(return_value=ingest_data)):
+        with patch.object(
+            engine.ingestor, "ingest_universe", new=AsyncMock(return_value=ingest_data)
+        ):
             mocks = _make_agent_mocks("SMOKE-003")
             self._patch_agents(engine, mocks)
             await engine.run_full_pipeline(SMOKE_UNIVERSE)
@@ -330,7 +417,9 @@ class TestPipelineEngineSmokeTest:
         engine = self._build_engine(smoke_settings, smoke_config)
         ingest_data = [_ingest_result(t) for t in SMOKE_UNIVERSE]
 
-        with patch.object(engine.ingestor, "ingest_universe", new=AsyncMock(return_value=ingest_data)):
+        with patch.object(
+            engine.ingestor, "ingest_universe", new=AsyncMock(return_value=ingest_data)
+        ):
             mocks = _make_agent_mocks("SMOKE-004")
             self._patch_agents(engine, mocks)
             await engine.run_full_pipeline(SMOKE_UNIVERSE)
@@ -347,7 +436,8 @@ class TestPipelineEngineSmokeTest:
         engine = self._build_engine(smoke_settings, smoke_config)
 
         with patch.object(
-            engine.ingestor, "ingest_universe",
+            engine.ingestor,
+            "ingest_universe",
             new=AsyncMock(return_value=[{"ticker": "NVDA", "error": "API unavailable"}]),
         ):
             mocks = _make_agent_mocks("SMOKE-005")
@@ -363,15 +453,19 @@ class TestPipelineEngineSmokeTest:
         engine = self._build_engine(smoke_settings, smoke_config)
         ingest_data = [_ingest_result(t) for t in SMOKE_UNIVERSE]
 
-        with patch.object(engine.ingestor, "ingest_universe", new=AsyncMock(return_value=ingest_data)):
+        with patch.object(
+            engine.ingestor, "ingest_universe", new=AsyncMock(return_value=ingest_data)
+        ):
             mocks = _make_agent_mocks("SMOKE-006")
             # Evidence agent returns empty claims — gate_5 should block
-            mocks["evidence"] = AsyncMock(return_value=AgentResult(
-                agent_name="evidence_librarian",
-                run_id="SMOKE-006",
-                success=False,
-                error="LLM unavailable",
-            ))
+            mocks["evidence"] = AsyncMock(
+                return_value=AgentResult(
+                    agent_name="evidence_librarian",
+                    run_id="SMOKE-006",
+                    success=False,
+                    error="LLM unavailable",
+                )
+            )
             self._patch_agents(engine, mocks)
             result = await engine.run_full_pipeline(SMOKE_UNIVERSE)
 
@@ -383,13 +477,26 @@ class TestPipelineEngineSmokeTest:
         engine = self._build_engine(smoke_settings, smoke_config)
         ingest_data = [_ingest_result(t) for t in SMOKE_UNIVERSE]
 
-        with patch.object(engine.ingestor, "ingest_universe", new=AsyncMock(return_value=ingest_data)):
+        with patch.object(
+            engine.ingestor, "ingest_universe", new=AsyncMock(return_value=ingest_data)
+        ):
             mocks = _make_agent_mocks("SMOKE-007")
-            mocks["reviewer"] = AsyncMock(return_value=_agent_result(
-                "associate_reviewer", "SMOKE-007",
-                {"status": "fail", "publication_status": "fail",
-                 "issues": [{"severity": "critical", "description": "Insufficient evidence sourcing"}]},
-            ))
+            mocks["reviewer"] = AsyncMock(
+                return_value=_agent_result(
+                    "associate_reviewer",
+                    "SMOKE-007",
+                    {
+                        "status": "fail",
+                        "publication_status": "fail",
+                        "issues": [
+                            {
+                                "severity": "critical",
+                                "description": "Insufficient evidence sourcing",
+                            }
+                        ],
+                    },
+                )
+            )
             self._patch_agents(engine, mocks)
             result = await engine.run_full_pipeline(SMOKE_UNIVERSE)
 
@@ -401,14 +508,23 @@ class TestPipelineEngineSmokeTest:
         engine = self._build_engine(smoke_settings, smoke_config)
         ingest_data = [_ingest_result(t) for t in SMOKE_UNIVERSE]
 
-        with patch.object(engine.ingestor, "ingest_universe", new=AsyncMock(return_value=ingest_data)):
+        with patch.object(
+            engine.ingestor, "ingest_universe", new=AsyncMock(return_value=ingest_data)
+        ):
             mocks = _make_agent_mocks("SMOKE-008")
             self._patch_agents(engine, mocks)
             await engine.run_full_pipeline(SMOKE_UNIVERSE)
 
         # Core agents must each be called once
-        for agent_key in ("evidence", "valuation", "macro", "political",
-                          "red_team", "reviewer", "portfolio"):
+        for agent_key in (
+            "evidence",
+            "valuation",
+            "macro",
+            "political",
+            "red_team",
+            "reviewer",
+            "portfolio",
+        ):
             assert mocks[agent_key].call_count == 1, (
                 f"Agent '{agent_key}' was called {mocks[agent_key].call_count} times (expected 1)"
             )
@@ -416,8 +532,12 @@ class TestPipelineEngineSmokeTest:
         assert mocks["compute"].call_count == 1
         # Power and infra have no matching tickers in SMOKE_UNIVERSE → skipped
         # The engine logs "Skipping <agent> — no tickers in universe" for these
-        assert mocks["power"].call_count == 0, "Power analyst should not run when no power tickers present"
-        assert mocks["infra"].call_count == 0, "Infra analyst should not run when no infra tickers present"
+        assert mocks["power"].call_count == 0, (
+            "Power analyst should not run when no power tickers present"
+        )
+        assert mocks["infra"].call_count == 0, (
+            "Infra analyst should not run when no infra tickers present"
+        )
 
 
 class TestPipelineEngineInstantiation:
@@ -431,9 +551,17 @@ class TestPipelineEngineInstantiation:
     def test_all_agents_present(self, smoke_settings, smoke_config):
         engine = PipelineEngine(settings=smoke_settings, config=smoke_config)
         expected_agents = [
-            "orchestrator_agent", "evidence_agent", "compute_analyst",
-            "power_analyst", "infra_analyst", "valuation_agent", "macro_agent",
-            "political_agent", "red_team_agent", "reviewer_agent", "pm_agent",
+            "orchestrator_agent",
+            "evidence_agent",
+            "compute_analyst",
+            "power_analyst",
+            "infra_analyst",
+            "valuation_agent",
+            "macro_agent",
+            "political_agent",
+            "red_team_agent",
+            "reviewer_agent",
+            "pm_agent",
             "quant_analyst_agent",
         ]
         for attr in expected_agents:
@@ -442,10 +570,20 @@ class TestPipelineEngineInstantiation:
     def test_all_services_present(self, smoke_settings, smoke_config):
         engine = PipelineEngine(settings=smoke_settings, config=smoke_config)
         expected_services = [
-            "ingestor", "reconciliation", "data_qa", "dcf_engine",
-            "risk_engine", "scenario_engine", "factor_engine", "var_engine",
-            "mandate_engine", "investment_committee", "etf_overlap_engine",
-            "observability", "report_format_service", "quant_analyst_agent",
+            "ingestor",
+            "reconciliation",
+            "data_qa",
+            "dcf_engine",
+            "risk_engine",
+            "scenario_engine",
+            "factor_engine",
+            "var_engine",
+            "mandate_engine",
+            "investment_committee",
+            "etf_overlap_engine",
+            "observability",
+            "report_format_service",
+            "quant_analyst_agent",
         ]
         for attr in expected_services:
             assert hasattr(engine, attr), f"Missing service: {attr}"
@@ -459,17 +597,20 @@ class TestPipelineEngineInstantiation:
 
 # ── Adapter tests ─────────────────────────────────────────────────────────
 
+
 class TestPipelineAdapter:
     """Verify the thin pipeline_adapter shim has the expected interface."""
 
     def test_stages_constant(self):
         from frontend.pipeline_adapter import STAGES
+
         assert len(STAGES) == 15
         assert STAGES[0] == (0, "Bootstrap & Configuration")
         assert STAGES[14] == (14, "Monitoring & Run Registry")
 
     def test_stage_result_dataclass(self):
         from frontend.pipeline_adapter import StageResult
+
         sr = StageResult(stage_num=3, stage_name="Reconciliation")
         assert sr.status == "pending"
         assert sr.output == {}
@@ -477,6 +618,7 @@ class TestPipelineAdapter:
 
     def test_run_result_dataclass(self):
         from frontend.pipeline_adapter import RunResult
+
         rr = RunResult(run_id="x", tickers=["NVDA"], model="claude", started_at="2026-01-01")
         assert rr.success is False
         assert rr.publication_status == "PASS"
@@ -484,10 +626,12 @@ class TestPipelineAdapter:
 
     def test_pipeline_runner_alias(self):
         from frontend.pipeline_adapter import PipelineRunner, PipelineEngineAdapter
+
         assert PipelineRunner is PipelineEngineAdapter
 
     def test_adapter_instantiation(self, tmp_path):
         from frontend.pipeline_adapter import PipelineEngineAdapter
+
         adapter = PipelineEngineAdapter(
             provider_keys={
                 "fmp": "test-fmp",
@@ -503,6 +647,7 @@ class TestPipelineAdapter:
 
     def test_adapter_default_tickers(self):
         from frontend.pipeline_adapter import PipelineEngineAdapter
+
         adapter = PipelineEngineAdapter(provider_keys={})
         assert adapter.tickers == ["NVDA", "CEG", "PWR"]
 
@@ -547,18 +692,27 @@ class TestPipelineAdapter:
 
         # Same mandate + IC mocking as TestPipelineEngineSmokeTest._patch_agents
         from research_pipeline.schemas.governance import (
-            CommitteeRecord, CommitteeVote, MandateCheckResult,
+            CommitteeRecord,
+            CommitteeVote,
+            MandateCheckResult,
         )
+
         _mandate_ok = MandateCheckResult(
-            run_id="adapter-smoke", mandate_id="smoke-mandate", is_compliant=True,
+            run_id="adapter-smoke",
+            mandate_id="smoke-mandate",
+            is_compliant=True,
         )
         engine_instance.mandate_engine.check_compliance = MagicMock(return_value=_mandate_ok)
         _ic_approved = CommitteeRecord(
-            record_id="IC-adapter-smoke", run_id="adapter-smoke",
-            outcome=CommitteeVote.APPROVE, quorum_met=True,
+            record_id="IC-adapter-smoke",
+            run_id="adapter-smoke",
+            outcome=CommitteeVote.APPROVE,
+            quorum_met=True,
             minutes="Approved — adapter smoke test mock",
         )
-        engine_instance.investment_committee.evaluate_and_vote = MagicMock(return_value=_ic_approved)
+        engine_instance.investment_committee.evaluate_and_vote = MagicMock(
+            return_value=_ic_approved
+        )
 
         # Patch PipelineEngine.__init__ to return our pre-built instance
         with patch("frontend.pipeline_adapter.PipelineEngine", return_value=engine_instance):
@@ -571,4 +725,3 @@ class TestPipelineAdapter:
         assert result.completed_at != ""
         assert len(result.stages) == 15
         assert result.success is True
-

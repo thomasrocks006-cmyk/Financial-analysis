@@ -88,6 +88,7 @@ Additional gate checks triggered by macro context:
 
     def format_input(self, inputs: dict[str, Any]) -> str:
         import json
+
         return json.dumps(inputs, indent=2, default=str)
 
     def parse_output(self, raw_response: str) -> dict[str, Any]:
@@ -96,9 +97,7 @@ Additional gate checks triggered by macro context:
 
         parsed = super().parse_output(raw_response)
         if not isinstance(parsed, dict):
-            raise StructuredOutputError(
-                "AssociateReviewer: expected a JSON object, got array."
-            )
+            raise StructuredOutputError("AssociateReviewer: expected a JSON object, got array.")
 
         status = str(parsed.get("publication_status", "fail")).lower().strip()
 

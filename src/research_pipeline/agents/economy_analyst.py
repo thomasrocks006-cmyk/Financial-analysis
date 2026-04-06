@@ -149,10 +149,9 @@ RULES:
             "run_id": run_id,
         }
 
-    def parse_economy_analysis(
-        self, raw_output: dict[str, Any], run_id: str
-    ) -> EconomyAnalysis:
+    def parse_economy_analysis(self, raw_output: dict[str, Any], run_id: str) -> EconomyAnalysis:
         """Parse agent JSON output into a typed EconomyAnalysis model."""
+
         def safe_list(val: Any) -> list[str]:
             if isinstance(val, list):
                 return [str(x) for x in val]
@@ -233,19 +232,14 @@ RULES:
         return EconomyAnalysis(
             run_id=run_id,
             confidence="LOW",
-            rba_cash_rate_thesis=(
-                f"RBA cash rate at {rate:.2f}%. {scenario.au_rates.base}"
-            ),
-            fed_funds_thesis=(
-                f"Fed funds at {fed:.2f}%. {scenario.us_rates.base}"
-            ),
+            rba_cash_rate_thesis=(f"RBA cash rate at {rate:.2f}%. {scenario.au_rates.base}"),
+            fed_funds_thesis=(f"Fed funds at {fed:.2f}%. {scenario.us_rates.base}"),
             au_cpi_assessment=(
                 f"AU trimmed mean CPI at {au.au_cpi_trimmed_mean_pct or 'N/A'}% — "
                 f"{scenario.au_inflation.base}"
             ),
             us_cpi_assessment=(
-                f"US CPI at {us.us_cpi_yoy_pct or 'N/A'}% — "
-                f"{scenario.us_rates.base}"
+                f"US CPI at {us.us_cpi_yoy_pct or 'N/A'}% — {scenario.us_rates.base}"
             ),
             au_housing_assessment=scenario.au_housing.base,
             au_wage_growth=(

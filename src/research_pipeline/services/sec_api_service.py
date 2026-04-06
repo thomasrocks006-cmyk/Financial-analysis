@@ -29,21 +29,22 @@ logger = logging.getLogger(__name__)
 
 try:
     import httpx
+
     _HTTPX_AVAILABLE = True
 except ImportError:
     _HTTPX_AVAILABLE = False
     logger.warning("httpx not available — SECApiService will return empty results")
 
 _TIMEOUT_SECS = 20.0
-_MAX_SECTION_CHARS = 4_000   # per-section truncation for prompt safety
+_MAX_SECTION_CHARS = 4_000  # per-section truncation for prompt safety
 _FORM_TYPES_PRIMARY = ["10-K", "10-Q", "8-K"]
 _FORM_TYPES_INSIDER = ["4", "3", "5"]
 
 # SEC section identifiers for ExtractorApi
 _SECTIONS = {
     "1A": "risk_factors",
-    "7":  "mda",         # MD&A
-    "1":  "business",
+    "7": "mda",  # MD&A
+    "1": "business",
 }
 
 
@@ -67,8 +68,12 @@ class SECFilingRecord:
     """Lightweight filing record parsed from SEC API response."""
 
     __slots__ = (
-        "ticker", "accession_no", "form_type", "filed_at",
-        "company_name", "filing_url",
+        "ticker",
+        "accession_no",
+        "form_type",
+        "filed_at",
+        "company_name",
+        "filing_url",
     )
 
     def __init__(
@@ -106,12 +111,12 @@ class SECFilingPackage:
     def __init__(self, ticker: str):
         self.ticker = ticker
         self.recent_filings: list[SECFilingRecord] = []
-        self.mda_text: str = ""           # 10-K/Q MD&A section
+        self.mda_text: str = ""  # 10-K/Q MD&A section
         self.risk_factors_text: str = ""  # 10-K Risk Factors
-        self.business_text: str = ""      # 10-K Business description
-        self.eight_k_events: list[dict[str, Any]] = []   # recent 8-K material events
+        self.business_text: str = ""  # 10-K Business description
+        self.eight_k_events: list[dict[str, Any]] = []  # recent 8-K material events
         self.insider_transactions: list[dict[str, Any]] = []  # Form 3/4/5
-        self.xbrl_facts: dict[str, Any] = {}   # XBRL financial facts for cross-validation
+        self.xbrl_facts: dict[str, Any] = {}  # XBRL financial facts for cross-validation
         self.coverage_gaps: list[str] = []
 
     def to_dict(self) -> dict[str, Any]:
@@ -158,15 +163,10 @@ class SECApiService:
 
     # ── Public API ─────────────────────────────────────────────────────
 
-    async def fetch_universe(
-        self, tickers: list[str]
-    ) -> dict[str, SECFilingPackage]:
+    async def fetch_universe(self, tickers: list[str]) -> dict[str, SECFilingPackage]:
         """Fetch SEC data for all tickers. Returns dict ticker → SECFilingPackage."""
         if not self._available:
-            return {
-                t: SECFilingPackage(ticker=t)
-                for t in tickers
-            }
+            return {t: SECFilingPackage(ticker=t) for t in tickers}
 
         async with httpx.AsyncClient(timeout=_TIMEOUT_SECS) as client:
             results: dict[str, SECFilingPackage] = {}
@@ -180,16 +180,15 @@ class SECApiService:
                     results[ticker] = pkg
         return results
 
-    async def fetch_ticker(
-        self, client: httpx.AsyncClient, ticker: str
-    ) -> SECFilingPackage:
+    async def fetch_ticker(self, client: httpx.AsyncClient, ticker: str) -> SECFilingPackage:
         """Fetch all SEC data for one ticker."""
         pkg = SECFilingPackage(ticker=ticker)
 
         # 1. Filing index — get recent 10-K, 10-Q, 8-K
         filings = await self._safe(
             self._fetch_filing_index(client, ticker),
-            "filing_index", pkg.coverage_gaps,
+            "filing_index",
+            pkg.coverage_gaps,
         )
         if filings:
             pkg.recent_filings = filings
@@ -202,7 +201,8 @@ class SECApiService:
             if annual_or_quarterly:
                 sections = await self._safe(
                     self._extract_sections(client, annual_or_quarterly.filing_url),
-                    "section_extraction", pkg.coverage_gaps,
+                    "section_extraction",
+                    pkg.coverage_gaps,
                 )
                 if sections:
                     pkg.mda_text = sections.get("mda", "")
@@ -216,7 +216,8 @@ class SECApiService:
         # 4. Insider transactions (Form 4)
         insider = await self._safe(
             self._fetch_insider_transactions(client, ticker),
-            "insider_transactions", pkg.coverage_gaps,
+            "insider_transactions",
+            pkg.coverage_gaps,
         )
         if insider:
             pkg.insider_transactions = insider
@@ -248,22 +249,22 @@ class SECApiService:
         data = resp.json()
 
         records: list[SECFilingRecord] = []
-        for hit in (data.get("filings") or []):
-            records.append(SECFilingRecord(
-                ticker=ticker,
-                accession_no=hit.get("accessionNo", ""),
-                form_type=hit.get("formType", ""),
-                filed_at=_parse_date(hit.get("filedAt")),
-                company_name=hit.get("companyName", ""),
-                filing_url=hit.get("linkToFilingDetails", ""),
-            ))
+        for hit in data.get("filings") or []:
+            records.append(
+                SECFilingRecord(
+                    ticker=ticker,
+                    accession_no=hit.get("accessionNo", ""),
+                    form_type=hit.get("formType", ""),
+                    filed_at=_parse_date(hit.get("filedAt")),
+                    company_name=hit.get("companyName", ""),
+                    filing_url=hit.get("linkToFilingDetails", ""),
+                )
+            )
         return records
 
     # ── Section extraction ──────────────────────────────────────────────
 
-    async def _extract_sections(
-        self, client: httpx.AsyncClient, filing_url: str
-    ) -> dict[str, str]:
+    async def _extract_sections(self, client: httpx.AsyncClient, filing_url: str) -> dict[str, str]:
         """Extract key sections from a 10-K/10-Q using the Extractor API."""
         result: dict[str, str] = {}
         for section_id, field_name in _SECTIONS.items():
@@ -309,16 +310,18 @@ class SECApiService:
         data = resp.json()
         transactions = []
         for hit in (data.get("filings") or [])[:10]:
-            transactions.append({
-                "ticker": ticker,
-                "form_type": hit.get("formType", ""),
-                "filed_at": hit.get("filedAt", ""),
-                "reporting_owner": hit.get("reportingOwner", ""),
-                "transaction_date": hit.get("transactionDate", ""),
-                "filing_url": hit.get("linkToFilingDetails", ""),
-                "source": "sec_api",
-                "source_tier": 1,
-            })
+            transactions.append(
+                {
+                    "ticker": ticker,
+                    "form_type": hit.get("formType", ""),
+                    "filed_at": hit.get("filedAt", ""),
+                    "reporting_owner": hit.get("reportingOwner", ""),
+                    "transaction_date": hit.get("transactionDate", ""),
+                    "filing_url": hit.get("linkToFilingDetails", ""),
+                    "source": "sec_api",
+                    "source_tier": 1,
+                }
+            )
         return transactions
 
     # ── Utility ─────────────────────────────────────────────────────────

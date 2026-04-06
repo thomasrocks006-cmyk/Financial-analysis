@@ -44,6 +44,17 @@ where = ["src"]
 line-length = 100
 target-version = "py311"
 
+[tool.ruff.lint]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+# Streamlit app files: imports must come after sys.path setup (E402),
+# and single-line conditionals are used for compact readability (E701).
+"src/frontend/app.py" = ["E402", "E701", "F841"]
+"src/frontend/pipeline_runner.py" = ["E402", "E701", "F841"]
+# Qualitative service: import after conditional availability check
+"src/research_pipeline/services/qualitative_data_service.py" = ["E402"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"

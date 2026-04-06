@@ -56,6 +56,7 @@ Return a JSON array of claim ledger entries."""
 
     def format_input(self, inputs: dict[str, Any]) -> str:
         import json
+
         context = {
             "tickers": inputs.get("tickers", []),
             "analyst_claims": inputs.get("analyst_claims", []),

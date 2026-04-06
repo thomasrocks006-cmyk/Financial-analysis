@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any, Optional
 
 from research_pipeline.schemas.registry import (
-    GoldenTest,
     HumanOverride,
     PromptVersion,
     RunRecord,
@@ -43,7 +42,9 @@ class RunRegistryService:
         agent_versions: dict[str, str] | None = None,
     ) -> RunRecord:
         """Create a new run and return its record."""
-        run_id = f"run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+        run_id = (
+            f"run_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}"
+        )
         config_hash = hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()[:16]
 
         record = RunRecord(

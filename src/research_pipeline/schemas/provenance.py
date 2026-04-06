@@ -20,24 +20,26 @@ back to the stage(s) and data sources that produced it.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Optional
 
 from pydantic import BaseModel, Field
 
 
 class DataSource(BaseModel):
     """A single data source consumed by a stage."""
+
     name: str
-    source_type: str = "unknown"       # api | file | llm | upstream_stage | computed
+    source_type: str = "unknown"  # api | file | llm | upstream_stage | computed
     stage_origin: Optional[int] = None  # stage number that produced this
-    freshness: Optional[str] = None     # e.g. "2024-01-15" or "live"
+    freshness: Optional[str] = None  # e.g. "2024-01-15" or "live"
     confidence: Optional[float] = None  # 0.0-1.0
 
 
 class StageOutput(BaseModel):
     """A single output produced by a stage."""
+
     name: str
-    output_type: str = "data"          # data | artifact | decision | metric
+    output_type: str = "data"  # data | artifact | decision | metric
     description: str = ""
     artifact_path: Optional[str] = None
 
@@ -48,6 +50,7 @@ class ProvenanceCard(BaseModel):
     Built automatically after each stage completes.  Consumers can
     render these as expandable cards in the UI to show full lineage.
     """
+
     stage_num: int
     stage_label: str
     run_id: str
@@ -81,12 +84,13 @@ class ProvenanceCard(BaseModel):
 
 class ReportSectionProvenance(BaseModel):
     """Links a section of the final report to its source stages/data."""
+
     section_title: str
     section_index: int = 0
     source_stages: list[int] = Field(default_factory=list)
     source_agents: list[str] = Field(default_factory=list)
     data_sources: list[DataSource] = Field(default_factory=list)
-    confidence_level: str = "medium"   # low | medium | high
+    confidence_level: str = "medium"  # low | medium | high
     methodology_tags: list[str] = Field(default_factory=list)
 
 
@@ -96,6 +100,7 @@ class ProvenancePacket(BaseModel):
     Aggregates all per-stage ProvenanceCards and report-section
     provenance into a single packet for storage and UI display.
     """
+
     run_id: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     stage_cards: list[ProvenanceCard] = Field(default_factory=list)

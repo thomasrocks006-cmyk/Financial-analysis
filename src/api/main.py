@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 # ── Lifespan (startup / shutdown) ────────────────────────────────────────────
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialise shared resources on startup; clean up on shutdown."""
@@ -49,9 +50,7 @@ async def lifespan(app: FastAPI):
         prompts_dir=prompts_dir,
         llm_model=os.getenv("LLM_MODEL", "claude-sonnet-4-6"),
     )
-    config = load_pipeline_config(
-        config_path=os.getenv("PIPELINE_CONFIG_PATH") or None
-    )
+    config = load_pipeline_config(config_path=os.getenv("PIPELINE_CONFIG_PATH") or None)
     app.state.run_manager = RunManager(settings=settings, config=config)
     logger.info("RunManager initialised — storage=%s", storage_dir)
 
@@ -64,6 +63,7 @@ async def lifespan(app: FastAPI):
 
 
 # ── Application factory ───────────────────────────────────────────────────────
+
 
 def create_app() -> FastAPI:
     app = FastAPI(
@@ -91,6 +91,7 @@ def create_app() -> FastAPI:
     # ── Optional API-key auth middleware ─────────────────────────────────
     api_key = os.getenv("API_KEY", "")
     if api_key:
+
         @app.middleware("http")
         async def _check_api_key(request: Request, call_next):
             # Health check is always public

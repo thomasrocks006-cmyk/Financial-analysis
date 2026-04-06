@@ -77,19 +77,21 @@ def generate_report_pdf(
     pdf.set_font("Helvetica", "", 10)
 
     # Normalize to latin-1 safe characters so fpdf2 doesn't crash on Unicode
-    _UNICODE_MAP = str.maketrans({
-        "\u2014": "--",   # em dash
-        "\u2013": "-",    # en dash
-        "\u2026": "...",  # ellipsis
-        "\u2018": "'",    # left single quote
-        "\u2019": "'",    # right single quote
-        "\u201c": '"',    # left double quote
-        "\u201d": '"',    # right double quote
-        "\u2022": "*",    # bullet
-        "\u00b7": "*",    # middle dot
-        "\u2212": "-",    # minus sign
-        "\u00a0": " ",    # non-breaking space
-    })
+    _UNICODE_MAP = str.maketrans(
+        {
+            "\u2014": "--",  # em dash
+            "\u2013": "-",  # en dash
+            "\u2026": "...",  # ellipsis
+            "\u2018": "'",  # left single quote
+            "\u2019": "'",  # right single quote
+            "\u201c": '"',  # left double quote
+            "\u201d": '"',  # right double quote
+            "\u2022": "*",  # bullet
+            "\u00b7": "*",  # middle dot
+            "\u2212": "-",  # minus sign
+            "\u00a0": " ",  # non-breaking space
+        }
+    )
 
     def _safe(text: str) -> str:
         text = text.translate(_UNICODE_MAP)
@@ -127,7 +129,6 @@ def generate_report_pdf(
             text = _safe(stripped[2:].strip())
             pdf.ln(2)
             pdf.set_draw_color(200, 200, 200)
-            x = pdf.get_x()
             y = pdf.get_y()
             pdf.line(MARGIN, y, A4_W - MARGIN, y)
             pdf.ln(2)

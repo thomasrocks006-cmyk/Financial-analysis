@@ -38,6 +38,7 @@ class ConfidenceLevel(str, Enum):
 
 class Source(BaseModel):
     """A provenance source record."""
+
     source_id: str
     url: Optional[str] = None
     source_type: str  # e.g. "10-K", "earnings_call", "FMP_API"
@@ -49,6 +50,7 @@ class Source(BaseModel):
 
 class Claim(BaseModel):
     """A single evidence-backed claim in the claim ledger."""
+
     claim_id: str  # e.g. NVDA-001
     run_id: str
     ticker: str
@@ -68,6 +70,7 @@ class Claim(BaseModel):
 
 class ClaimLedger(BaseModel):
     """Full claim ledger for a pipeline run."""
+
     run_id: str
     claims: list[Claim] = []
     sources: list[Source] = []

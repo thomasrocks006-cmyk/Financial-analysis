@@ -1,13 +1,12 @@
 """Tests for session-3 additions:
-  P-5  — yfinance third-source fallback in MarketDataIngestor
-  P-6  — DCF relative valuation (EV/EBITDA and P/E)
-  ACT-6 — VaR / Drawdown embedded in RiskPacket via RiskEngine
+P-5  — yfinance third-source fallback in MarketDataIngestor
+P-6  — DCF relative valuation (EV/EBITDA and P/E)
+ACT-6 — VaR / Drawdown embedded in RiskPacket via RiskEngine
 """
 
 from __future__ import annotations
 
 import asyncio
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
@@ -18,12 +17,14 @@ import pytest
 # P-6: DCF relative valuation
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 class TestRelativeValuation:
     """Tests for DCFEngine.relative_valuation()."""
 
     @pytest.fixture(autouse=True)
     def engine(self):
         from research_pipeline.services.dcf_engine import DCFEngine
+
         self.engine = DCFEngine()
 
     # ── EV/EBITDA method ──────────────────────────────────────────────────
@@ -120,9 +121,9 @@ class TestRelativeValuation:
             ebitda=200.0,
             net_debt=0.0,
             shares_outstanding=100.0,
-            peer_ev_ebitda_multiple=10.0,   # implied = 200*10/100 = 20
+            peer_ev_ebitda_multiple=10.0,  # implied = 200*10/100 = 20
             eps=5.0,
-            peer_pe_multiple=16.0,          # implied = 80
+            peer_pe_multiple=16.0,  # implied = 80
         )
         # EV/EBITDA → 20, P/E → 80, composite → 50
         assert result.composite_implied_price == pytest.approx(50.0, abs=0.01)
@@ -135,13 +136,12 @@ class TestRelativeValuation:
             eps=5.0,
             peer_pe_multiple=20.0,
         )
-        assert result.composite_implied_price == pytest.approx(
-            result.pe_implied_price, abs=0.01
-        )
+        assert result.composite_implied_price == pytest.approx(result.pe_implied_price, abs=0.01)
 
     def test_custom_weight_composite(self):
         """weight_composite() correctly blends two prices."""
         from research_pipeline.services.dcf_engine import RelativeValuationResult
+
         r = RelativeValuationResult(
             ticker="T",
             current_price=50.0,
@@ -150,11 +150,14 @@ class TestRelativeValuation:
             composite_implied_price=50.0,
         )
         # 70% EV/EBITDA + 30% P/E = 0.7*40 + 0.3*60 = 46
-        assert r.weight_composite(ev_ebitda_weight=0.7, pe_weight=0.3) == pytest.approx(46.0, abs=0.01)
+        assert r.weight_composite(ev_ebitda_weight=0.7, pe_weight=0.3) == pytest.approx(
+            46.0, abs=0.01
+        )
 
     def test_custom_weight_only_pe_available(self):
         """weight_composite with only P/E returns P/E price regardless of weights."""
         from research_pipeline.services.dcf_engine import RelativeValuationResult
+
         r = RelativeValuationResult(
             ticker="T",
             current_price=50.0,
@@ -162,7 +165,9 @@ class TestRelativeValuation:
             pe_implied_price=60.0,
             composite_implied_price=60.0,
         )
-        assert r.weight_composite(ev_ebitda_weight=0.7, pe_weight=0.3) == pytest.approx(60.0, abs=0.01)
+        assert r.weight_composite(ev_ebitda_weight=0.7, pe_weight=0.3) == pytest.approx(
+            60.0, abs=0.01
+        )
 
     def test_result_has_ticker_and_current_price(self):
         result = self.engine.relative_valuation(
@@ -179,11 +184,13 @@ class TestRelativeValuation:
 # ACT-6: VaR / Drawdown in RiskPacket and RiskEngine
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 class TestRiskPacketExtendedFields:
     """Tests for the new VaR/drawdown fields on RiskPacket."""
 
     def _make_packet(self, var_analysis=None, drawdown_analysis=None, **kwargs):
         from research_pipeline.schemas.reports import RiskPacket
+
         return RiskPacket(
             run_id="test-run",
             portfolio_volatility=0.18,
@@ -234,6 +241,7 @@ class TestRiskEngineBuildPacketWithVaR:
     @pytest.fixture(autouse=True)
     def engine(self):
         from research_pipeline.services.risk_engine import RiskEngine
+
         self.engine = RiskEngine()
 
     def _base_kwargs(self):
@@ -252,34 +260,28 @@ class TestRiskEngineBuildPacketWithVaR:
 
     def test_build_packet_embeds_var_result_dict(self):
         var_dict = {"var_pct": 0.025, "cvar_pct": 0.040, "method": "historical"}
-        packet = self.engine.build_risk_packet(
-            **self._base_kwargs(), var_result=var_dict
-        )
+        packet = self.engine.build_risk_packet(**self._base_kwargs(), var_result=var_dict)
         assert packet.var_analysis is not None
         assert packet.var_analysis["var_pct"] == pytest.approx(0.025)
         assert packet.var_pct == pytest.approx(0.025)
 
     def test_build_packet_embeds_drawdown_dict(self):
         dd_dict = {"max_drawdown_pct": 0.22, "recovery_days": 45}
-        packet = self.engine.build_risk_packet(
-            **self._base_kwargs(), drawdown=dd_dict
-        )
+        packet = self.engine.build_risk_packet(**self._base_kwargs(), drawdown=dd_dict)
         assert packet.drawdown_analysis is not None
         assert packet.drawdown_analysis["max_drawdown_pct"] == pytest.approx(0.22)
         assert packet.max_drawdown_pct == pytest.approx(0.22)
 
     def test_build_packet_accepts_pydantic_model_objects(self):
         """VaRResult / DrawdownAnalysis pydantic objects are accepted via model_dump()."""
-        from research_pipeline.services.var_engine import VaREngine, VaRResult
+        from research_pipeline.services.var_engine import VaREngine
 
         np.random.seed(99)
         ret = np.random.normal(0, 0.01, 252).tolist()
         var_engine = VaREngine()
         var_result = var_engine.historical_var("test-run", ret)
 
-        packet = self.engine.build_risk_packet(
-            **self._base_kwargs(), var_result=var_result
-        )
+        packet = self.engine.build_risk_packet(**self._base_kwargs(), var_result=var_result)
         # Should not raise; var_analysis is populated
         assert packet.var_analysis is not None
 
@@ -296,18 +298,21 @@ class TestRiskEngineBuildPacketWithVaR:
 # P-5: yfinance fallback in MarketDataIngestor
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 class TestYfinanceFallback:
     """Tests for P-5 — yfinance as third-source fallback in MarketDataIngestor."""
 
     @pytest.fixture()
     def ingestor(self):
         from research_pipeline.services.market_data_ingestor import MarketDataIngestor
+
         return MarketDataIngestor(fmp_key="FAKE", finnhub_key="FAKE")
 
     # ── source field is always present ───────────────────────────────────
 
     def test_ingest_result_always_has_source_field(self, ingestor):
         """The result dict must contain a 'source' key regardless of API failures."""
+
         async def run():
             # All network calls will fail (fake keys) — source must still be present
             result = await ingestor.ingest_ticker("AAPL")
@@ -326,13 +331,16 @@ class TestYfinanceFallback:
         mock_snap = MarketSnapshot(ticker="XYZ", source="yfinance", price=42.0)
 
         async def run():
-            with patch.object(ingestor, "fetch_yfinance_quote", new=AsyncMock(return_value=mock_snap)):
+            with patch.object(
+                ingestor, "fetch_yfinance_quote", new=AsyncMock(return_value=mock_snap)
+            ):
                 # stub all real network methods to return data with no price
                 empty_snap = MarketSnapshot(ticker="XYZ", source="fmp", price=None)
                 ingestor.fetch_fmp_quote = AsyncMock(return_value=empty_snap)
                 ingestor.fetch_fmp_price_targets = AsyncMock(return_value=[])
                 ingestor.fetch_fmp_analyst_estimates = AsyncMock(return_value=[])
                 from research_pipeline.schemas.market_data import ConsensusSnapshot, RatingsSnapshot
+
                 ingestor.fetch_finnhub_quote = AsyncMock(
                     return_value=MarketSnapshot(ticker="XYZ", source="finnhub", price=None)
                 )
@@ -352,8 +360,11 @@ class TestYfinanceFallback:
     def test_yfinance_not_called_when_fmp_has_price(self, ingestor):
         """yfinance fallback must NOT fire when FMP already returned a price."""
         from research_pipeline.schemas.market_data import (
-            ConsensusSnapshot, MarketSnapshot, RatingsSnapshot
+            ConsensusSnapshot,
+            MarketSnapshot,
+            RatingsSnapshot,
         )
+
         mock_yf = AsyncMock()
 
         async def run():
@@ -380,8 +391,11 @@ class TestYfinanceFallback:
     def test_yfinance_not_called_when_finnhub_has_price(self, ingestor):
         """yfinance fallback must NOT fire when Finnhub already returned a price."""
         from research_pipeline.schemas.market_data import (
-            ConsensusSnapshot, MarketSnapshot, RatingsSnapshot
+            ConsensusSnapshot,
+            MarketSnapshot,
+            RatingsSnapshot,
         )
+
         mock_yf = AsyncMock()
 
         async def run():
@@ -408,7 +422,9 @@ class TestYfinanceFallback:
     def test_yfinance_failure_stored_in_errors_and_doesnt_raise(self, ingestor):
         """If yfinance also fails the error is recorded but the result is still returned."""
         from research_pipeline.schemas.market_data import (
-            ConsensusSnapshot, MarketSnapshot, RatingsSnapshot
+            ConsensusSnapshot,
+            MarketSnapshot,
+            RatingsSnapshot,
         )
 
         async def run():
@@ -471,18 +487,21 @@ class TestYfinanceFallback:
 # P-7: Fixed-income analyst agent
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 class TestFixedIncomeAnalystAgent:
     """Tests for the FixedIncomeAnalystAgent parse_output and validation."""
 
     @pytest.fixture(autouse=True)
     def agent(self):
         from research_pipeline.agents.fixed_income_analyst import FixedIncomeAnalystAgent
+
         self.agent = FixedIncomeAnalystAgent()
 
     # ── parse_output: mandatory-field defaults ────────────────────────────────
 
     def test_parse_output_with_complete_valid_json(self):
         import json
+
         payload = {
             "yield_curve_regime": "inverted",
             "10y_yield_context": "5.2% — highest since 2007",
@@ -507,6 +526,7 @@ class TestFixedIncomeAnalystAgent:
 
     def test_parse_output_fills_missing_mandatory_fields(self):
         import json
+
         # Minimal payload: only a few keys
         payload = {"10y_yield_context": "4.5% inverted curve"}
         result = self.agent.parse_output(json.dumps(payload))
@@ -518,18 +538,21 @@ class TestFixedIncomeAnalystAgent:
 
     def test_parse_output_clamps_rate_sensitivity_score_high(self):
         import json
+
         payload = {"rate_sensitivity_score": 99, "methodology_note": "test"}
         result = self.agent.parse_output(json.dumps(payload))
         assert result["rate_sensitivity_score"] == pytest.approx(10.0)
 
     def test_parse_output_clamps_rate_sensitivity_score_low(self):
         import json
+
         payload = {"rate_sensitivity_score": -5, "methodology_note": "test"}
         result = self.agent.parse_output(json.dumps(payload))
         assert result["rate_sensitivity_score"] == pytest.approx(1.0)
 
     def test_parse_output_inserts_default_methodology_note_when_empty(self):
         import json
+
         payload = {"rate_sensitivity_score": 5, "methodology_note": ""}
         result = self.agent.parse_output(json.dumps(payload))
         assert len(result["methodology_note"]) > 10  # default text injected
@@ -537,6 +560,7 @@ class TestFixedIncomeAnalystAgent:
     def test_parse_output_normalises_list_response_to_dict(self):
         """Some models return a JSON array; parse_output should extract first element."""
         import json
+
         payload = [{"rate_sensitivity_score": 6, "methodology_note": "test note"}]
         result = self.agent.parse_output(json.dumps(payload))
         assert result["rate_sensitivity_score"] == pytest.approx(6.0)
@@ -544,6 +568,7 @@ class TestFixedIncomeAnalystAgent:
 
     def test_parse_output_handles_empty_list(self):
         import json
+
         result = self.agent.parse_output(json.dumps([]))
         # Should not raise; should return dict with defaults
         assert isinstance(result, dict)
@@ -568,6 +593,7 @@ class TestFixedIncomeAnalystAgent:
 
     def test_format_input_serialises_to_json_string(self):
         import json
+
         inputs = {"universe": ["NVDA", "CEG"], "macro_context": {"note": "test"}}
         formatted = self.agent.format_input(inputs)
         parsed_back = json.loads(formatted)
@@ -577,6 +603,7 @@ class TestFixedIncomeAnalystAgent:
 # ══════════════════════════════════════════════════════════════════════════════
 # Engine wiring: fixed_income_agent attribute
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 class TestEngineHasFixedIncomeAgent:
     """Confirm PipelineEngine instantiates with a fixed_income_agent attribute."""
@@ -631,6 +658,7 @@ class TestEngineHasFixedIncomeAgent:
 # P-4: Quant Analytics panel — data-extraction helper logic
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 class TestQuantAnalyticsPanelDataExtraction:
     """Unit tests for the _stage_out logic pattern used in the Streamlit panel.
 
@@ -676,9 +704,7 @@ class TestQuantAnalyticsPanelDataExtraction:
 
     def test_ignores_non_dict_output_in_loaded(self):
         """If a stage output is not a dict (e.g. raw text string), skip it."""
-        loaded = {
-            "stages": [{"stage_num": 9, "output": "raw text, not a dict"}]
-        }
+        loaded = {"stages": [{"stage_num": 9, "output": "raw text, not a dict"}]}
         result = self.stage_out(9, loaded, {9: {"fallback": True}})
         # Should fall back to session_state since loaded output isn't a dict
         assert result == {}  # loaded path returns {} when not a dict

@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import csv
-import os
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -29,7 +28,7 @@ from research_pipeline.config.loader import PipelineConfig
 def _make_engine(tmp_path=None) -> PipelineEngine:
     """Create a PipelineEngine backed by a temp directory."""
     from pathlib import Path as _Path
-    import tempfile
+
     if tmp_path is None:
         tmp_path = _Path(tempfile.mkdtemp())
     settings = Settings(
@@ -46,6 +45,7 @@ def _make_engine(tmp_path=None) -> PipelineEngine:
     )
     config = PipelineConfig()
     return PipelineEngine(settings, config)
+
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -315,6 +315,7 @@ class TestPromptRegressionIntegration:
         engine = _make_engine()
         assert hasattr(engine, "prompt_registry")
         from research_pipeline.services.prompt_registry import PromptRegistry
+
         assert isinstance(engine.prompt_registry, PromptRegistry)
 
     def test_all_agents_have_prompt_hash(self):
@@ -322,11 +323,20 @@ class TestPromptRegressionIntegration:
         engine = _make_engine()
 
         agents = [
-            engine.orchestrator_agent, engine.evidence_agent,
-            engine.compute_analyst, engine.power_analyst, engine.infra_analyst,
-            engine.valuation_agent, engine.macro_agent, engine.political_agent,
-            engine.red_team_agent, engine.reviewer_agent, engine.pm_agent,
-            engine.quant_analyst_agent, engine.fixed_income_agent, engine.esg_analyst_agent,
+            engine.orchestrator_agent,
+            engine.evidence_agent,
+            engine.compute_analyst,
+            engine.power_analyst,
+            engine.infra_analyst,
+            engine.valuation_agent,
+            engine.macro_agent,
+            engine.political_agent,
+            engine.red_team_agent,
+            engine.reviewer_agent,
+            engine.pm_agent,
+            engine.quant_analyst_agent,
+            engine.fixed_income_agent,
+            engine.esg_analyst_agent,
         ]
         for agent in agents:
             ph = getattr(agent, "prompt_hash", None)
@@ -356,4 +366,6 @@ class TestPromptRegressionIntegration:
         engine._scan_prompt_registry(p2)
 
         changed = [r for r in p2.prompt_drift_reports if r.get("changed", False)]
-        assert len(changed) == 0, f"Second scan should show 0 drift, got: {[r['prompt_id'] for r in changed]}"
+        assert len(changed) == 0, (
+            f"Second scan should show 0 drift, got: {[r['prompt_id'] for r in changed]}"
+        )

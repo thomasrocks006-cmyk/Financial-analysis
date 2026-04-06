@@ -10,17 +10,14 @@ Tests:
 
 from __future__ import annotations
 
-import asyncio
 import json
-import os
 import tempfile
-import time
 from pathlib import Path
-from unittest.mock import MagicMock, AsyncMock, patch
-import pytest
+from unittest.mock import MagicMock
 
 # ── Ensure src is on the path ─────────────────────────────────────────────
 import sys
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 
@@ -28,24 +25,28 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 # Group 1: FastAPI Route Tests
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestAPIRoutes:
     """Verify the expanded route registration and structure."""
 
     def test_routes_module_imports(self):
         """Routes module imports without error."""
         from api.routes import runs  # noqa: F401
+
         assert hasattr(runs, "router")
         assert hasattr(runs, "saved_router")
 
     def test_router_has_report_endpoint(self):
         """Router contains GET /runs/{run_id}/report endpoint."""
         from api.routes.runs import router
+
         paths = [r.path for r in router.routes if hasattr(r, "path")]
         assert "/runs/{run_id}/report" in paths
 
     def test_router_has_stages_endpoints(self):
         """Router contains stages endpoints."""
         from api.routes.runs import router
+
         paths = [r.path for r in router.routes if hasattr(r, "path")]
         assert "/runs/{run_id}/stages" in paths
         assert "/runs/{run_id}/stages/{stage_num}" in paths
@@ -53,30 +54,35 @@ class TestAPIRoutes:
     def test_router_has_audit_endpoint(self):
         """Router contains GET /runs/{run_id}/audit."""
         from api.routes.runs import router
+
         paths = [r.path for r in router.routes if hasattr(r, "path")]
         assert "/runs/{run_id}/audit" in paths
 
     def test_router_has_timings_endpoint(self):
         """Router contains GET /runs/{run_id}/timings."""
         from api.routes.runs import router
+
         paths = [r.path for r in router.routes if hasattr(r, "path")]
         assert "/runs/{run_id}/timings" in paths
 
     def test_router_has_artifacts_endpoint(self):
         """Router contains GET /runs/{run_id}/artifacts."""
         from api.routes.runs import router
+
         paths = [r.path for r in router.routes if hasattr(r, "path")]
         assert "/runs/{run_id}/artifacts" in paths
 
     def test_router_has_provenance_endpoint(self):
         """Router contains GET /runs/{run_id}/provenance."""
         from api.routes.runs import router
+
         paths = [r.path for r in router.routes if hasattr(r, "path")]
         assert "/runs/{run_id}/provenance" in paths
 
     def test_saved_router_has_endpoints(self):
         """Saved router contains list and detail endpoints."""
         from api.routes.runs import saved_router
+
         paths = [r.path for r in saved_router.routes if hasattr(r, "path")]
         assert "/saved-runs" in paths or any("saved" in p for p in paths)
         assert "/saved-runs/{run_id}" in paths or any("run_id" in p for p in paths)
@@ -84,6 +90,7 @@ class TestAPIRoutes:
     def test_total_route_count(self):
         """Router has the expected number of endpoints (≥ 14)."""
         from api.routes.runs import router, saved_router
+
         main_routes = [r for r in router.routes if hasattr(r, "path")]
         saved_routes = [r for r in saved_router.routes if hasattr(r, "path")]
         total = len(main_routes) + len(saved_routes)
@@ -94,13 +101,13 @@ class TestAPIRoutes:
 # Group 2: RunManager Method Tests
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestRunManagerMethods:
     """Test new RunManager methods added in Session 16."""
 
     def _make_manager(self, result=None, status="completed"):
         """Create a RunManager with a mock ManagedRun."""
-        from api.services.run_manager import RunManager, ManagedRun, ApiRunStatus
-        from unittest.mock import MagicMock
+        from api.services.run_manager import RunManager, ManagedRun
 
         settings = MagicMock()
         settings.storage_dir = Path(tempfile.mkdtemp())
@@ -201,12 +208,14 @@ class TestRunManagerMethods:
 # Group 3: FastAPI App Integration
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestFastAPIApp:
     """Test the FastAPI app has proper router registration."""
 
     def test_main_app_includes_saved_router(self):
         """The main FastAPI app includes the saved_router."""
         from api.main import app
+
         paths = []
         for route in app.routes:
             if hasattr(route, "path"):
@@ -220,12 +229,14 @@ class TestFastAPIApp:
 # Group 4: SSE Event Helper
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestSSEHelper:
     """Test the _sse helper function."""
 
     def test_sse_from_dict(self):
         """_sse formats dict data correctly."""
         from api.routes.runs import _sse
+
         result = _sse("test_event", {"key": "value"})
         assert result.startswith("event: test_event\n")
         assert '"key": "value"' in result
@@ -234,12 +245,14 @@ class TestSSEHelper:
     def test_sse_from_string(self):
         """_sse passes string data through."""
         from api.routes.runs import _sse
+
         result = _sse("ping", "hello")
         assert "data: hello\n" in result
 
     def test_sse_format_structure(self):
         """SSE format has event + data lines."""
         from api.routes.runs import _sse
+
         result = _sse("ev", {"a": 1})
         lines = result.strip().split("\n")
         assert lines[0].startswith("event:")
@@ -250,18 +263,21 @@ class TestSSEHelper:
 # Group 5: Pipeline Event Schema (from Session 15, validated)
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestPipelineEventContract:
     """Verify the PipelineEvent schema used by our SSE endpoints."""
 
     def test_event_has_all_types(self):
         """PipelineEvent supports all 11 event types."""
         from research_pipeline.schemas.events import PipelineEvent
+
         event = PipelineEvent(run_id="r1", event_type="pipeline_started")
         assert event.event_type == "pipeline_started"
 
     def test_stage_labels_complete(self):
         """STAGE_LABELS covers all 15 stages."""
         from research_pipeline.schemas.events import STAGE_LABELS
+
         assert len(STAGE_LABELS) == 15
         for i in range(15):
             assert i in STAGE_LABELS
@@ -269,6 +285,7 @@ class TestPipelineEventContract:
     def test_stage_started_constructor(self):
         """PipelineEvent.stage_started populates stage_label."""
         from research_pipeline.schemas.events import PipelineEvent
+
         e = PipelineEvent.stage_started("r1", 5)
         assert e.stage == 5
         assert e.stage_label == "Evidence Library"
@@ -276,6 +293,7 @@ class TestPipelineEventContract:
     def test_stage_completed_constructor(self):
         """PipelineEvent.stage_completed includes duration."""
         from research_pipeline.schemas.events import PipelineEvent
+
         e = PipelineEvent.stage_completed("r1", 3, 1234.5)
         assert e.duration_ms == 1234.5
 
@@ -283,6 +301,7 @@ class TestPipelineEventContract:
 # ═══════════════════════════════════════════════════════════════════════════
 # Group 6: Next.js Frontend Build Validation
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 class TestFrontendStructure:
     """Verify the Next.js frontend has all required files."""
@@ -317,12 +336,20 @@ class TestFrontendStructure:
         assert (self.FRONTEND_DIR / "src" / "lib" / "store.ts").exists()
 
     def test_pipeline_tracker_exists(self):
-        assert (self.FRONTEND_DIR / "src" / "components" / "pipeline" / "pipeline-tracker.tsx").exists()
+        assert (
+            self.FRONTEND_DIR / "src" / "components" / "pipeline" / "pipeline-tracker.tsx"
+        ).exists()
 
     def test_provenance_components_exist(self):
-        assert (self.FRONTEND_DIR / "src" / "components" / "provenance" / "provenance-card.tsx").exists()
-        assert (self.FRONTEND_DIR / "src" / "components" / "provenance" / "provenance-panel.tsx").exists()
-        assert (self.FRONTEND_DIR / "src" / "components" / "provenance" / "report-provenance.tsx").exists()
+        assert (
+            self.FRONTEND_DIR / "src" / "components" / "provenance" / "provenance-card.tsx"
+        ).exists()
+        assert (
+            self.FRONTEND_DIR / "src" / "components" / "provenance" / "provenance-panel.tsx"
+        ).exists()
+        assert (
+            self.FRONTEND_DIR / "src" / "components" / "provenance" / "report-provenance.tsx"
+        ).exists()
 
     def test_run_detail_page_exists(self):
         assert (self.FRONTEND_DIR / "src" / "app" / "runs" / "[run_id]" / "page.tsx").exists()
@@ -343,5 +370,13 @@ class TestFrontendStructure:
     def test_package_has_required_deps(self):
         pkg = json.loads((self.FRONTEND_DIR / "package.json").read_text())
         deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
-        for dep in ["next", "react", "react-dom", "typescript", "zustand", "@tanstack/react-query", "recharts"]:
+        for dep in [
+            "next",
+            "react",
+            "react-dom",
+            "typescript",
+            "zustand",
+            "@tanstack/react-query",
+            "recharts",
+        ]:
             assert dep in deps, f"Missing dependency: {dep}"

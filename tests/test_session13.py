@@ -23,6 +23,7 @@ import pytest
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_economy_analysis(**kw):
     defaults = {
         "rba_cash_rate_thesis": "RBA on hold at 4.35%",
@@ -49,10 +50,12 @@ def _make_macro_scenario(composite_type="base", **kw):
 # 1. BaseAgent._build_macro_header()
 # ---------------------------------------------------------------------------
 
+
 class TestBuildMacroHeader:
     @pytest.fixture
     def agent(self):
         from research_pipeline.agents.economy_analyst import EconomyAnalystAgent
+
         return EconomyAnalystAgent(model="gemini-1.5-flash")
 
     def test_empty_inputs_returns_empty_string(self, agent):
@@ -68,10 +71,12 @@ class TestBuildMacroHeader:
         assert "bear" in result
 
     def test_both_present_returns_combined(self, agent):
-        result = agent._build_macro_header({
-            "economy_analysis": _make_economy_analysis(fed_funds_thesis="Fed hiking"),
-            "macro_scenario": _make_macro_scenario("bull"),
-        })
+        result = agent._build_macro_header(
+            {
+                "economy_analysis": _make_economy_analysis(fed_funds_thesis="Fed hiking"),
+                "macro_scenario": _make_macro_scenario("bull"),
+            }
+        )
         assert "Fed hiking" in result
         assert "bull" in result
 
@@ -92,12 +97,14 @@ class TestBuildMacroHeader:
 # 2. BaseAgent.format_input() macro injection
 # ---------------------------------------------------------------------------
 
+
 class TestBaseAgentFormatInputMacroInjection:
     """Use ReportNarrativeAgent whose format_input accepts a plain dict."""
 
     @pytest.fixture
     def agent(self):
         from research_pipeline.agents.report_narrative_agent import ReportNarrativeAgent
+
         return ReportNarrativeAgent(model="gemini-1.5-flash")
 
     def test_no_macro_yields_json_body(self, agent):
@@ -107,17 +114,21 @@ class TestBaseAgentFormatInputMacroInjection:
         assert "MACRO REGIME CONTEXT" not in result
 
     def test_with_macro_prepends_header(self, agent):
-        result = agent.format_input({
-            "run_id": "test",
-            "economy_analysis": _make_economy_analysis(),
-        })
+        result = agent.format_input(
+            {
+                "run_id": "test",
+                "economy_analysis": _make_economy_analysis(),
+            }
+        )
         assert "MACRO REGIME CONTEXT" in result
 
     def test_json_body_present_after_header(self, agent):
-        result = agent.format_input({
-            "run_id": "test-001",
-            "economy_analysis": _make_economy_analysis(),
-        })
+        result = agent.format_input(
+            {
+                "run_id": "test-001",
+                "economy_analysis": _make_economy_analysis(),
+            }
+        )
         assert "test-001" in result
 
 
@@ -125,10 +136,12 @@ class TestBaseAgentFormatInputMacroInjection:
 # 3. DCFEngine.macro_adjusted_wacc()
 # ---------------------------------------------------------------------------
 
+
 class TestMacroAdjustedWacc:
     @pytest.fixture
     def engine(self):
         from research_pipeline.services.dcf_engine import DCFEngine
+
         return DCFEngine()
 
     def test_no_context_unchanged(self, engine):
@@ -145,14 +158,13 @@ class TestMacroAdjustedWacc:
     def test_hawkish_fed_increases_wacc(self, engine):
         adj = engine.macro_adjusted_wacc(
             0.10,
-            economy_analysis=_make_economy_analysis(fed_funds_thesis="Fed hiking aggressively")
+            economy_analysis=_make_economy_analysis(fed_funds_thesis="Fed hiking aggressively"),
         )
         assert adj > 0.10
 
     def test_dovish_rba_decreases_wacc(self, engine):
         adj = engine.macro_adjusted_wacc(
-            0.10,
-            economy_analysis=_make_economy_analysis(rba_cash_rate_thesis="RBA cutting rates")
+            0.10, economy_analysis=_make_economy_analysis(rba_cash_rate_thesis="RBA cutting rates")
         )
         assert adj < 0.10
 
@@ -160,7 +172,7 @@ class TestMacroAdjustedWacc:
         adj = engine.macro_adjusted_wacc(
             0.05,
             macro_scenario=_make_macro_scenario("bull"),
-            economy_analysis=_make_economy_analysis(fed_funds_thesis="Fed cutting 200bp")
+            economy_analysis=_make_economy_analysis(fed_funds_thesis="Fed cutting 200bp"),
         )
         assert adj >= 0.05
 
@@ -173,10 +185,12 @@ class TestMacroAdjustedWacc:
 # 4. DCFEngine.build_full_valuation_pack()
 # ---------------------------------------------------------------------------
 
+
 class TestBuildFullValuationPack:
     @pytest.fixture
     def engine_and_assumptions(self):
         from research_pipeline.services.dcf_engine import DCFEngine, DCFAssumptions
+
         eng = DCFEngine()
         assum = DCFAssumptions(
             ticker="NVDA",
@@ -234,10 +248,12 @@ class TestBuildFullValuationPack:
 # 5. FREDFactorFetcher + FactorRefitResult
 # ---------------------------------------------------------------------------
 
+
 class TestFREDFactorFetcher:
     @pytest.fixture
     def fetcher(self):
         from research_pipeline.services.factor_engine import FREDFactorFetcher
+
         return FREDFactorFetcher()  # no API key → synthetic
 
     def test_synthetic_has_all_factors(self, fetcher):
@@ -265,6 +281,7 @@ class TestFREDFactorFetcher:
 
     def test_refit_exposures_sufficient_data(self, fetcher):
         import numpy as np
+
         rng = np.random.default_rng(42)
         result = fetcher.fetch(obs=252)
         ticker_returns = {"NVDA": rng.normal(0.001, 0.02, 252).tolist()}
@@ -285,10 +302,12 @@ class TestFREDFactorFetcher:
 # 6. SectorDataService (synthetic path)
 # ---------------------------------------------------------------------------
 
+
 class TestSectorDataService:
     @pytest.fixture
     def svc(self):
         from research_pipeline.services.sector_data_service import SectorDataService
+
         return SectorDataService()  # no FMP key → synthetic
 
     def test_nvda_gics_sector(self, svc):
@@ -313,6 +332,7 @@ class TestSectorDataService:
 
     def test_all_synthetic_tickers_return_data(self, svc):
         from research_pipeline.services.sector_data_service import _SYNTHETIC_DATA
+
         results = svc.get_sector_data(list(_SYNTHETIC_DATA.keys()))
         assert len(results) == len(_SYNTHETIC_DATA)
 
@@ -335,10 +355,12 @@ class TestSectorDataService:
 # 7. ReportNarrativeAgent
 # ---------------------------------------------------------------------------
 
+
 class TestReportNarrativeAgent:
     @pytest.fixture
     def agent(self):
         from research_pipeline.agents.report_narrative_agent import ReportNarrativeAgent
+
         return ReportNarrativeAgent(model="gemini-1.5-flash")
 
     def test_required_output_keys(self, agent):
@@ -357,10 +379,13 @@ class TestReportNarrativeAgent:
 
     def test_parse_output_fills_all_sections(self, agent):
         from research_pipeline.agents.report_narrative_agent import NARRATIVE_SECTIONS
-        raw = json.dumps({
-            "executive_summary": "Strong portfolio. All positions on target.",
-            "methodology": "15-stage pipeline using LLM agents.",
-        })
+
+        raw = json.dumps(
+            {
+                "executive_summary": "Strong portfolio. All positions on target.",
+                "methodology": "15-stage pipeline using LLM agents.",
+            }
+        )
         result = agent.parse_output(raw)
         for section in NARRATIVE_SECTIONS:
             assert section in result
@@ -383,10 +408,10 @@ class TestReportNarrativeAgent:
 # 8. PipelineEngine — Session 13 wiring
 # ---------------------------------------------------------------------------
 
+
 class TestEngineSession13Init:
     @pytest.fixture(scope="class")
     def engine(self, tmp_path_factory):
-        from pathlib import Path
         from research_pipeline.pipeline.engine import PipelineEngine
         from research_pipeline.config.settings import Settings
         from research_pipeline.config.loader import load_pipeline_config
@@ -402,12 +427,15 @@ class TestEngineSession13Init:
 
     def test_has_sector_data_svc(self, engine):
         from research_pipeline.services.sector_data_service import SectorDataService
+
         assert isinstance(engine.sector_data_svc, SectorDataService)
 
     def test_has_fred_factor_fetcher(self, engine):
         from research_pipeline.services.factor_engine import FREDFactorFetcher
+
         assert isinstance(engine.fred_factor_fetcher, FREDFactorFetcher)
 
     def test_has_report_narrative_agent(self, engine):
         from research_pipeline.agents.report_narrative_agent import ReportNarrativeAgent
+
         assert isinstance(engine.report_narrative_agent, ReportNarrativeAgent)

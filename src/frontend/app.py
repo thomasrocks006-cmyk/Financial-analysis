@@ -21,12 +21,16 @@ logger = logging.getLogger(__name__)
 
 # ── Path setup ────────────────────────────────────────────────────────────
 ROOT = Path(__file__).parents[2]
-SRC  = ROOT / "src"
+SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from frontend.client_profile import ClientProfile, INVESTMENT_THEMES, RISK_PROFILES
-from frontend.pipeline_adapter import STAGES, PipelineRunner, RunResult  # ACT-S6-4: use adapter (pipeline_runner deprecated)
+from frontend.pipeline_adapter import (
+    STAGES,
+    PipelineRunner,
+    RunResult,
+)  # ACT-S6-4: use adapter (pipeline_runner deprecated)
 from frontend.cost_estimator import estimate_run_cost, calculate_actual_cost, format_cost
 from frontend.storage import save_run, list_saved_runs, load_run, delete_run, REPORTS_DIR
 
@@ -69,7 +73,8 @@ def _generate_report_pdf(run_id: str, tickers: list[str], report_md: str) -> byt
     pdf.ln(2)
     pdf.set_font("Helvetica", "", 9)
     pdf.multi_cell(
-        CONTENT_W, 6,
+        CONTENT_W,
+        6,
         f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
         align="C",
     )
@@ -87,10 +92,10 @@ def _generate_report_pdf(run_id: str, tickers: list[str], report_md: str) -> byt
     _RE_HEADING1 = re.compile(r"^#\s+(.+)$")
     _RE_HEADING2 = re.compile(r"^##\s+(.+)$")
     _RE_HEADING3 = re.compile(r"^###\s+(.+)$")
-    _RE_BOLD     = re.compile(r"\*\*(.+?)\*\*")
-    _RE_ITALIC   = re.compile(r"\*(.+?)\*")
-    _RE_CODE     = re.compile(r"`(.+?)`")
-    _RE_HR       = re.compile(r"^---+$")
+    _RE_BOLD = re.compile(r"\*\*(.+?)\*\*")
+    _RE_ITALIC = re.compile(r"\*(.+?)\*")
+    _RE_CODE = re.compile(r"`(.+?)`")
+    _RE_HR = re.compile(r"^---+$")
 
     def _strip_md(line: str) -> str:
         line = _RE_BOLD.sub(r"\1", line)
@@ -155,6 +160,7 @@ def _read_env() -> dict[str, str]:
         env[key.strip()] = val.strip()
     return env
 
+
 _ENV = _read_env()
 
 
@@ -168,7 +174,8 @@ st.set_page_config(
 
 
 # ── Professional dark theme CSS ───────────────────────────────────────────
-st.markdown("""
+st.markdown(
+    """
 <style>
 /* ── Base ── */
 [data-testid="stAppViewContainer"] { background: #0d1117; }
@@ -376,7 +383,9 @@ hr { border-color: #21262d !important; }
                               border-radius: 8px !important; }
 [data-testid="stExpander"] summary { color: #c9d1d9 !important; }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -384,9 +393,9 @@ hr { border-color: #21262d !important; }
 # ─────────────────────────────────────────────────────────────────────────
 def _render_stage_card(placeholder, num: int, name: str, status: str, outputs: dict) -> None:
     """Render a single stage row card into a Streamlit placeholder."""
-    icon_map  = {"pending": "○", "running": "◌", "done": "●", "failed": "✕"}
+    icon_map = {"pending": "○", "running": "◌", "done": "●", "failed": "✕"}
     color_map = {"done": "#3fb950", "running": "#f0883e", "failed": "#f85149", "pending": "#30363d"}
-    icon  = icon_map.get(status, "○")
+    icon = icon_map.get(status, "○")
     color = color_map.get(status, "#30363d")
 
     # Short output snippet for done stages
@@ -397,9 +406,12 @@ def _render_stage_card(placeholder, num: int, name: str, status: str, outputs: d
         snippet = raw[:90].replace("\n", " ").replace("<", "&lt;").replace(">", "&gt;").strip()
         if len(raw) > 90:
             snippet += "…"
-        snippet_html = f'<div style="font-size:0.68rem;color:#8b949e;margin-top:2px">{snippet}</div>'
+        snippet_html = (
+            f'<div style="font-size:0.68rem;color:#8b949e;margin-top:2px">{snippet}</div>'
+        )
 
-    placeholder.markdown(f"""
+    placeholder.markdown(
+        f"""
 <div class="stage-row {status}">
   <span class="stage-icon" style="color:{color}">{icon}</span>
   <div class="stage-name">
@@ -407,17 +419,22 @@ def _render_stage_card(placeholder, num: int, name: str, status: str, outputs: d
     {snippet_html}
   </div>
 </div>
-""", unsafe_allow_html=True)
+""",
+        unsafe_allow_html=True,
+    )
 
 
 def _render_stream(placeholder, log: list) -> None:
     """Render the live output stream panel."""
     if not log:
-        placeholder.markdown("""
+        placeholder.markdown(
+            """
 <div class="live-stream" style="color:#30363d;font-style:italic">
 Waiting for pipeline to start…
 </div>
-""", unsafe_allow_html=True)
+""",
+            unsafe_allow_html=True,
+        )
         return
 
     lines = []
@@ -425,7 +442,7 @@ Waiting for pipeline to start…
         safe = str(text)[:700].strip().replace("<", "&lt;").replace(">", "&gt;")
         lines.append(
             f'<div style="color:#58a6ff;font-size:0.70rem;margin:8px 0 2px">'
-            f'━━ S{stage_num}: {stage_name} ━━━━━━━━━━━━</div>'
+            f"━━ S{stage_num}: {stage_name} ━━━━━━━━━━━━</div>"
             f'<div style="color:#c9d1d9;margin-bottom:6px">{safe}{"…" if len(str(text)) > 700 else ""}</div>'
         )
 
@@ -471,7 +488,7 @@ def _render_activity(placeholder, current_activity: str, running: bool) -> None:
         f'<div class="activity-strip{state_cls}">'
         f'<span class="dot"></span>'
         f'<span style="font-size:0.75rem">{safe}</span>'
-        f'</div>'
+        f"</div>"
     )
     placeholder.markdown(html, unsafe_allow_html=True)
 
@@ -485,16 +502,16 @@ _LLM_STREAM_STAGES = {5, 6, 7, 8, 9, 10, 11, 12, 13}
 
 def _init_state():
     defaults: dict = {
-        "run_result":       None,
-        "stage_statuses":   {i: "pending" for i, _ in STAGES},
-        "stage_outputs":    {},
-        "running":          False,
-        "current_stage":    -1,
-        "live_log":         [],
-        "loaded_run":       None,
-        "pipeline_error":   "",
-        "current_activity": "",   # what the pipeline is doing RIGHT NOW
-        "activity_feed":    [],   # list of (stage_num, event_msg) for recent events
+        "run_result": None,
+        "stage_statuses": {i: "pending" for i, _ in STAGES},
+        "stage_outputs": {},
+        "running": False,
+        "current_stage": -1,
+        "live_log": [],
+        "loaded_run": None,
+        "pipeline_error": "",
+        "current_activity": "",  # what the pipeline is doing RIGHT NOW
+        "activity_feed": [],  # list of (stage_num, event_msg) for recent events
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -511,6 +528,7 @@ def _init_state():
     if "key_fhub" not in st.session_state:
         st.session_state.key_fhub = _ENV.get("FINNHUB_API_KEY", "")
 
+
 _init_state()
 
 
@@ -518,35 +536,47 @@ _init_state()
 # Model constants
 # ─────────────────────────────────────────────────────────────────────────
 ALL_MODELS = [
-    ("claude-opus-4-6",         "Opus 4.6",         "$15/$75"),
-    ("claude-sonnet-4-6",       "Sonnet 4.6",       "$3/$15"),
-    ("claude-haiku-4-5",        "Haiku 4.5",        "$0.80/$4"),
-    ("gpt-5.4",                 "GPT-5.4",          "$2.50/$10"),
-    ("gpt-5.4-mini",            "GPT-5.4 mini",     "$0.40/$1.60"),
-    ("gpt-5.4-nano",            "GPT-5.4 nano",     "$0.15/$0.60"),
-    ("gemini-3.1-pro-preview",  "Gemini 3.1 Pro",   "$2/$8"),
-    ("gemini-2.5-pro",          "Gemini 2.5 Pro",   "$1.25/$10"),
-    ("gemini-2.5-flash",        "Gemini 2.5 Flash", "$0.30/$2.50"),
-    ("gemini-2.5-flash-lite",   "Flash-Lite",       "$0.10/$0.40"),
+    ("claude-opus-4-6", "Opus 4.6", "$15/$75"),
+    ("claude-sonnet-4-6", "Sonnet 4.6", "$3/$15"),
+    ("claude-haiku-4-5", "Haiku 4.5", "$0.80/$4"),
+    ("gpt-5.4", "GPT-5.4", "$2.50/$10"),
+    ("gpt-5.4-mini", "GPT-5.4 mini", "$0.40/$1.60"),
+    ("gpt-5.4-nano", "GPT-5.4 nano", "$0.15/$0.60"),
+    ("gemini-3.1-pro-preview", "Gemini 3.1 Pro", "$2/$8"),
+    ("gemini-2.5-pro", "Gemini 2.5 Pro", "$1.25/$10"),
+    ("gemini-2.5-flash", "Gemini 2.5 Flash", "$0.30/$2.50"),
+    ("gemini-2.5-flash-lite", "Flash-Lite", "$0.10/$0.40"),
 ]
-ALL_IDS    = [m[0] for m in ALL_MODELS]
+ALL_IDS = [m[0] for m in ALL_MODELS]
 ALL_LABELS = [f"{m[1]}  ·  {m[2]}" for m in ALL_MODELS]
 
 STAGE_DEFAULTS = {
-    5: "claude-sonnet-4-6",  6: "claude-opus-4-6",  7: "claude-sonnet-4-6",
-    8: "gemini-2.5-pro",     9: "gemini-2.5-flash", 10: "claude-opus-4-6",
-    11: "claude-sonnet-4-6", 12: "gpt-5.4",
+    5: "claude-sonnet-4-6",
+    6: "claude-opus-4-6",
+    7: "claude-sonnet-4-6",
+    8: "gemini-2.5-pro",
+    9: "gemini-2.5-flash",
+    10: "claude-opus-4-6",
+    11: "claude-sonnet-4-6",
+    12: "gpt-5.4",
 }
 LLM_STAGES = [
-    (5,  "Evidence Librarian"), (6,  "Sector Analysis ★"),
-    (7,  "Valuation"),          (8,  "Macro & Political"),
-    (9,  "Quant Risk"),         (10, "Red Team ★"),
-    (11, "Associate Review"),   (12, "Portfolio"),
+    (5, "Evidence Librarian"),
+    (6, "Sector Analysis ★"),
+    (7, "Valuation"),
+    (8, "Macro & Political"),
+    (9, "Quant Risk"),
+    (10, "Red Team ★"),
+    (11, "Associate Review"),
+    (12, "Portfolio"),
 ]
 
+
 def _prov(m: str) -> str:
-    if m.startswith("claude"):                   return "anthropic"
-    if m.startswith("gpt") or m.startswith("o"): return "openai"
+    if m.startswith("claude"):
+        return "anthropic"
+    if m.startswith("gpt") or m.startswith("o"):
+        return "openai"
     return "gemini"
 
 
@@ -554,7 +584,8 @@ def _prov(m: str) -> str:
 # Sidebar
 # ─────────────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("""
+    st.markdown(
+        """
 <div style="padding:14px 0 8px">
   <div style="font-size:1.05rem;font-weight:700;color:#e6edf3;letter-spacing:-0.02em">
     🏦 JPM Research Platform
@@ -563,41 +594,60 @@ with st.sidebar:
     Institutional Asset Management · v8.0
   </div>
 </div>
-""", unsafe_allow_html=True)
+""",
+        unsafe_allow_html=True,
+    )
     st.divider()
 
     # ── Client Profile (Onboarding) ───────────────────────────────────────
     st.markdown('<div class="section-title">Client Profile</div>', unsafe_allow_html=True)
-    client_name = st.text_input("Client name", value="Client", key="client_name",
-                                label_visibility="collapsed", placeholder="Client name")
+    client_name = st.text_input(
+        "Client name",
+        value="Client",
+        key="client_name",
+        label_visibility="collapsed",
+        placeholder="Client name",
+    )
 
     obj_options = ["total_return", "growth", "income", "preservation"]
     obj_labels_map = {
-        "total_return": "Total Return", "growth": "Capital Growth",
-        "income": "Income Generation", "preservation": "Capital Preservation",
+        "total_return": "Total Return",
+        "growth": "Capital Growth",
+        "income": "Income Generation",
+        "preservation": "Capital Preservation",
     }
     primary_obj = st.selectbox(
-        "Primary Objective", obj_options,
+        "Primary Objective",
+        obj_options,
         format_func=lambda x: obj_labels_map[x],
-        index=0, key="primary_obj", label_visibility="collapsed",
+        index=0,
+        key="primary_obj",
+        label_visibility="collapsed",
     )
 
     risk_tol = st.selectbox(
         "Risk Tolerance",
         list(RISK_PROFILES.keys()),
         format_func=lambda x: RISK_PROFILES[x]["label"],
-        index=1, key="risk_tol", label_visibility="collapsed",
+        index=1,
+        key="risk_tol",
+        label_visibility="collapsed",
     )
     risk_info = RISK_PROFILES[risk_tol]
     st.caption(f"{risk_info['description']}")
 
-    time_horizon = st.slider("Time horizon (years)", 1, 20, 5, key="time_horizon",
-                             label_visibility="collapsed")
+    time_horizon = st.slider(
+        "Time horizon (years)", 1, 20, 5, key="time_horizon", label_visibility="collapsed"
+    )
     st.caption(f"Horizon: {time_horizon} years")
 
     investment_amt = st.number_input(
-        "Investment amount ($)", min_value=10_000, max_value=100_000_000,
-        value=1_000_000, step=100_000, key="invest_amt",
+        "Investment amount ($)",
+        min_value=10_000,
+        max_value=100_000_000,
+        value=1_000_000,
+        step=100_000,
+        key="invest_amt",
         label_visibility="collapsed",
     )
 
@@ -606,9 +656,12 @@ with st.sidebar:
     # ── Investment Theme & Universe ───────────────────────────────────────
     st.markdown('<div class="section-title">Investment Theme</div>', unsafe_allow_html=True)
     theme_key = st.selectbox(
-        "Theme", list(INVESTMENT_THEMES.keys()),
+        "Theme",
+        list(INVESTMENT_THEMES.keys()),
         format_func=lambda k: INVESTMENT_THEMES[k]["name"],
-        index=0, key="theme_sel", label_visibility="collapsed",
+        index=0,
+        key="theme_sel",
+        label_visibility="collapsed",
     )
     theme_info = INVESTMENT_THEMES[theme_key]
     st.caption(theme_info["description"])
@@ -617,15 +670,21 @@ with st.sidebar:
         custom_input = st.text_area(
             "Enter tickers (comma-separated)",
             value="NVDA, AAPL, MSFT, AMZN",
-            key="custom_tickers", label_visibility="collapsed",
+            key="custom_tickers",
+            label_visibility="collapsed",
             height=68,
         )
-        selected_tickers: list[str] = [t.strip().upper() for t in custom_input.split(",") if t.strip()]
+        selected_tickers: list[str] = [
+            t.strip().upper() for t in custom_input.split(",") if t.strip()
+        ]
     else:
         default_tickers = theme_info["default_tickers"]
         selected_tickers = st.multiselect(
-            "Tickers", default_tickers, default=default_tickers,
-            key="theme_tickers", label_visibility="collapsed",
+            "Tickers",
+            default_tickers,
+            default=default_tickers,
+            key="theme_tickers",
+            label_visibility="collapsed",
         )
 
     if selected_tickers:
@@ -643,11 +702,15 @@ with st.sidebar:
         excl_weapons = st.checkbox("Exclude weapons", value=False, key="excl_weapons")
         excl_fossil = st.checkbox("Exclude fossil fuels", value=False, key="excl_fossil")
         min_mktcap = st.number_input("Min market cap ($B)", 0.0, 500.0, 5.0, key="min_cap")
-        benchmark = st.selectbox("Benchmark", ["SPY", "QQQ", "IWM", "DIA", "VTI"],
-                                 index=0, key="benchmark")
+        benchmark = st.selectbox(
+            "Benchmark", ["SPY", "QQQ", "IWM", "DIA", "VTI"], index=0, key="benchmark"
+        )
         special_instr = st.text_area(
-            "Special instructions", value="", key="special_instr",
-            label_visibility="collapsed", placeholder="e.g. Focus on companies with >20% FCF yield",
+            "Special instructions",
+            value="",
+            key="special_instr",
+            label_visibility="collapsed",
+            placeholder="e.g. Focus on companies with >20% FCF yield",
             height=60,
         )
 
@@ -656,46 +719,73 @@ with st.sidebar:
     # ── API Keys ──────────────────────────────────────────────────────────
     st.markdown('<div class="section-title">LLM API Keys</div>', unsafe_allow_html=True)
     anthropic_key = st.text_input(
-        "Anthropic", type="password", key="key_ant",
+        "Anthropic",
+        type="password",
+        key="key_ant",
         placeholder="sk-ant-…",
         label_visibility="collapsed",
     )
     openai_key = st.text_input(
-        "OpenAI", type="password", key="key_oai",
+        "OpenAI",
+        type="password",
+        key="key_oai",
         placeholder="sk-… (OpenAI)",
         label_visibility="collapsed",
     )
     gemini_key = st.text_input(
-        "Google", type="password", key="key_gem",
+        "Google",
+        type="password",
+        key="key_gem",
         placeholder="AIza… (Gemini)",
         label_visibility="collapsed",
     )
 
-    st.markdown('<div class="section-title" style="margin-top:8px">Data API Keys</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="section-title" style="margin-top:8px">Data API Keys</div>',
+        unsafe_allow_html=True,
+    )
     fmp_key = st.text_input(
-        "FMP", type="password", key="key_fmp",
+        "FMP",
+        type="password",
+        key="key_fmp",
         placeholder="FMP API key",
         label_visibility="collapsed",
     )
     finnhub_key = st.text_input(
-        "Finnhub", type="password", key="key_fhub",
+        "Finnhub",
+        type="password",
+        key="key_fhub",
         placeholder="Finnhub API key",
         label_visibility="collapsed",
     )
 
-    provider_keys: dict[str, str] = {k: v for k, v in {
-        "anthropic": anthropic_key, "openai": openai_key, "gemini": gemini_key,
-        "fmp": fmp_key, "finnhub": finnhub_key,
-    }.items() if v}
-    any_key = bool({k: v for k, v in provider_keys.items() if k in ("anthropic", "openai", "gemini")})
+    provider_keys: dict[str, str] = {
+        k: v
+        for k, v in {
+            "anthropic": anthropic_key,
+            "openai": openai_key,
+            "gemini": gemini_key,
+            "fmp": fmp_key,
+            "finnhub": finnhub_key,
+        }.items()
+        if v
+    }
+    any_key = bool(
+        {k: v for k, v in provider_keys.items() if k in ("anthropic", "openai", "gemini")}
+    )
 
     if any_key:
         badges = []
-        if anthropic_key: badges.append("🟢 Anthropic")
-        if openai_key:    badges.append("🟢 OpenAI")
-        if gemini_key:    badges.append("🟢 Google")
-        if fmp_key:       badges.append("🟢 FMP")
-        if finnhub_key:   badges.append("🟢 Finnhub")
+        if anthropic_key:
+            badges.append("🟢 Anthropic")
+        if openai_key:
+            badges.append("🟢 OpenAI")
+        if gemini_key:
+            badges.append("🟢 Google")
+        if fmp_key:
+            badges.append("🟢 FMP")
+        if finnhub_key:
+            badges.append("🟢 Finnhub")
         st.caption("  ".join(badges))
         if _ENV:
             st.caption("🔑 Auto-loaded from `.env`")
@@ -705,7 +795,12 @@ with st.sidebar:
     # ── Model ─────────────────────────────────────────────────────────────
     st.markdown('<div class="section-title">Model & Temperature</div>', unsafe_allow_html=True)
     temperature = st.slider(
-        "Temperature", 0.0, 1.0, 0.3, 0.05, key="temp_slider",
+        "Temperature",
+        0.0,
+        1.0,
+        0.3,
+        0.05,
+        key="temp_slider",
         label_visibility="collapsed",
         help="Low (0.2–0.4) = deterministic research; high = more creative",
     )
@@ -715,9 +810,11 @@ with st.sidebar:
     if use_same:
         def_idx = ALL_IDS.index("claude-sonnet-4-6")
         g_idx = st.selectbox(
-            "Model", range(len(ALL_MODELS)),
+            "Model",
+            range(len(ALL_MODELS)),
             format_func=lambda i: ALL_LABELS[i],
-            index=def_idx, key="global_model",
+            index=def_idx,
+            key="global_model",
             label_visibility="collapsed",
         )
         stage_models: dict[int, str] = {n: ALL_IDS[g_idx] for n, _ in LLM_STAGES}
@@ -729,9 +826,11 @@ with st.sidebar:
             for sn, sl in LLM_STAGES:
                 def_idx = ALL_IDS.index(STAGE_DEFAULTS.get(sn, "claude-sonnet-4-6"))
                 idx = st.selectbox(
-                    f"S{sn}: {sl}", range(len(ALL_MODELS)),
+                    f"S{sn}: {sl}",
+                    range(len(ALL_MODELS)),
                     format_func=lambda i: ALL_LABELS[i],
-                    index=def_idx, key=f"sm_{sn}",
+                    index=def_idx,
+                    key=f"sm_{sn}",
                     label_visibility="collapsed",
                 )
                 stage_models[sn] = ALL_IDS[idx]
@@ -750,7 +849,8 @@ with st.sidebar:
     if selected_tickers and stage_models:
         try:
             est = estimate_run_cost(selected_tickers, stage_models, model_choice)
-            st.markdown(f"""
+            st.markdown(
+                f"""
 <div class="cost-badge">
   💰 <span class="amt">{format_cost(est.total_cost_usd)}</span>
   &nbsp;·&nbsp; {format_cost(est.low_usd)} – {format_cost(est.high_usd)}
@@ -758,12 +858,14 @@ with st.sidebar:
 <div style="font-size:0.72rem;color:#8b949e;margin-top:6px">
   {len(selected_tickers)} tickers · {len(LLM_STAGES)} LLM stages
 </div>
-""", unsafe_allow_html=True)
+""",
+                unsafe_allow_html=True,
+            )
         except Exception:
             st.caption("Cost estimate unavailable")
 
     st.divider()
-    st.caption(f"💾 `reports/` — survives restarts")
+    st.caption("💾 `reports/` — survives restarts")
 
 # ── Build client profile from sidebar inputs ──────────────────────────────
 client_profile = ClientProfile(
@@ -787,7 +889,8 @@ client_profile = ClientProfile(
 # ─────────────────────────────────────────────────────────────────────────
 # Page header
 # ─────────────────────────────────────────────────────────────────────────
-st.markdown("""
+st.markdown(
+    """
 <div style="padding:8px 0 18px">
   <div style="font-size:1.6rem;font-weight:800;color:#e6edf3;letter-spacing:-0.03em">
     Institutional Research Platform
@@ -796,26 +899,23 @@ st.markdown("""
     JPM-style asset management · 15-stage multi-agent pipeline · Live data (FMP + Finnhub)
   </div>
 </div>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
-tab_pipeline, tab_report, tab_saved, tab_about = st.tabs([
-    "⚡ Pipeline", "📄 Report", "🗂️ Saved Runs", "ℹ️ About"
-])
+tab_pipeline, tab_report, tab_saved, tab_about = st.tabs(
+    ["⚡ Pipeline", "📄 Report", "🗂️ Saved Runs", "ℹ️ About"]
+)
 
 
 # ═════════════════════════════════════════════════════════════════════════
 # TAB 1 — PIPELINE
 # ═════════════════════════════════════════════════════════════════════════
 with tab_pipeline:
-
     # ── Controls ──────────────────────────────────────────────────────────
     cc1, cc2, cc3 = st.columns([3, 1, 4])
     with cc1:
-        run_disabled = (
-            st.session_state.running
-            or not any_key
-            or not selected_tickers
-        )
+        run_disabled = st.session_state.running or not any_key or not selected_tickers
         run_btn = st.button(
             "▶  Run Full Pipeline",
             disabled=run_disabled,
@@ -826,13 +926,13 @@ with tab_pipeline:
     with cc2:
         reset_btn = st.button("↺  Reset", use_container_width=True)
         if reset_btn:
-            st.session_state.run_result      = None
-            st.session_state.loaded_run      = None
-            st.session_state.stage_statuses  = {i: "pending" for i, _ in STAGES}
-            st.session_state.stage_outputs   = {}
-            st.session_state.running         = False
-            st.session_state.current_stage   = -1
-            st.session_state.live_log        = []
+            st.session_state.run_result = None
+            st.session_state.loaded_run = None
+            st.session_state.stage_statuses = {i: "pending" for i, _ in STAGES}
+            st.session_state.stage_outputs = {}
+            st.session_state.running = False
+            st.session_state.current_stage = -1
+            st.session_state.live_log = []
             st.rerun()
 
     if not any_key:
@@ -862,17 +962,20 @@ with tab_pipeline:
 
     with col_live:
         st.markdown('<div class="section-title">Live Activity</div>', unsafe_allow_html=True)
-        activity_ph = st.empty()   # live activity strip (updates every callback)
-        _render_activity(activity_ph, st.session_state.current_activity,
-                         running=st.session_state.running)
-        st.markdown('<div class="section-title" style="margin-top:10px">Completed Stage Outputs</div>',
-                    unsafe_allow_html=True)
+        activity_ph = st.empty()  # live activity strip (updates every callback)
+        _render_activity(
+            activity_ph, st.session_state.current_activity, running=st.session_state.running
+        )
+        st.markdown(
+            '<div class="section-title" style="margin-top:10px">Completed Stage Outputs</div>',
+            unsafe_allow_html=True,
+        )
         stream_ph = st.empty()
         _render_stream(stream_ph, st.session_state.live_log)
 
     # ── Progress / status area ────────────────────────────────────────────
     progress_ph = st.empty()
-    status_ph   = st.empty()
+    status_ph = st.empty()
 
     # Show last run's cost/status if not currently running
     if not st.session_state.running and st.session_state.run_result:
@@ -890,14 +993,14 @@ with tab_pipeline:
     # ─────────────────────────────────────────────────────────────────────
     if run_btn and any_key and selected_tickers:
         # Reset state
-        st.session_state.running        = True
+        st.session_state.running = True
         st.session_state.stage_statuses = {i: "pending" for i, _ in STAGES}
-        st.session_state.stage_outputs  = {}
-        st.session_state.run_result     = None
-        st.session_state.live_log       = []
-        st.session_state.pipeline_error = ""   # clear any previous error
+        st.session_state.stage_outputs = {}
+        st.session_state.run_result = None
+        st.session_state.live_log = []
+        st.session_state.pipeline_error = ""  # clear any previous error
         st.session_state.current_activity = "Initialising pipeline…"
-        st.session_state.activity_feed    = []
+        st.session_state.activity_feed = []
 
         progress_bar = progress_ph.progress(0, text="Initialising pipeline…")
 
@@ -911,7 +1014,7 @@ with tab_pipeline:
         )
 
         total_stages = len(STAGES)
-        done_count   = [0]
+        done_count = [0]
 
         def _progress_cb(stage_num: int, stage_name: str, status: str, output) -> None:
             st.session_state.stage_statuses[stage_num] = status
@@ -921,8 +1024,9 @@ with tab_pipeline:
             # Refresh stage card immediately
             ph = stage_placeholders.get(stage_num)
             if ph:
-                _render_stage_card(ph, stage_num, stage_name, status,
-                                   st.session_state.stage_outputs)
+                _render_stage_card(
+                    ph, stage_num, stage_name, status, st.session_state.stage_outputs
+                )
 
             if status == "running":
                 # Update live activity strip with what stage just started
@@ -985,9 +1089,9 @@ with tab_pipeline:
             elif sr.output:
                 st.session_state.stage_outputs[sr.stage_num] = sr.output
 
-        st.session_state.run_result   = run_result
+        st.session_state.run_result = run_result
         st.session_state.current_stage = 14
-        st.session_state.running       = False
+        st.session_state.running = False
 
         # Persist to disk
         try:
@@ -1020,13 +1124,13 @@ with tab_pipeline:
 # TAB 2 — REPORT
 # ═════════════════════════════════════════════════════════════════════════
 with tab_report:
-
     active_result: RunResult | None = st.session_state.get("run_result")
-    loaded: dict | None             = st.session_state.get("loaded_run")
+    loaded: dict | None = st.session_state.get("loaded_run")
 
     if active_result is None and loaded is None:
         # ── Empty state ───────────────────────────────────────────────────
-        st.markdown("""
+        st.markdown(
+            """
 <div style="text-align:center;padding:60px 0;color:#8b949e">
   <div style="font-size:3rem;margin-bottom:14px">📄</div>
   <div style="font-size:1rem;font-weight:600;color:#c9d1d9;margin-bottom:8px">
@@ -1036,40 +1140,48 @@ with tab_report:
     Run the pipeline from the ⚡ Pipeline tab — or load a saved run from 🗂️ Saved Runs
   </div>
 </div>
-""", unsafe_allow_html=True)
+""",
+            unsafe_allow_html=True,
+        )
 
         # Universe preview
         if selected_tickers:
             st.markdown("---")
             st.markdown('<div class="section-title">Universe Preview</div>', unsafe_allow_html=True)
-            st.caption(f"{len(selected_tickers)} tickers · {INVESTMENT_THEMES.get(theme_key, {}).get('name', 'Custom')}")
+            st.caption(
+                f"{len(selected_tickers)} tickers · {INVESTMENT_THEMES.get(theme_key, {}).get('name', 'Custom')}"
+            )
             chip_html = " ".join(f'<span class="ticker-chip">{t}</span>' for t in selected_tickers)
             st.markdown(chip_html, unsafe_allow_html=True)
     else:
         # ── Display report ────────────────────────────────────────────────
         if loaded:
-            run_id    = loaded.get("run_id", "?")
-            tickers   = loaded.get("tickers", [])
-            model     = loaded.get("model", "?")
+            run_id = loaded.get("run_id", "?")
+            tickers = loaded.get("tickers", [])
+            model = loaded.get("model", "?")
             report_md = loaded.get("final_report_md", "")
             stages_raw = loaded.get("stages", [])
             token_log_src: list = []
         else:
-            run_id    = active_result.run_id
-            tickers   = active_result.tickers
-            model     = active_result.model
+            run_id = active_result.run_id
+            tickers = active_result.tickers
+            model = active_result.model
             report_md = active_result.final_report_md
             stages_raw = [
-                {"stage_num": s.stage_num, "stage_name": s.stage_name,
-                 "status": s.status, "elapsed_secs": s.elapsed_secs,
-                 "error": s.error}
+                {
+                    "stage_num": s.stage_num,
+                    "stage_name": s.stage_name,
+                    "status": s.status,
+                    "elapsed_secs": s.elapsed_secs,
+                    "error": s.error,
+                }
                 for s in active_result.stages
             ]
             token_log_src = active_result.token_log
 
         word_count = len(report_md.split())
-        pages_est  = max(1, word_count // 250)
-        stages_ok  = sum(1 for s in stages_raw if s.get("status") == "done")
+        pages_est = max(1, word_count // 250)
+        stages_ok = sum(1 for s in stages_raw if s.get("status") == "done")
 
         # Metrics row
         mc = st.columns(5)
@@ -1127,12 +1239,17 @@ with tab_report:
             )
         with dc2:
             json_payload = json.dumps(
-                loaded if loaded else {
-                    "run_id": run_id, "tickers": tickers,
-                    "model": model, "final_report_md": report_md,
+                loaded
+                if loaded
+                else {
+                    "run_id": run_id,
+                    "tickers": tickers,
+                    "model": model,
+                    "final_report_md": report_md,
                     "stages": stages_raw,
                 },
-                indent=2, default=str,
+                indent=2,
+                default=str,
             )
             st.download_button(
                 "⬇️  Download .json",
@@ -1173,13 +1290,13 @@ with tab_report:
             with st.expander("⏱️  Stage Timing & Errors", expanded=False):
                 cols_t = st.columns(2)
                 for i, s in enumerate(stages_raw):
-                    sn    = s.get("stage_num", "?")
+                    sn = s.get("stage_num", "?")
                     sname = s.get("stage_name", "?")
-                    ss    = s.get("status", "?")
-                    el    = s.get("elapsed_secs", 0) or 0
-                    err   = s.get("error") or ""
-                    icon  = "✅" if ss == "done" else "❌" if ss == "failed" else "⬜"
-                    line  = f"{icon} **S{sn}: {sname}** — {el:.1f}s"
+                    ss = s.get("status", "?")
+                    el = s.get("elapsed_secs", 0) or 0
+                    err = s.get("error") or ""
+                    icon = "✅" if ss == "done" else "❌" if ss == "failed" else "⬜"
+                    line = f"{icon} **S{sn}: {sname}** — {el:.1f}s"
                     if err:
                         line += f" · ⚠️ `{err[:60]}`"
                     cols_t[i % 2].markdown(line)
@@ -1208,7 +1325,9 @@ with tab_report:
                     rs_cols = st.columns(4)
                     rs_cols[0].metric("Trades", _rs.get("trade_count", 0))
                     rs_cols[1].metric("Turnover", f"{_rs.get('total_turnover_pct', 0):.1f}%")
-                    rs_cols[2].metric("Est. Impact", f"{_rs.get('estimated_total_impact_bps', 0):.1f} bps")
+                    rs_cols[2].metric(
+                        "Est. Impact", f"{_rs.get('estimated_total_impact_bps', 0):.1f} bps"
+                    )
                     rs_cols[3].metric("Trigger", _rs.get("trigger", "—") or "—")
                     if _rs.get("summary"):
                         st.caption(_rs["summary"])
@@ -1219,13 +1338,11 @@ with tab_report:
                 c = calculate_actual_cost(token_log_src)
                 for entry in c.stage_costs:
                     sn = entry.get("stage_num", "?")
-                    m  = entry.get("model", "?")
+                    m = entry.get("model", "?")
                     it = entry.get("input_tokens", 0)
                     ot = entry.get("output_tokens", 0)
                     cu = entry.get("cost_usd", 0.0)
-                    st.caption(
-                        f"S{sn} · `{m}` · {it:,}↑ {ot:,}↓ · **{format_cost(cu)}**"
-                    )
+                    st.caption(f"S{sn} · `{m}` · {it:,}↑ {ot:,}↓ · **{format_cost(cu)}**")
                 st.markdown(
                     f"**Total: {format_cost(c.total_cost_usd)}** "
                     f"({c.total_input_tokens + c.total_output_tokens:,} tokens)"
@@ -1245,22 +1362,21 @@ with tab_report:
                 return {}
             return st.session_state.stage_outputs.get(n, {})
 
-        risk_out     = _stage_out(9)
+        risk_out = _stage_out(9)
         portfolio_out = _stage_out(12)
 
         if risk_out or portfolio_out:
             with st.expander("📊  Quant Analytics", expanded=False):
-
                 # ── Market Risk Metrics ───────────────────────────────────
                 var_d = risk_out.get("var_analysis") or risk_out.get("var_95") or {}
-                dd_d  = risk_out.get("drawdown_analysis") or {}
+                dd_d = risk_out.get("drawdown_analysis") or {}
                 if var_d or dd_d:
                     st.markdown("#### 📈 Market Risk Metrics")
                     rm1, rm2, rm3, rm4 = st.columns(4)
-                    rm1.metric("VaR 95% (1-day)",  f"{var_d.get('var_pct', 0):.2f}%")
+                    rm1.metric("VaR 95% (1-day)", f"{var_d.get('var_pct', 0):.2f}%")
                     rm2.metric("CVaR 95% (1-day)", f"{var_d.get('cvar_pct', 0):.2f}%")
                     dd_pct = dd_d.get("max_drawdown_pct") or risk_out.get("max_drawdown", 0)
-                    rm3.metric("Max Drawdown",       f"{dd_pct:.2f}%")
+                    rm3.metric("Max Drawdown", f"{dd_pct:.2f}%")
                     port_vol = risk_out.get("portfolio_volatility") or 0
                     rm4.metric("Portfolio Volatility", f"{port_vol * 100:.2f}%")
                     var_method = risk_out.get("var_method", "")
@@ -1272,15 +1388,17 @@ with tab_report:
                         )
 
                 # ── ETF Overlap ───────────────────────────────────────────
-                etf_data   = risk_out.get("etf_overlap", {})
+                etf_data = risk_out.get("etf_overlap", {})
                 diff_score = risk_out.get("etf_differentiation_score")
                 if etf_data or diff_score is not None:
                     st.markdown("---")
                     st.markdown("#### 🔄 ETF Overlap & Differentiation")
                     if diff_score is not None:
                         score_colour = (
-                            "#2ea043" if diff_score >= 70
-                            else "#f0a500" if diff_score >= 40
+                            "#2ea043"
+                            if diff_score >= 70
+                            else "#f0a500"
+                            if diff_score >= 40
                             else "#f85149"
                         )
                         st.markdown(
@@ -1296,26 +1414,21 @@ with tab_report:
                             )
                         elif diff_score >= 70:
                             st.success(
-                                "✅ Portfolio is well-differentiated from common "
-                                "ETF benchmarks."
+                                "✅ Portfolio is well-differentiated from common ETF benchmarks."
                             )
 
                     if isinstance(etf_data, dict):
                         # Support both {"overlaps": {ETF: pct}} and
                         # {"etf_overlaps": {ETF: pct}} key variants
-                        overlaps = (
-                            etf_data.get("overlaps")
-                            or etf_data.get("etf_overlaps")
-                            or {}
-                        )
+                        overlaps = etf_data.get("overlaps") or etf_data.get("etf_overlaps") or {}
                         if isinstance(overlaps, dict) and overlaps:
                             etf_rows = [
-                                {"ETF": etf,
-                                 "Overlap %": (
-                                     f"{pct:.1f}%"
-                                     if isinstance(pct, (int, float))
-                                     else str(pct)
-                                 )}
+                                {
+                                    "ETF": etf,
+                                    "Overlap %": (
+                                        f"{pct:.1f}%" if isinstance(pct, (int, float)) else str(pct)
+                                    ),
+                                }
                                 for etf, pct in overlaps.items()
                             ]
                             st.table(etf_rows)
@@ -1328,14 +1441,16 @@ with tab_report:
                     fe_rows = []
                     for fe in factor_data:
                         if isinstance(fe, dict):
-                            fe_rows.append({
-                                "Ticker":     fe.get("ticker", ""),
-                                "β Market":   f"{fe.get('market_beta', 0):.2f}",
-                                "β Size":     f"{fe.get('size_loading', 0):.2f}",
-                                "β Value":    f"{fe.get('value_loading', 0):.2f}",
-                                "β Momentum": f"{fe.get('momentum_loading', 0):.2f}",
-                                "β Quality":  f"{fe.get('quality_loading', 0):.2f}",
-                            })
+                            fe_rows.append(
+                                {
+                                    "Ticker": fe.get("ticker", ""),
+                                    "β Market": f"{fe.get('market_beta', 0):.2f}",
+                                    "β Size": f"{fe.get('size_loading', 0):.2f}",
+                                    "β Value": f"{fe.get('value_loading', 0):.2f}",
+                                    "β Momentum": f"{fe.get('momentum_loading', 0):.2f}",
+                                    "β Quality": f"{fe.get('quality_loading', 0):.2f}",
+                                }
+                            )
                     if fe_rows:
                         st.table(fe_rows)
                     pf_exp = risk_out.get("portfolio_factor_exposure")
@@ -1363,15 +1478,11 @@ with tab_report:
                         if isinstance(votes, dict):
                             for member, vote in votes.items():
                                 v_str = str(vote).lower()
-                                icon = (
-                                    "✅" if v_str in ("approve", "yes", "pass")
-                                    else "❌"
-                                )
+                                icon = "✅" if v_str in ("approve", "yes", "pass") else "❌"
                                 st.caption(f"{icon} {member}: {vote}")
                     with ic_c2:
-                        rationale = (
-                            ic_record.get("rationale")
-                            or ic_record.get("decision_rationale", "")
+                        rationale = ic_record.get("rationale") or ic_record.get(
+                            "decision_rationale", ""
                         )
                         if rationale:
                             st.markdown(f"*{rationale[:400]}*")
@@ -1390,37 +1501,38 @@ with tab_report:
                     else:
                         st.warning("⚠️ Mandate violations detected")
                         for v in mandate.get("violations", []):
-                            desc = (
-                                v.get("description", str(v))
-                                if isinstance(v, dict) else str(v)
-                            )
+                            desc = v.get("description", str(v)) if isinstance(v, dict) else str(v)
                             st.caption(f"• {desc}")
 
                 # ── ESG Analytics (ACT-S6-2) ──────────────────────────────
                 stage6_out = _stage_out(6)
-                esg_out = (
-                    stage6_out.get("esg_output") or {}
-                    if isinstance(stage6_out, dict) else {}
-                )
+                esg_out = stage6_out.get("esg_output") or {} if isinstance(stage6_out, dict) else {}
                 esg_parsed = {}
                 if isinstance(esg_out, dict):
                     esg_parsed = esg_out.get("parsed_output") or {}
-                esg_scores = esg_parsed.get("esg_scores", []) if isinstance(esg_parsed, dict) else []
+                esg_scores = (
+                    esg_parsed.get("esg_scores", []) if isinstance(esg_parsed, dict) else []
+                )
                 if esg_scores:
                     st.markdown("---")
                     st.markdown("#### 🌱 ESG Analytics")
                     # Summary metrics
                     composite_scores = [
-                        s.get("esg_score", 0) for s in esg_scores
+                        s.get("esg_score", 0)
+                        for s in esg_scores
                         if isinstance(s, dict) and s.get("esg_score") is not None
                     ]
                     exclusions = [
-                        s.get("ticker", "?") for s in esg_scores
+                        s.get("ticker", "?")
+                        for s in esg_scores
                         if isinstance(s, dict) and s.get("exclusion_trigger")
                     ]
                     if composite_scores:
                         em1, em2, em3 = st.columns(3)
-                        em1.metric("Portfolio ESG Avg", f"{sum(composite_scores)/len(composite_scores):.0f} / 100")
+                        em1.metric(
+                            "Portfolio ESG Avg",
+                            f"{sum(composite_scores) / len(composite_scores):.0f} / 100",
+                        )
                         em2.metric("Tickers Scored", str(len(esg_scores)))
                         em3.metric(
                             "Exclusion Triggers",
@@ -1439,38 +1551,53 @@ with tab_report:
                         ticker = s.get("ticker", "?")
                         flags = s.get("controversy_flags", [])
                         flag_str = "; ".join(flags[:2]) if flags else "—"
-                        esg_rows.append({
-                            "Ticker": ticker,
-                            "ESG": s.get("esg_score", "—"),
-                            "E": s.get("e_score", "—"),
-                            "S": s.get("s_score", "—"),
-                            "G": s.get("g_score", "—"),
-                            "Exclusion": "❌ YES" if s.get("exclusion_trigger") else "✅ No",
-                            "Top Controversy": flag_str,
-                        })
+                        esg_rows.append(
+                            {
+                                "Ticker": ticker,
+                                "ESG": s.get("esg_score", "—"),
+                                "E": s.get("e_score", "—"),
+                                "S": s.get("s_score", "—"),
+                                "G": s.get("g_score", "—"),
+                                "Exclusion": "❌ YES" if s.get("exclusion_trigger") else "✅ No",
+                                "Top Controversy": flag_str,
+                            }
+                        )
                     if esg_rows:
                         st.table(esg_rows)
                         # ACT-S10-2: ESG CSV download button
                         try:
-                            import csv, io
-                            from research_pipeline.services.esg_service import ESGService as _ESGService
+                            import csv
+                            import io
+                            from research_pipeline.services.esg_service import (
+                                ESGService as _ESGService,
+                            )
+
                             _esg_svc = _ESGService()
                             _csv_buf = io.StringIO()
-                            _fieldnames = ["ticker", "overall_rating", "e_score", "s_score", "g_score", "controversy_flag"]
+                            _fieldnames = [
+                                "ticker",
+                                "overall_rating",
+                                "e_score",
+                                "s_score",
+                                "g_score",
+                                "controversy_flag",
+                            ]
                             _writer = csv.DictWriter(_csv_buf, fieldnames=_fieldnames)
                             _writer.writeheader()
                             for _row_data in esg_rows:
                                 _ticker_val = _row_data.get("Ticker", "")
                                 if _ticker_val:
                                     _sc = _esg_svc.get_score(_ticker_val)
-                                    _writer.writerow({
-                                        "ticker": _ticker_val,
-                                        "overall_rating": _sc.overall_rating.value,
-                                        "e_score": _sc.environmental_score,
-                                        "s_score": _sc.social_score,
-                                        "g_score": _sc.governance_score,
-                                        "controversy_flag": _sc.controversy_flag,
-                                    })
+                                    _writer.writerow(
+                                        {
+                                            "ticker": _ticker_val,
+                                            "overall_rating": _sc.overall_rating.value,
+                                            "e_score": _sc.environmental_score,
+                                            "s_score": _sc.social_score,
+                                            "g_score": _sc.governance_score,
+                                            "controversy_flag": _sc.controversy_flag,
+                                        }
+                                    )
                             st.download_button(
                                 label="⬇️ Download ESG CSV",
                                 data=_csv_buf.getvalue(),
@@ -1483,7 +1610,11 @@ with tab_report:
 
                     # Methodology note from first entry
                     first_note = next(
-                        (s.get("methodology_note") for s in esg_scores if isinstance(s, dict) and s.get("methodology_note")),
+                        (
+                            s.get("methodology_note")
+                            for s in esg_scores
+                            if isinstance(s, dict) and s.get("methodology_note")
+                        ),
                         None,
                     )
                     if first_note:
@@ -1520,9 +1651,7 @@ with tab_report:
                             for o in offsets:
                                 st.markdown(f"• {o}")
                     if fi_ctx.get("methodology_note"):
-                        st.caption(
-                            f"📝 {fi_ctx['methodology_note']}"
-                        )
+                        st.caption(f"📝 {fi_ctx['methodology_note']}")
 
                 # ── Baseline Weights ──────────────────────────────────────
                 baseline_w = portfolio_out.get("baseline_weights", {})
@@ -1548,37 +1677,59 @@ with tab_report:
                         with oc1:
                             st.markdown("**Risk Parity**")
                             if rp:
-                                st.metric("Expected Vol", f"{rp.get('expected_volatility_pct', 0):.1f}%")
-                                st.metric("Expected Ret", f"{rp.get('expected_return_pct', 0):.1f}%")
+                                st.metric(
+                                    "Expected Vol", f"{rp.get('expected_volatility_pct', 0):.1f}%"
+                                )
+                                st.metric(
+                                    "Expected Ret", f"{rp.get('expected_return_pct', 0):.1f}%"
+                                )
                         with oc2:
                             st.markdown("**Min Variance**")
                             if mv:
-                                st.metric("Expected Vol", f"{mv.get('expected_volatility_pct', 0):.1f}%")
+                                st.metric(
+                                    "Expected Vol", f"{mv.get('expected_volatility_pct', 0):.1f}%"
+                                )
                                 st.metric("Sharpe", f"{mv.get('sharpe_ratio', 0):.2f}")
                         with oc3:
                             st.markdown("**Max Sharpe**")
                             if ms:
                                 st.metric("Sharpe", f"{ms.get('sharpe_ratio', 0):.2f}")
-                                st.metric("Expected Ret", f"{ms.get('expected_return_pct', 0):.1f}%")
+                                st.metric(
+                                    "Expected Ret", f"{ms.get('expected_return_pct', 0):.1f}%"
+                                )
 
                         # Risk Parity weights detail
                         rp_weights = rp.get("weights", {})
                         if rp_weights:
                             with st.expander("Risk Parity Weights vs Baseline", expanded=False):
                                 import pandas as pd  # noqa: PLC0415
+
                                 rows = []
                                 for t in sorted(rp_weights, key=lambda x: -rp_weights.get(x, 0)):
-                                    bw = baseline_w.get(t, 0) * 100 if isinstance(baseline_w, dict) else 0.0
-                                    rows.append({
-                                        "Ticker": t,
-                                        "Baseline %": round(bw, 1),
-                                        "Risk Parity %": round(rp_weights[t], 1),
-                                        "Active %": round(rp_weights[t] - bw, 1),
-                                        "Risk Contrib %": round(rp.get("risk_contributions", {}).get(t, 0), 1),
-                                    })
+                                    bw = (
+                                        baseline_w.get(t, 0) * 100
+                                        if isinstance(baseline_w, dict)
+                                        else 0.0
+                                    )
+                                    rows.append(
+                                        {
+                                            "Ticker": t,
+                                            "Baseline %": round(bw, 1),
+                                            "Risk Parity %": round(rp_weights[t], 1),
+                                            "Active %": round(rp_weights[t] - bw, 1),
+                                            "Risk Contrib %": round(
+                                                rp.get("risk_contributions", {}).get(t, 0), 1
+                                            ),
+                                        }
+                                    )
                                 if rows:
-                                    st.dataframe(pd.DataFrame(rows).set_index("Ticker"), use_container_width=True)
-                    st.caption("Optimisation uses synthetic return data — for structural illustration only. Use live price data for production weights.")
+                                    st.dataframe(
+                                        pd.DataFrame(rows).set_index("Ticker"),
+                                        use_container_width=True,
+                                    )
+                    st.caption(
+                        "Optimisation uses synthetic return data — for structural illustration only. Use live price data for production weights."
+                    )
 
                 # ── Rebalancing Signals (ACT-S8-2) ────────────────────────
                 rebal_data = portfolio_out.get("rebalance_proposal")
@@ -1586,25 +1737,36 @@ with tab_report:
                     st.markdown("---")
                     st.markdown("#### ⚖️ Rebalancing Signals (Risk Parity vs Baseline)")
                     rb1, rb2, rb3 = st.columns(3)
-                    rb1.metric("Trades Required", rebal_data.get("trade_count", len(rebal_data["trades"])))
+                    rb1.metric(
+                        "Trades Required", rebal_data.get("trade_count", len(rebal_data["trades"]))
+                    )
                     rb2.metric("Turnover", f"{rebal_data.get('total_turnover_pct', 0):.1f}%")
-                    rb3.metric("Est. Avg Impact", f"{rebal_data.get('estimated_total_impact_bps', 0):.1f} bps")
+                    rb3.metric(
+                        "Est. Avg Impact",
+                        f"{rebal_data.get('estimated_total_impact_bps', 0):.1f} bps",
+                    )
                     with st.expander("Trade-Level Detail", expanded=False):
                         import pandas as pd  # noqa: PLC0415
+
                         trade_rows = []
                         for t in rebal_data["trades"]:
-                            trade_rows.append({
-                                "Ticker": t["ticker"],
-                                "Direction": t["direction"].upper(),
-                                "Current %": t["current_weight_pct"],
-                                "Target %": t["target_weight_pct"],
-                                "Delta %": t["delta_weight_pct"],
-                                "Est. Value $": f"{t.get('estimated_value', 0):,.0f}",
-                                "Impact bps": t.get("market_impact_bps", 0),
-                                "Priority": t.get("priority", "normal"),
-                            })
+                            trade_rows.append(
+                                {
+                                    "Ticker": t["ticker"],
+                                    "Direction": t["direction"].upper(),
+                                    "Current %": t["current_weight_pct"],
+                                    "Target %": t["target_weight_pct"],
+                                    "Delta %": t["delta_weight_pct"],
+                                    "Est. Value $": f"{t.get('estimated_value', 0):,.0f}",
+                                    "Impact bps": t.get("market_impact_bps", 0),
+                                    "Priority": t.get("priority", "normal"),
+                                }
+                            )
                         if trade_rows:
-                            st.dataframe(pd.DataFrame(trade_rows).set_index("Ticker"), use_container_width=True)
+                            st.dataframe(
+                                pd.DataFrame(trade_rows).set_index("Ticker"),
+                                use_container_width=True,
+                            )
                     if rebal_data.get("summary"):
                         st.caption(rebal_data["summary"])
 
@@ -1615,30 +1777,49 @@ with tab_report:
                     st.markdown("---")
                     st.markdown("#### 📈 Performance Attribution (Brinson-Hood-Beebower)")
                     ac1, ac2, ac3, ac4 = st.columns(4)
-                    ac1.metric("Portfolio Return", f"{attribution.get('total_portfolio_return_pct', 0):.2f}%")
-                    ac2.metric("Benchmark Return (SPY)", f"{attribution.get('total_benchmark_return_pct', 0):.2f}%")
+                    ac1.metric(
+                        "Portfolio Return",
+                        f"{attribution.get('total_portfolio_return_pct', 0):.2f}%",
+                    )
+                    ac2.metric(
+                        "Benchmark Return (SPY)",
+                        f"{attribution.get('total_benchmark_return_pct', 0):.2f}%",
+                    )
                     ac3.metric("Excess Return", f"{attribution.get('excess_return_pct', 0):.2f}%")
-                    ac4.metric("Allocation Effect", f"{attribution.get('allocation_effect_pct', 0):.3f}%")
+                    ac4.metric(
+                        "Allocation Effect", f"{attribution.get('allocation_effect_pct', 0):.3f}%"
+                    )
 
                     ac5, ac6, _ = st.columns(3)
-                    ac5.metric("Selection Effect", f"{attribution.get('selection_effect_pct', 0):.3f}%")
-                    ac6.metric("Interaction Effect", f"{attribution.get('interaction_effect_pct', 0):.3f}%")
+                    ac5.metric(
+                        "Selection Effect", f"{attribution.get('selection_effect_pct', 0):.3f}%"
+                    )
+                    ac6.metric(
+                        "Interaction Effect", f"{attribution.get('interaction_effect_pct', 0):.3f}%"
+                    )
 
                     sect_alloc = attribution.get("sector_allocation", {})
                     sect_sel = attribution.get("sector_selection", {})
                     if sect_alloc:
                         with st.expander("Sector Attribution Detail", expanded=False):
                             import pandas as pd  # noqa: PLC0415
+
                             rows = []
                             for sector in sorted(sect_alloc):
-                                rows.append({
-                                    "Sector": sector,
-                                    "Allocation Effect %": round(sect_alloc.get(sector, 0), 4),
-                                    "Selection Effect %": round(sect_sel.get(sector, 0), 0),
-                                })
+                                rows.append(
+                                    {
+                                        "Sector": sector,
+                                        "Allocation Effect %": round(sect_alloc.get(sector, 0), 4),
+                                        "Selection Effect %": round(sect_sel.get(sector, 0), 0),
+                                    }
+                                )
                             if rows:
-                                st.dataframe(pd.DataFrame(rows).set_index("Sector"), use_container_width=True)
-                    st.caption("Attribution uses live price data where available (yfinance), falling back to synthetic returns for tickers that cannot be fetched.")
+                                st.dataframe(
+                                    pd.DataFrame(rows).set_index("Sector"), use_container_width=True
+                                )
+                    st.caption(
+                        "Attribution uses live price data where available (yfinance), falling back to synthetic returns for tickers that cannot be fetched."
+                    )
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -1651,7 +1832,8 @@ with tab_saved:
     saved_runs = list_saved_runs()
 
     if not saved_runs:
-        st.markdown("""
+        st.markdown(
+            """
 <div style="text-align:center;padding:48px;color:#8b949e">
   <div style="font-size:2.5rem;margin-bottom:10px">🗂️</div>
   <div style="font-weight:600;color:#c9d1d9;margin-bottom:6px">No saved runs yet</div>
@@ -1660,29 +1842,32 @@ with tab_saved:
     They persist across server restarts.
   </div>
 </div>
-""", unsafe_allow_html=True)
+""",
+            unsafe_allow_html=True,
+        )
         st.caption(f"Storage → `{REPORTS_DIR}`")
     else:
         st.caption(f"{len(saved_runs)} saved run(s)  ·  `{REPORTS_DIR}`")
         st.markdown("")
 
         for run in saved_runs:
-            rid    = run.get("run_id", "?")
-            ticks  = run.get("tickers", [])
+            rid = run.get("run_id", "?")
+            ticks = run.get("tickers", [])
             tick_s = ", ".join(ticks[:6]) + ("…" if len(ticks) > 6 else "")
             dt_raw = run.get("completed_at", "")
             try:
                 dt_fmt = datetime.fromisoformat(dt_raw).strftime("%d %b %Y  %H:%M UTC")
             except Exception:
                 dt_fmt = dt_raw or "?"
-            wc    = run.get("word_count", 0)
-            ok    = "✅" if run.get("success") else "⚠️"
+            wc = run.get("word_count", 0)
+            ok = "✅" if run.get("success") else "⚠️"
             model = run.get("model", "?")
 
             with st.container():
                 rc1, rc2, rc3, rc4 = st.columns([6, 2, 2, 2])
                 with rc1:
-                    st.markdown(f"""
+                    st.markdown(
+                        f"""
 <div class="card" style="padding:10px 16px;margin-bottom:0">
   <div style="display:flex;align-items:center;gap:10px">
     <span style="font-size:1.2rem">{ok}</span>
@@ -1694,14 +1879,20 @@ with tab_saved:
     </div>
   </div>
 </div>
-""", unsafe_allow_html=True)
+""",
+                        unsafe_allow_html=True,
+                    )
                 with rc2:
-                    if st.button("📂  Load", key=f"load_{rid}", use_container_width=True,
-                                 help="Open in Report tab"):
+                    if st.button(
+                        "📂  Load",
+                        key=f"load_{rid}",
+                        use_container_width=True,
+                        help="Open in Report tab",
+                    ):
                         data = load_run(rid)
                         if data:
-                            st.session_state.loaded_run  = data
-                            st.session_state.run_result  = None
+                            st.session_state.loaded_run = data
+                            st.session_state.run_result = None
                             st.rerun()
                         else:
                             st.error("Could not read file.")
@@ -1710,13 +1901,17 @@ with tab_saved:
                     if md_path and Path(md_path).exists():
                         md_bytes = Path(md_path).read_bytes()
                         st.download_button(
-                            "⬇️  .md", data=md_bytes,
-                            file_name=f"{rid}.md", mime="text/markdown",
-                            key=f"dl_{rid}", use_container_width=True,
+                            "⬇️  .md",
+                            data=md_bytes,
+                            file_name=f"{rid}.md",
+                            mime="text/markdown",
+                            key=f"dl_{rid}",
+                            use_container_width=True,
                         )
                     else:
-                        st.button("⬇️  .md", disabled=True, key=f"dl_{rid}",
-                                  use_container_width=True)
+                        st.button(
+                            "⬇️  .md", disabled=True, key=f"dl_{rid}", use_container_width=True
+                        )
                 with rc4:
                     if st.button("🗑️  Delete", key=f"del_{rid}", use_container_width=True):
                         delete_run(rid)
@@ -1732,7 +1927,8 @@ with tab_saved:
 # TAB 4 — ABOUT
 # ═════════════════════════════════════════════════════════════════════════
 with tab_about:
-    st.markdown("""
+    st.markdown(
+        """
 <div class="card">
   <h3 style="margin:0 0 6px;color:#58a6ff">Institutional Research Platform v8</h3>
   <p style="margin:0;font-size:0.86rem;color:#8b949e;line-height:1.6">
@@ -1742,7 +1938,9 @@ with tab_about:
     high-net-worth individuals.
   </p>
 </div>
-""", unsafe_allow_html=True)
+""",
+        unsafe_allow_html=True,
+    )
 
     col_a, col_b = st.columns(2)
     with col_a:

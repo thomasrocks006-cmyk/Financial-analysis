@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 
 # ── path setup ─────────────────────────────────────────────────────────────────
 ROOT = Path(__file__).parent.parent
@@ -26,38 +25,45 @@ sys.path.insert(0, str(ROOT / "src"))
 # 1. Settings — new API keys
 # =============================================================================
 
+
 class TestSettingsAPIKeys:
     """APIKeys dataclass must carry sec_api_key and benzinga_api_key."""
 
     def test_api_keys_has_sec_api_key_field(self):
         from research_pipeline.config.settings import APIKeys
+
         keys = APIKeys()
         assert hasattr(keys, "sec_api_key")
         assert keys.sec_api_key == ""
 
     def test_api_keys_has_benzinga_api_key_field(self):
         from research_pipeline.config.settings import APIKeys
+
         keys = APIKeys()
         assert hasattr(keys, "benzinga_api_key")
         assert keys.benzinga_api_key == ""
 
     def test_from_env_reads_sec_api_key(self):
         from research_pipeline.config.settings import APIKeys
+
         with patch.dict("os.environ", {"SEC_API_KEY": "test-sec-key-123"}):
             keys = APIKeys.from_env()
         assert keys.sec_api_key == "test-sec-key-123"
 
     def test_from_env_reads_benzinga_api_key(self):
         from research_pipeline.config.settings import APIKeys
+
         with patch.dict("os.environ", {"BENZINGA_API_KEY": "benz-key-456"}):
             keys = APIKeys.from_env()
         assert keys.benzinga_api_key == "benz-key-456"
 
     def test_from_env_defaults_to_empty_when_not_set(self):
         from research_pipeline.config.settings import APIKeys
+
         with patch.dict("os.environ", {}, clear=False):
             # Remove keys if present
             import os
+
             os.environ.pop("SEC_API_KEY", None)
             os.environ.pop("BENZINGA_API_KEY", None)
             keys = APIKeys.from_env()
@@ -69,6 +75,7 @@ class TestSettingsAPIKeys:
 # 2. SECApiService — unit tests
 # =============================================================================
 
+
 class TestSECApiService:
     """Tests for src/research_pipeline/services/sec_api_service.py"""
 
@@ -77,32 +84,35 @@ class TestSECApiService:
 
     def test_service_instantiation_with_empty_key(self):
         from research_pipeline.services.sec_api_service import SECApiService
+
         svc = SECApiService(api_key="")
         assert svc.api_key == ""
         assert svc._available is False
 
     def test_service_instantiation_with_key(self):
         from research_pipeline.services.sec_api_service import SECApiService
+
         svc = SECApiService(api_key="real-key-abc")
         assert svc.api_key == "real-key-abc"
 
     def test_fetch_universe_returns_empty_packages_without_key(self):
         from research_pipeline.services.sec_api_service import SECApiService
+
         svc = SECApiService(api_key="")
-        result = asyncio.run(
-            svc.fetch_universe(["NVDA", "MSFT"])
-        )
+        result = asyncio.run(svc.fetch_universe(["NVDA", "MSFT"]))
         assert isinstance(result, dict)
         assert "NVDA" in result
         assert "MSFT" in result
 
     def test_empty_package_has_no_primary_content(self):
         from research_pipeline.services.sec_api_service import SECFilingPackage
+
         pkg = SECFilingPackage(ticker="NVDA")
         assert pkg.has_primary_content is False
 
     def test_package_with_mda_has_primary_content(self):
         from research_pipeline.services.sec_api_service import SECFilingPackage
+
         pkg = SECFilingPackage(ticker="NVDA")
         pkg.mda_text = "Management discussion and analysis text here."
         assert pkg.has_primary_content is True
@@ -110,6 +120,7 @@ class TestSECApiService:
     def test_sec_filing_record_to_dict(self):
         from research_pipeline.services.sec_api_service import SECFilingRecord
         from datetime import datetime, timezone
+
         rec = SECFilingRecord(
             ticker="NVDA",
             accession_no="0001045810-24-000001",
@@ -126,6 +137,7 @@ class TestSECApiService:
 
     def test_package_to_dict_structure(self):
         from research_pipeline.services.sec_api_service import SECFilingPackage
+
         pkg = SECFilingPackage(ticker="MSFT")
         pkg.mda_text = "Revenue grew 15%."
         pkg.eight_k_events = [{"form_type": "8-K", "filed_at": "2024-01-15"}]
@@ -138,6 +150,7 @@ class TestSECApiService:
 
     def test_truncate_long_text(self):
         from research_pipeline.services.sec_api_service import _truncate
+
         short = "Hello world"
         assert _truncate(short, max_chars=50) == short
 
@@ -148,6 +161,7 @@ class TestSECApiService:
 
     def test_parse_date_valid(self):
         from research_pipeline.services.sec_api_service import _parse_date
+
         dt = _parse_date("2024-03-15")
         assert dt is not None
         assert dt.year == 2024
@@ -155,6 +169,7 @@ class TestSECApiService:
 
     def test_parse_date_empty(self):
         from research_pipeline.services.sec_api_service import _parse_date
+
         assert _parse_date(None) is None
         assert _parse_date("") is None
 
@@ -172,7 +187,8 @@ class TestSECApiService:
         async def run():
             with patch.object(svc, "fetch_ticker", side_effect=_failing_fetch):
                 import httpx
-                async with httpx.AsyncClient() as client:
+
+                async with httpx.AsyncClient():
                     pass
             result = await svc.fetch_universe(["AAPL"])
             return result
@@ -187,6 +203,7 @@ class TestSECApiService:
 # 3. BenzingaService — unit tests
 # =============================================================================
 
+
 class TestBenzingaService:
     """Tests for src/research_pipeline/services/benzinga_service.py"""
 
@@ -195,21 +212,22 @@ class TestBenzingaService:
 
     def test_service_instantiation_with_empty_key(self):
         from research_pipeline.services.benzinga_service import BenzingaService
+
         svc = BenzingaService(api_key="")
         assert svc.api_key == ""
         assert svc._available is False
 
     def test_service_instantiation_with_key(self):
         from research_pipeline.services.benzinga_service import BenzingaService
+
         svc = BenzingaService(api_key="benz-test-key")
         assert svc._available is True
 
     def test_fetch_universe_returns_empty_packages_without_key(self):
         from research_pipeline.services.benzinga_service import BenzingaService
+
         svc = BenzingaService(api_key="")
-        result = asyncio.run(
-            svc.fetch_universe(["NVDA", "AMD"])
-        )
+        result = asyncio.run(svc.fetch_universe(["NVDA", "AMD"]))
         assert isinstance(result, dict)
         assert "NVDA" in result
         assert "AMD" in result
@@ -219,6 +237,7 @@ class TestBenzingaService:
     def test_rating_change_to_dict(self):
         from research_pipeline.services.benzinga_service import RatingChange
         from datetime import datetime, timezone
+
         rc = RatingChange(
             ticker="NVDA",
             analyst_firm="Goldman Sachs",
@@ -239,6 +258,7 @@ class TestBenzingaService:
 
     def test_rating_change_upgrade_not_adverse(self):
         from research_pipeline.services.benzinga_service import RatingChange
+
         rc = RatingChange(
             ticker="AMD",
             analyst_firm="Morgan Stanley",
@@ -254,6 +274,7 @@ class TestBenzingaService:
 
     def test_rating_change_downgrade_is_adverse(self):
         from research_pipeline.services.benzinga_service import RatingChange
+
         rc = RatingChange(
             ticker="NVDA",
             analyst_firm="Barclays",
@@ -270,6 +291,7 @@ class TestBenzingaService:
     def test_benzinga_news_item_to_dict(self):
         from research_pipeline.services.benzinga_service import BenzingaNewsItem
         from datetime import datetime, timezone
+
         item = BenzingaNewsItem(
             ticker="MSFT",
             headline="Microsoft reports record Q3 earnings",
@@ -286,22 +308,30 @@ class TestBenzingaService:
         assert "Earnings" in d["channels"]
 
     def test_ticker_package_adverse_ratings_filter(self):
-        from research_pipeline.services.benzinga_service import (
-            BenzingaTickerPackage, RatingChange
-        )
+        from research_pipeline.services.benzinga_service import BenzingaTickerPackage, RatingChange
+
         pkg = BenzingaTickerPackage(ticker="NVDA")
         pkg.rating_changes = [
             RatingChange("NVDA", "GS", "Downgrade", "Neutral", "Buy", 650.0, 800.0, None, ""),
             RatingChange("NVDA", "MS", "Upgrade", "Buy", "Hold", 850.0, 700.0, None, ""),
-            RatingChange("NVDA", "JPM", "Lower Price Target", "Overweight", "Overweight", 720.0, 850.0, None, ""),
+            RatingChange(
+                "NVDA",
+                "JPM",
+                "Lower Price Target",
+                "Overweight",
+                "Overweight",
+                720.0,
+                850.0,
+                None,
+                "",
+            ),
         ]
         adverse = pkg.adverse_ratings
         assert len(adverse) == 2  # Downgrade + Lower PT
 
     def test_ticker_package_has_content_with_ratings(self):
-        from research_pipeline.services.benzinga_service import (
-            BenzingaTickerPackage, RatingChange
-        )
+        from research_pipeline.services.benzinga_service import BenzingaTickerPackage, RatingChange
+
         pkg = BenzingaTickerPackage(ticker="AAPL")
         assert pkg.has_content is False
         pkg.rating_changes.append(
@@ -311,6 +341,7 @@ class TestBenzingaService:
 
     def test_ticker_package_to_dict_structure(self):
         from research_pipeline.services.benzinga_service import BenzingaTickerPackage
+
         pkg = BenzingaTickerPackage(ticker="TSLA")
         pkg.earnings_events = [{"date": "2024-04-23", "eps_est": 0.60}]
         d = pkg.to_dict()
@@ -323,6 +354,7 @@ class TestBenzingaService:
 
     def test_to_float_helper(self):
         from research_pipeline.services.benzinga_service import _to_float
+
         assert _to_float("12.5") == 12.5
         assert _to_float(None) is None
         assert _to_float("") is None
@@ -330,8 +362,10 @@ class TestBenzingaService:
 
     def test_fetch_universe_graceful_on_api_error(self):
         from research_pipeline.services.benzinga_service import (
-            BenzingaService, BenzingaTickerPackage
+            BenzingaService,
+            BenzingaTickerPackage,
         )
+
         svc = BenzingaService(api_key="test-key")
         svc._available = True
 
@@ -355,22 +389,32 @@ class TestBenzingaService:
 # 4. Engine wiring — Stage 2 and Stage 5 integration
 # =============================================================================
 
+
 class TestEngineSession19Wiring:
     """Verify engine.py correctly instantiates and wires the new services."""
 
     def _make_settings(self) -> Any:
         from research_pipeline.config.settings import Settings, APIKeys
+
         settings = Settings.__new__(Settings)
         settings.api_keys = APIKeys(
             fmp_api_key="test-fmp",
             finnhub_api_key="test-finnhub",
-            sec_api_key="",       # empty — services should no-op
+            sec_api_key="",  # empty — services should no-op
             benzinga_api_key="",
         )
         settings.storage_dir = Path("/tmp/test_engine_s19")
         settings.storage_dir.mkdir(parents=True, exist_ok=True)
-        for subdir in ["audits", "cache", "telemetry", "reports", "prompt_registry",
-                       "raw", "processed", "artifacts"]:
+        for subdir in [
+            "audits",
+            "cache",
+            "telemetry",
+            "reports",
+            "prompt_registry",
+            "raw",
+            "processed",
+            "artifacts",
+        ]:
             (settings.storage_dir / subdir).mkdir(parents=True, exist_ok=True)
         settings.prompts_dir = Path("/tmp/test_prompts_s19")
         settings.prompts_dir.mkdir(parents=True, exist_ok=True)
@@ -381,8 +425,6 @@ class TestEngineSession19Wiring:
 
     def test_engine_has_sec_api_svc_attribute(self):
         from research_pipeline.services.sec_api_service import SECApiService
-        from research_pipeline.config.settings import Settings, APIKeys
-        from research_pipeline.config.loader import load_pipeline_config
         from research_pipeline.pipeline.engine import PipelineEngine
 
         settings = self._make_settings()
@@ -392,10 +434,12 @@ class TestEngineSession19Wiring:
             mock_cfg.return_value.thresholds.reconciliation = MagicMock()
             mock_cfg.return_value.thresholds.reconciliation.stale_data_hours = 24
             mock_cfg.return_value.thresholds.data_quality = MagicMock()
-            mock_cfg.return_value.thresholds.data_quality.require_lineage_for_all_final_fields = False
+            mock_cfg.return_value.thresholds.data_quality.require_lineage_for_all_final_fields = (
+                False
+            )
             mock_cfg.return_value.market_config = MagicMock()
             mock_cfg.return_value.market_config.fred_api_key = ""
-            config = mock_cfg.return_value
+            _config = mock_cfg.return_value
 
             engine = PipelineEngine.__new__(PipelineEngine)
             engine.sec_api_svc = SECApiService(api_key=settings.api_keys.sec_api_key)
@@ -425,10 +469,9 @@ class TestEngineSession19Wiring:
 
     def test_sec_api_svc_no_ops_without_key(self):
         from research_pipeline.services.sec_api_service import SECApiService
+
         svc = SECApiService(api_key="")
-        result = asyncio.run(
-            svc.fetch_universe(["NVDA", "MSFT", "AAPL"])
-        )
+        result = asyncio.run(svc.fetch_universe(["NVDA", "MSFT", "AAPL"]))
         assert all(k in result for k in ["NVDA", "MSFT", "AAPL"])
         # All should be empty no-op packages
         for pkg in result.values():
@@ -438,10 +481,9 @@ class TestEngineSession19Wiring:
 
     def test_benzinga_svc_no_ops_without_key(self):
         from research_pipeline.services.benzinga_service import BenzingaService
+
         svc = BenzingaService(api_key="")
-        result = asyncio.run(
-            svc.fetch_universe(["NVDA", "AMD"])
-        )
+        result = asyncio.run(svc.fetch_universe(["NVDA", "AMD"]))
         assert all(k in result for k in ["NVDA", "AMD"])
         for pkg in result.values():
             assert pkg.has_content is False
@@ -451,6 +493,7 @@ class TestEngineSession19Wiring:
 # =============================================================================
 # 5. Engine Stage 2 — SEC + Benzinga enrichment wiring
 # =============================================================================
+
 
 class TestStage2Enrichment:
     """Verify stage_2_ingestion enriches results with SEC and Benzinga data."""
@@ -469,8 +512,8 @@ class TestStage2Enrichment:
         engine.stage_outputs = {}
         engine.run_record = MagicMock()
         engine.run_record.run_id = "test-stage2-run"
-        engine.sec_api_svc = SECApiService(api_key="")    # no-op
-        engine.benzinga_svc = BenzingaService(api_key="") # no-op
+        engine.sec_api_svc = SECApiService(api_key="")  # no-op
+        engine.benzinga_svc = BenzingaService(api_key="")  # no-op
         engine._stage_timings = {}
         return engine
 
@@ -491,9 +534,7 @@ class TestStage2Enrichment:
 
         engine._check_gate = check_gate
 
-        result = asyncio.run(
-            engine.stage_2_ingestion(["NVDA"])
-        )
+        result = asyncio.run(engine.stage_2_ingestion(["NVDA"]))
         assert result is True
         assert 2 in engine.stage_outputs
 
@@ -513,9 +554,7 @@ class TestStage2Enrichment:
         engine._save_stage_output = save_output
         engine._check_gate = lambda gate: gate.passed
 
-        asyncio.run(
-            engine.stage_2_ingestion(["NVDA", "AMD"])
-        )
+        asyncio.run(engine.stage_2_ingestion(["NVDA", "AMD"]))
         saved = engine.stage_outputs[2]
         tickers_in_result = [row.get("ticker") for row in saved if isinstance(row, dict)]
         assert "NVDA" in tickers_in_result
@@ -525,6 +564,7 @@ class TestStage2Enrichment:
 # =============================================================================
 # 6. Engine Stage 5 — evidence enrichment wiring
 # =============================================================================
+
 
 class TestStage5EvidenceEnrichment:
     """Verify stage_5_evidence passes qualitative + SEC + Benzinga to the agent."""
@@ -544,8 +584,8 @@ class TestStage5EvidenceEnrichment:
         engine.run_record = MagicMock()
         engine.run_record.run_id = "test-stage5-run"
         engine.qualitative_svc = QualitativeDataService(fmp_key="", finnhub_key="")
-        engine.sec_api_svc = SECApiService(api_key="")    # no-op
-        engine.benzinga_svc = BenzingaService(api_key="") # no-op
+        engine.sec_api_svc = SECApiService(api_key="")  # no-op
+        engine.benzinga_svc = BenzingaService(api_key="")  # no-op
         engine._stage_timings = {}
         return engine
 
@@ -564,9 +604,7 @@ class TestStage5EvidenceEnrichment:
         engine._save_stage_output = save_output
         engine._check_gate = lambda gate: gate.passed
 
-        asyncio.run(
-            engine.stage_5_evidence(["NVDA"])
-        )
+        asyncio.run(engine.stage_5_evidence(["NVDA"]))
         engine.evidence_agent.run.assert_called_once()
 
     def test_stage_5_agent_call_includes_qualitative_data_key(self):
@@ -585,9 +623,7 @@ class TestStage5EvidenceEnrichment:
         engine._save_stage_output = save_output
         engine._check_gate = lambda gate: gate.passed
 
-        asyncio.run(
-            engine.stage_5_evidence(["NVDA"])
-        )
+        asyncio.run(engine.stage_5_evidence(["NVDA"]))
 
         call_args = engine.evidence_agent.run.call_args
         input_dict = call_args[0][1]  # second positional arg is the input dict
@@ -609,9 +645,7 @@ class TestStage5EvidenceEnrichment:
         engine._save_stage_output = save_output
         engine._check_gate = lambda gate: gate.passed
 
-        asyncio.run(
-            engine.stage_5_evidence(["NVDA"])
-        )
+        asyncio.run(engine.stage_5_evidence(["NVDA"]))
 
         call_args = engine.evidence_agent.run.call_args
         input_dict = call_args[0][1]
@@ -633,9 +667,7 @@ class TestStage5EvidenceEnrichment:
         engine._save_stage_output = save_output
         engine._check_gate = lambda gate: gate.passed
 
-        asyncio.run(
-            engine.stage_5_evidence(["NVDA"])
-        )
+        asyncio.run(engine.stage_5_evidence(["NVDA"]))
 
         call_args = engine.evidence_agent.run.call_args
         input_dict = call_args[0][1]
@@ -661,15 +693,14 @@ class TestStage5EvidenceEnrichment:
         engine._check_gate = lambda gate: gate.passed
 
         # Should not raise
-        result = asyncio.run(
-            engine.stage_5_evidence(["NVDA"])
-        )
+        result = asyncio.run(engine.stage_5_evidence(["NVDA"]))
         assert result is True
 
 
 # =============================================================================
 # 7. File structure validation
 # =============================================================================
+
 
 class TestSession19FileStructure:
     """Verify all expected new files and attributes exist."""
@@ -688,6 +719,7 @@ class TestSession19FileStructure:
             SECFilingPackage,
             SECFilingRecord,
         )
+
         assert SECApiService is not None
         assert SECFilingPackage is not None
         assert SECFilingRecord is not None
@@ -699,6 +731,7 @@ class TestSession19FileStructure:
             RatingChange,
             BenzingaNewsItem,
         )
+
         assert BenzingaService is not None
         assert BenzingaTickerPackage is not None
         assert RatingChange is not None
@@ -706,20 +739,24 @@ class TestSession19FileStructure:
 
     def test_engine_imports_sec_api_service(self):
         import research_pipeline.pipeline.engine as engine_module
+
         assert hasattr(engine_module, "SECApiService")
 
     def test_engine_imports_benzinga_service(self):
         import research_pipeline.pipeline.engine as engine_module
+
         assert hasattr(engine_module, "BenzingaService")
 
     def test_engine_imports_qualitative_data_service(self):
         import research_pipeline.pipeline.engine as engine_module
+
         assert hasattr(engine_module, "QualitativeDataService")
 
     def test_settings_has_both_new_keys(self):
         from research_pipeline.config.settings import APIKeys
         import inspect
-        fields = inspect.fields(APIKeys) if hasattr(inspect, "fields") else []
+
+        _fields = inspect.fields(APIKeys) if hasattr(inspect, "fields") else []
         keys = APIKeys()
         assert hasattr(keys, "sec_api_key")
         assert hasattr(keys, "benzinga_api_key")

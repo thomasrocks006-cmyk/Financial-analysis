@@ -7,7 +7,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 class PromptVersion(BaseModel):
     """A versioned snapshot of an agent prompt."""
+
     prompt_id: str  # e.g. "sector_analyst_compute"
     version: int = 1
     prompt_hash: str
@@ -28,6 +29,7 @@ class PromptVersion(BaseModel):
 
 class PromptDriftReport(BaseModel):
     """Report of prompt changes between runs."""
+
     agent_name: str
     previous_hash: str
     current_hash: str
@@ -59,9 +61,7 @@ class PromptRegistry:
         return {}
 
     def _save_registry(self) -> None:
-        self._registry_file.write_text(
-            json.dumps(self._registry, indent=2, default=str)
-        )
+        self._registry_file.write_text(json.dumps(self._registry, indent=2, default=str))
 
     @staticmethod
     def compute_hash(prompt_text: str) -> str:
@@ -104,8 +104,11 @@ class PromptRegistry:
         if new_version > 1:
             logger.warning(
                 "Prompt %s changed: v%d → v%d (hash: %s → %s). Regression required.",
-                prompt_id, new_version - 1, new_version,
-                versions[-1].get("prompt_hash", "unknown"), current_hash,
+                prompt_id,
+                new_version - 1,
+                new_version,
+                versions[-1].get("prompt_hash", "unknown"),
+                current_hash,
             )
         else:
             logger.info("Prompt %s registered: v1 (hash: %s)", prompt_id, current_hash)
@@ -189,7 +192,8 @@ class PromptRegistry:
         total_prompts = len(self._registry)
         total_versions = sum(len(v) for v in self._registry.values())
         untested = sum(
-            1 for versions in self._registry.values()
+            1
+            for versions in self._registry.values()
             if versions and versions[-1].get("regression_status") == "untested"
         )
         return {

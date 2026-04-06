@@ -26,7 +26,7 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import date, timedelta
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -37,8 +37,12 @@ _TIMEOUT = httpx.Timeout(15.0, connect=10.0)
 
 # ── API helpers (reuse same pattern as market_data.py) ───────────────────
 
+
 async def _fmp_get(
-    client: httpx.AsyncClient, path: str, api_key: str, extra: dict | None = None,
+    client: httpx.AsyncClient,
+    path: str,
+    api_key: str,
+    extra: dict | None = None,
 ) -> dict | list:
     url = f"https://financialmodelingprep.com/stable{path}"
     params = {"apikey": api_key, **(extra or {})}
@@ -48,7 +52,10 @@ async def _fmp_get(
 
 
 async def _finnhub_get(
-    client: httpx.AsyncClient, path: str, api_key: str, extra: dict | None = None,
+    client: httpx.AsyncClient,
+    path: str,
+    api_key: str,
+    extra: dict | None = None,
 ) -> dict | list:
     url = f"https://finnhub.io/api/v1{path}"
     params = {"token": api_key, **(extra or {})}
@@ -59,19 +66,21 @@ async def _finnhub_get(
 
 # ── Data classes ─────────────────────────────────────────────────────────
 
+
 @dataclass
 class QualitativePackage:
     """All qualitative intelligence for a single ticker."""
+
     ticker: str
-    news: list[dict] = field(default_factory=list)          # deduplicated from FMP + Finnhub
+    news: list[dict] = field(default_factory=list)  # deduplicated from FMP + Finnhub
     press_releases: list[dict] = field(default_factory=list)
     earnings_transcript: dict = field(default_factory=dict)  # most recent quarter
     sec_filings: list[dict] = field(default_factory=list)
-    analyst_actions: list[dict] = field(default_factory=list) # upgrades / downgrades
+    analyst_actions: list[dict] = field(default_factory=list)  # upgrades / downgrades
     insider_activity: list[dict] = field(default_factory=list)
-    analyst_estimates: dict = field(default_factory=dict)     # forward consensus
-    sentiment: dict = field(default_factory=dict)             # social sentiment
-    coverage_gaps: list[str] = field(default_factory=list)    # sources that failed
+    analyst_estimates: dict = field(default_factory=dict)  # forward consensus
+    sentiment: dict = field(default_factory=dict)  # social sentiment
+    coverage_gaps: list[str] = field(default_factory=list)  # sources that failed
 
     def to_prompt_block(self) -> str:
         """Render all qualitative data as a structured text block for LLM ingestion."""
@@ -86,7 +95,9 @@ class QualitativePackage:
                 summary = n.get("summary", "")
                 sentiment_label = n.get("sentiment", "")
                 sent_str = f" [{sentiment_label}]" if sentiment_label else ""
-                sections.append(f"{i}. **{headline}**{sent_str}\n   Source: {src} | {summary[:250]}")
+                sections.append(
+                    f"{i}. **{headline}**{sent_str}\n   Source: {src} | {summary[:250]}"
+                )
         else:
             sections.append("\n### Recent News: NONE AVAILABLE — evidence gap")
 
@@ -141,9 +152,7 @@ class QualitativePackage:
                 new = a.get("newGrade", "")
                 adate = a.get("gradingDate", a.get("date", ""))
                 arrow = "→"
-                sections.append(
-                    f"- **{firm}**: {action} {old} {arrow} {new} ({adate})"
-                )
+                sections.append(f"- **{firm}**: {action} {old} {arrow} {new} ({adate})")
         else:
             sections.append("\n### Analyst Actions: NONE AVAILABLE")
 
@@ -202,15 +211,16 @@ class QualitativePackage:
                     eps_str = f"${eps:.2f}" if eps else "N/A"
                     n_analysts = period.get("numberAnalystsEstimatedRevenue", "?")
                     sections.append(
-                        f"- **{label}**: Revenue {rev_str}, EPS {eps_str} "
-                        f"({n_analysts} analysts)"
+                        f"- **{label}**: Revenue {rev_str}, EPS {eps_str} ({n_analysts} analysts)"
                     )
                     # Estimate spread gives conviction signal
                     rev_lo = period.get("estimatedRevenueLow")
                     rev_hi = period.get("estimatedRevenueHigh")
                     if rev_lo and rev_hi and rev_lo > 0:
                         spread = (rev_hi - rev_lo) / rev_lo * 100
-                        sections.append(f"  Revenue range: ${rev_lo/1e9:.2f}B — ${rev_hi/1e9:.2f}B (spread {spread:.1f}%)")
+                        sections.append(
+                            f"  Revenue range: ${rev_lo / 1e9:.2f}B — ${rev_hi / 1e9:.2f}B (spread {spread:.1f}%)"
+                        )
                     eps_lo = period.get("estimatedEpsLow")
                     eps_hi = period.get("estimatedEpsHigh")
                     if eps_lo is not None and eps_hi is not None and eps_lo != 0:
@@ -222,8 +232,7 @@ class QualitativePackage:
             if self.sentiment.get("stocktwits_sentiment"):
                 st = self.sentiment["stocktwits_sentiment"]
                 sections.append(
-                    f"- StockTwits: score {st.get('score', 'N/A')}, "
-                    f"posts {st.get('posts', 'N/A')}"
+                    f"- StockTwits: score {st.get('score', 'N/A')}, posts {st.get('posts', 'N/A')}"
                 )
             if self.sentiment.get("reddit_sentiment"):
                 rd = self.sentiment["reddit_sentiment"]
@@ -283,12 +292,16 @@ class QualitativePackage:
         # Insider activity vs price trajectory
         if self.insider_activity:
             buys = sum(
-                1 for tx in self.insider_activity
-                if tx.get("acquistionOrDisposition", tx.get("transactionType", "")) in ("A", "P", "Buy")
+                1
+                for tx in self.insider_activity
+                if tx.get("acquistionOrDisposition", tx.get("transactionType", ""))
+                in ("A", "P", "Buy")
             )
             sells = sum(
-                1 for tx in self.insider_activity
-                if tx.get("acquistionOrDisposition", tx.get("transactionType", "")) in ("D", "S", "Sale")
+                1
+                for tx in self.insider_activity
+                if tx.get("acquistionOrDisposition", tx.get("transactionType", ""))
+                in ("D", "S", "Sale")
             )
             if sells > buys * 2 and price and target and price > target:
                 hints.append(
@@ -303,8 +316,12 @@ class QualitativePackage:
 
         # Analyst actions vs consensus
         if self.analyst_actions:
-            upgrades = sum(1 for a in self.analyst_actions if "upgrade" in (a.get("action", "")).lower())
-            downgrades = sum(1 for a in self.analyst_actions if "downgrade" in (a.get("action", "")).lower())
+            upgrades = sum(
+                1 for a in self.analyst_actions if "upgrade" in (a.get("action", "")).lower()
+            )
+            downgrades = sum(
+                1 for a in self.analyst_actions if "downgrade" in (a.get("action", "")).lower()
+            )
             if upgrades > downgrades and fwd_pe and fwd_pe > 40:
                 hints.append(
                     f"TENSION: Analysts upgrading but fwd P/E at {fwd_pe:.1f}x — "
@@ -361,28 +378,33 @@ class QualitativePackage:
 
 # ── Per-Source Fetchers ──────────────────────────────────────────────────
 
-async def _fetch_fmp_news(
-    ticker: str, client: httpx.AsyncClient, api_key: str
-) -> list[dict]:
+
+async def _fetch_fmp_news(ticker: str, client: httpx.AsyncClient, api_key: str) -> list[dict]:
     """Fetch company-specific news from FMP."""
     try:
-        data = await _fmp_get(client, "/news/stock", api_key, {
-            "symbol": ticker,
-            "limit": "15",
-        })
+        data = await _fmp_get(
+            client,
+            "/news/stock",
+            api_key,
+            {
+                "symbol": ticker,
+                "limit": "15",
+            },
+        )
         if not isinstance(data, list):
             return []
         return [
             {
                 "headline": item.get("title", ""),
-                "summary":  (item.get("text") or "")[:400],
-                "source":   item.get("site", item.get("source", "")),
+                "summary": (item.get("text") or "")[:400],
+                "source": item.get("site", item.get("source", "")),
                 "datetime": item.get("publishedDate", ""),
-                "url":      item.get("url", ""),
+                "url": item.get("url", ""),
                 "sentiment": item.get("sentiment", ""),
-                "provider":  "FMP",
+                "provider": "FMP",
             }
-            for item in data[:15] if item.get("title")
+            for item in data[:15]
+            if item.get("title")
         ]
     except Exception as e:
         logger.debug("FMP news failed for %s: %s", ticker, e)
@@ -394,19 +416,25 @@ async def _fetch_fmp_press_releases(
 ) -> list[dict]:
     """Fetch official press releases from FMP."""
     try:
-        data = await _fmp_get(client, "/press-releases", api_key, {
-            "symbol": ticker,
-            "limit": "8",
-        })
+        data = await _fmp_get(
+            client,
+            "/press-releases",
+            api_key,
+            {
+                "symbol": ticker,
+                "limit": "8",
+            },
+        )
         if not isinstance(data, list):
             return []
         return [
             {
                 "title": item.get("title", ""),
-                "date":  item.get("date", ""),
-                "text":  (item.get("text") or "")[:500],
+                "date": item.get("date", ""),
+                "text": (item.get("text") or "")[:500],
             }
-            for item in data[:8] if item.get("title")
+            for item in data[:8]
+            if item.get("title")
         ]
     except Exception as e:
         logger.debug("FMP press releases failed for %s: %s", ticker, e)
@@ -424,7 +452,9 @@ async def _fetch_fmp_earnings_transcript(
         for q in range(4, 0, -1):
             try:
                 data = await _fmp_get(
-                    client, "/earning-call-transcript", api_key,
+                    client,
+                    "/earning-call-transcript",
+                    api_key,
                     {"symbol": ticker, "year": str(y), "quarter": str(q)},
                 )
                 if isinstance(data, list) and data:
@@ -455,10 +485,15 @@ async def _fetch_fmp_sec_filings(
 ) -> list[dict]:
     """Fetch recent SEC filings from FMP."""
     try:
-        data = await _fmp_get(client, "/sec-filings", api_key, {
-            "symbol": ticker,
-            "limit": "15",
-        })
+        data = await _fmp_get(
+            client,
+            "/sec-filings",
+            api_key,
+            {
+                "symbol": ticker,
+                "limit": "15",
+            },
+        )
         if not isinstance(data, list):
             return []
         # Prioritise material filings
@@ -467,12 +502,14 @@ async def _fetch_fmp_sec_filings(
         for item in data:
             ftype = item.get("type", "")
             if ftype in priority_types:
-                filings.append({
-                    "type":       ftype,
-                    "filledDate": item.get("fillingDate", item.get("filledDate", "")),
-                    "link":       item.get("finalLink", item.get("link", "")),
-                    "accepted":   item.get("acceptedDate", ""),
-                })
+                filings.append(
+                    {
+                        "type": ftype,
+                        "filledDate": item.get("fillingDate", item.get("filledDate", "")),
+                        "link": item.get("finalLink", item.get("link", "")),
+                        "accepted": item.get("acceptedDate", ""),
+                    }
+                )
             if len(filings) >= 10:
                 break
         return filings
@@ -486,19 +523,24 @@ async def _fetch_fmp_analyst_actions(
 ) -> list[dict]:
     """Fetch recent analyst upgrades/downgrades from FMP."""
     try:
-        data = await _fmp_get(client, "/upgrades-downgrades", api_key, {
-            "symbol": ticker,
-            "limit": "12",
-        })
+        data = await _fmp_get(
+            client,
+            "/upgrades-downgrades",
+            api_key,
+            {
+                "symbol": ticker,
+                "limit": "12",
+            },
+        )
         if not isinstance(data, list):
             return []
         return [
             {
-                "gradeCompany":  item.get("gradingCompany", item.get("company", "")),
-                "action":        item.get("action", item.get("newGrade", "")),
+                "gradeCompany": item.get("gradingCompany", item.get("company", "")),
+                "action": item.get("action", item.get("newGrade", "")),
                 "previousGrade": item.get("previousGrade", ""),
-                "newGrade":      item.get("newGrade", ""),
-                "gradingDate":   item.get("publishedDate", item.get("gradingDate", "")),
+                "newGrade": item.get("newGrade", ""),
+                "gradingDate": item.get("publishedDate", item.get("gradingDate", "")),
             }
             for item in data[:12]
         ]
@@ -512,23 +554,28 @@ async def _fetch_fmp_insider_trading(
 ) -> list[dict]:
     """Fetch insider trading data from FMP."""
     try:
-        data = await _fmp_get(client, "/insider-trading", api_key, {
-            "symbol": ticker,
-            "limit": "20",
-        })
+        data = await _fmp_get(
+            client,
+            "/insider-trading",
+            api_key,
+            {
+                "symbol": ticker,
+                "limit": "20",
+            },
+        )
         if not isinstance(data, list):
             return []
         return [
             {
-                "reportingName":           item.get("reportingName", ""),
-                "typeOfOwner":             item.get("typeOfOwner", ""),
+                "reportingName": item.get("reportingName", ""),
+                "typeOfOwner": item.get("typeOfOwner", ""),
                 "acquistionOrDisposition": item.get("acquistionOrDisposition", ""),
-                "securitiesTransacted":    item.get("securitiesTransacted", 0),
-                "price":                   item.get("price", 0),
-                "value":                   item.get("securitiesTransacted", 0) * (item.get("price") or 0),
-                "filingDate":              item.get("filingDate", ""),
-                "transactionDate":         item.get("transactionDate", ""),
-                "securityName":            item.get("securityName", ""),
+                "securitiesTransacted": item.get("securitiesTransacted", 0),
+                "price": item.get("price", 0),
+                "value": item.get("securitiesTransacted", 0) * (item.get("price") or 0),
+                "filingDate": item.get("filingDate", ""),
+                "transactionDate": item.get("transactionDate", ""),
+                "securityName": item.get("securityName", ""),
             }
             for item in data[:20]
         ]
@@ -542,25 +589,30 @@ async def _fetch_fmp_analyst_estimates(
 ) -> dict:
     """Fetch forward analyst estimates (revenue/EPS consensus) from FMP."""
     try:
-        data = await _fmp_get(client, "/analyst-estimates", api_key, {
-            "symbol": ticker,
-            "limit": "4",
-        })
+        data = await _fmp_get(
+            client,
+            "/analyst-estimates",
+            api_key,
+            {
+                "symbol": ticker,
+                "limit": "4",
+            },
+        )
         if not isinstance(data, list) or not data:
             return {}
         result = {}
         for i, item in enumerate(data[:3]):
             key = ["current_quarter", "current_year", "next_year"][i] if i < 3 else f"period_{i}"
             result[key] = {
-                "date":                          item.get("date", ""),
-                "estimatedRevenueAvg":           item.get("estimatedRevenueAvg"),
-                "estimatedRevenueLow":           item.get("estimatedRevenueLow"),
-                "estimatedRevenueHigh":          item.get("estimatedRevenueHigh"),
-                "estimatedEpsAvg":               item.get("estimatedEpsAvg"),
-                "estimatedEpsLow":               item.get("estimatedEpsLow"),
-                "estimatedEpsHigh":              item.get("estimatedEpsHigh"),
+                "date": item.get("date", ""),
+                "estimatedRevenueAvg": item.get("estimatedRevenueAvg"),
+                "estimatedRevenueLow": item.get("estimatedRevenueLow"),
+                "estimatedRevenueHigh": item.get("estimatedRevenueHigh"),
+                "estimatedEpsAvg": item.get("estimatedEpsAvg"),
+                "estimatedEpsLow": item.get("estimatedEpsLow"),
+                "estimatedEpsHigh": item.get("estimatedEpsHigh"),
                 "numberAnalystsEstimatedRevenue": item.get("numberAnalystsEstimatedRevenue"),
-                "numberAnalystsEstimatedEps":    item.get("numberAnalystsEstimatedEps"),
+                "numberAnalystsEstimatedEps": item.get("numberAnalystsEstimatedEps"),
             }
         return result
     except Exception as e:
@@ -568,15 +620,18 @@ async def _fetch_fmp_analyst_estimates(
         return {}
 
 
-async def _fetch_fmp_social_sentiment(
-    ticker: str, client: httpx.AsyncClient, api_key: str
-) -> dict:
+async def _fetch_fmp_social_sentiment(ticker: str, client: httpx.AsyncClient, api_key: str) -> dict:
     """Fetch social media sentiment from FMP."""
     try:
-        data = await _fmp_get(client, "/social-sentiment", api_key, {
-            "symbol": ticker,
-            "limit": "5",
-        })
+        data = await _fmp_get(
+            client,
+            "/social-sentiment",
+            api_key,
+            {
+                "symbol": ticker,
+                "limit": "5",
+            },
+        )
         if not isinstance(data, list) or not data:
             return {}
         # Aggregate recent sentiment
@@ -609,18 +664,21 @@ async def _fetch_fmp_social_sentiment(
         return {}
 
 
-async def _fetch_finnhub_news(
-    ticker: str, client: httpx.AsyncClient, api_key: str
-) -> list[dict]:
+async def _fetch_finnhub_news(ticker: str, client: httpx.AsyncClient, api_key: str) -> list[dict]:
     """Fetch company news from Finnhub (wider window than market_data.py)."""
     try:
         today = date.today()
         two_weeks_ago = today - timedelta(days=14)
-        data = await _finnhub_get(client, "/company-news", api_key, {
-            "symbol": ticker,
-            "from": two_weeks_ago.isoformat(),
-            "to": today.isoformat(),
-        })
+        data = await _finnhub_get(
+            client,
+            "/company-news",
+            api_key,
+            {
+                "symbol": ticker,
+                "from": two_weeks_ago.isoformat(),
+                "to": today.isoformat(),
+            },
+        )
         if not isinstance(data, list):
             return []
         seen: set[str] = set()
@@ -629,14 +687,16 @@ async def _fetch_finnhub_news(
             headline = item.get("headline", "")
             if headline and headline not in seen:
                 seen.add(headline)
-                news.append({
-                    "headline": headline,
-                    "summary":  (item.get("summary") or "")[:300],
-                    "source":   item.get("source"),
-                    "datetime": item.get("datetime"),
-                    "url":      item.get("url"),
-                    "provider": "Finnhub",
-                })
+                news.append(
+                    {
+                        "headline": headline,
+                        "summary": (item.get("summary") or "")[:300],
+                        "source": item.get("source"),
+                        "datetime": item.get("datetime"),
+                        "url": item.get("url"),
+                        "provider": "Finnhub",
+                    }
+                )
             if len(news) >= 15:
                 break
         return news
@@ -645,18 +705,21 @@ async def _fetch_finnhub_news(
         return []
 
 
-async def _fetch_finnhub_sentiment(
-    ticker: str, client: httpx.AsyncClient, api_key: str
-) -> dict:
+async def _fetch_finnhub_sentiment(ticker: str, client: httpx.AsyncClient, api_key: str) -> dict:
     """Fetch insider sentiment (MSPR) and news sentiment from Finnhub."""
     result: dict[str, Any] = {}
 
     # Insider sentiment (Monthly Share Purchase Ratio)
     try:
-        data = await _finnhub_get(client, "/stock/insider-sentiment", api_key, {
-            "symbol": ticker,
-            "from": (date.today() - timedelta(days=90)).isoformat(),
-        })
+        data = await _finnhub_get(
+            client,
+            "/stock/insider-sentiment",
+            api_key,
+            {
+                "symbol": ticker,
+                "from": (date.today() - timedelta(days=90)).isoformat(),
+            },
+        )
         if isinstance(data, dict) and data.get("data"):
             latest = data["data"][0] if data["data"] else {}
             if latest:
@@ -671,7 +734,9 @@ async def _fetch_finnhub_sentiment(
         if isinstance(data, dict):
             sent = data.get("sentiment", {})
             if sent:
-                result["news_sentiment_score"] = sent.get("bearishPercent", 0) * -1 + sent.get("bullishPercent", 0)
+                result["news_sentiment_score"] = sent.get("bearishPercent", 0) * -1 + sent.get(
+                    "bullishPercent", 0
+                )
                 result["buzz_score"] = data.get("buzz", {}).get("buzz")
                 result["articles_in_period"] = data.get("buzz", {}).get("articlesInLastWeek")
     except Exception as e:
@@ -681,6 +746,7 @@ async def _fetch_finnhub_sentiment(
 
 
 # ── Main Fetch Orchestrator ──────────────────────────────────────────────
+
 
 async def _fetch_ticker_qualitative(
     ticker: str,
@@ -703,11 +769,18 @@ async def _fetch_ticker_qualitative(
         tasks["analyst_estimates"] = _fetch_fmp_analyst_estimates(ticker, client, fmp_key)
         tasks["social_sentiment"] = _fetch_fmp_social_sentiment(ticker, client, fmp_key)
     else:
-        pkg.coverage_gaps.extend([
-            "FMP news", "press releases", "earnings transcripts",
-            "SEC filings", "analyst actions", "insider trading",
-            "analyst estimates", "social sentiment",
-        ])
+        pkg.coverage_gaps.extend(
+            [
+                "FMP news",
+                "press releases",
+                "earnings transcripts",
+                "SEC filings",
+                "analyst actions",
+                "insider trading",
+                "analyst estimates",
+                "social sentiment",
+            ]
+        )
 
     if finnhub_key:
         tasks["finnhub_news"] = _fetch_finnhub_news(ticker, client, finnhub_key)
@@ -810,6 +883,7 @@ async def fetch_qualitative_universe(
     Returns a dict of ticker -> QualitativePackage.
     """
     import os
+
     fmp_key = fmp_key or os.environ.get("FMP_API_KEY", "")
     finnhub_key = finnhub_key or os.environ.get("FINNHUB_API_KEY", "")
 
@@ -821,8 +895,7 @@ async def fetch_qualitative_universe(
 
     async with httpx.AsyncClient() as client:
         tasks = [
-            _fetch_ticker_qualitative(ticker, client, fmp_key, finnhub_key)
-            for ticker in tickers
+            _fetch_ticker_qualitative(ticker, client, fmp_key, finnhub_key) for ticker in tickers
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -837,8 +910,7 @@ async def fetch_qualitative_universe(
             packages[ticker] = result
             if activity_cb:
                 activity_cb(
-                    f"  {ticker}: {result.signal_count} signals, "
-                    f"coverage {result.coverage_score}"
+                    f"  {ticker}: {result.signal_count} signals, coverage {result.coverage_score}"
                 )
 
     return packages

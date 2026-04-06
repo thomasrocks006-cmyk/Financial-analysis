@@ -98,6 +98,7 @@ Return a JSON object with keys "assessments" (array, one per ticker) and "portfo
 
     def format_input(self, inputs: dict[str, Any]) -> str:
         import json
+
         return json.dumps(inputs, indent=2, default=str)
 
     def parse_output(self, raw_response: str) -> dict[str, Any]:

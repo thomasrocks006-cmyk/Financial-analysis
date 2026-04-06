@@ -75,7 +75,9 @@ def _housing_trend(housing_chg: Optional[float], clearance: Optional[float]) -> 
     return HousingTrend.STABLE
 
 
-def _aud_usd_direction(aud: Optional[float], us_rate: Optional[float], rba_rate: Optional[float]) -> AudUsdDirection:
+def _aud_usd_direction(
+    aud: Optional[float], us_rate: Optional[float], rba_rate: Optional[float]
+) -> AudUsdDirection:
     if aud is None:
         return AudUsdDirection.UNKNOWN
     if aud > 0.67:
@@ -86,6 +88,7 @@ def _aud_usd_direction(aud: Optional[float], us_rate: Optional[float], rba_rate:
 
 
 # ── Scenario text builders ────────────────────────────────────────────────
+
 
 def _build_au_rates_scenario(indicators: EconomicIndicators) -> AxisScenario:
     au = indicators.au
@@ -110,8 +113,12 @@ def _build_au_rates_scenario(indicators: EconomicIndicators) -> AxisScenario:
 
     return AxisScenario(
         axis="au_rates",
-        base=base, bull=bull, bear=bear,
-        base_probability=base_prob, bull_probability=bull_prob, bear_probability=bear_prob,
+        base=base,
+        bull=bull,
+        bear=bear,
+        base_probability=base_prob,
+        bull_probability=bull_prob,
+        bear_probability=bear_prob,
     )
 
 
@@ -138,8 +145,12 @@ def _build_us_rates_scenario(indicators: EconomicIndicators) -> AxisScenario:
 
     return AxisScenario(
         axis="us_rates",
-        base=base, bull=bull, bear=bear,
-        base_probability=base_prob, bull_probability=bull_prob, bear_probability=bear_prob,
+        base=base,
+        bull=bull,
+        bear=bear,
+        base_probability=base_prob,
+        bull_probability=bull_prob,
+        bear_probability=bear_prob,
     )
 
 
@@ -165,8 +176,12 @@ def _build_au_inflation_scenario(indicators: EconomicIndicators) -> AxisScenario
 
     return AxisScenario(
         axis="au_inflation",
-        base=base, bull=bull, bear=bear,
-        base_probability=base_prob, bull_probability=bull_prob, bear_probability=bear_prob,
+        base=base,
+        bull=bull,
+        bear=bear,
+        base_probability=base_prob,
+        bull_probability=bull_prob,
+        bear_probability=bear_prob,
     )
 
 
@@ -186,7 +201,7 @@ def _build_au_housing_scenario(indicators: EconomicIndicators) -> AxisScenario:
         base_prob, bull_prob, bear_prob = 0.35, 0.30, 0.35
         base = "Modest correction continues; variable-rate holders under mortgage stress"
         bull = "RBA cuts early; confidence returns; correction bottoms; prices stabilise"
-        bear = f"Forced selling accelerates; prices -20%; banking system NPL risk rises"
+        bear = "Forced selling accelerates; prices -20%; banking system NPL risk rises"
     else:
         base_prob, bull_prob, bear_prob = 0.50, 0.25, 0.25
         base = "Prices stable to +3%; immigration demand offset by affordability constraint"
@@ -195,8 +210,12 @@ def _build_au_housing_scenario(indicators: EconomicIndicators) -> AxisScenario:
 
     return AxisScenario(
         axis="au_housing",
-        base=base, bull=bull, bear=bear,
-        base_probability=base_prob, bull_probability=bull_prob, bear_probability=bear_prob,
+        base=base,
+        bull=bull,
+        bear=bear,
+        base_probability=base_prob,
+        bull_probability=bull_prob,
+        bear_probability=bear_prob,
     )
 
 
@@ -226,8 +245,12 @@ def _build_aud_usd_scenario(indicators: EconomicIndicators) -> AxisScenario:
 
     return AxisScenario(
         axis="aud_usd",
-        base=base, bull=bull, bear=bear,
-        base_probability=base_prob, bull_probability=bull_prob, bear_probability=bear_prob,
+        base=base,
+        bull=bull,
+        bear=bear,
+        base_probability=base_prob,
+        bull_probability=bull_prob,
+        bear_probability=bear_prob,
     )
 
 
@@ -241,20 +264,24 @@ def _derive_composite_scenario(indicators: EconomicIndicators) -> tuple[Scenario
     inflation = _inflation_trend(au.au_cpi_trimmed_mean_pct)
     fed = _classify_fed_stance(us.us_cpi_yoy_pct, us.fed_funds_rate_pct)
 
-    bear_signals = sum([
-        rba == RBAStance.HIKING,
-        housing == HousingTrend.CORRECTING,
-        inflation == InflationTrend.ABOVE_TARGET,
-        fed == "hiking",
-        (us.us_yield_curve_spread_10y_2y or 0.0) < -0.5,
-    ])
-    bull_signals = sum([
-        rba == RBAStance.CUTTING,
-        housing == HousingTrend.ACCELERATING,
-        inflation == InflationTrend.BELOW_TARGET,
-        fed == "cutting",
-        (us.us_hy_spread_bps or 400) < 300,
-    ])
+    bear_signals = sum(
+        [
+            rba == RBAStance.HIKING,
+            housing == HousingTrend.CORRECTING,
+            inflation == InflationTrend.ABOVE_TARGET,
+            fed == "hiking",
+            (us.us_yield_curve_spread_10y_2y or 0.0) < -0.5,
+        ]
+    )
+    bull_signals = sum(
+        [
+            rba == RBAStance.CUTTING,
+            housing == HousingTrend.ACCELERATING,
+            inflation == InflationTrend.BELOW_TARGET,
+            fed == "cutting",
+            (us.us_hy_spread_bps or 400) < 300,
+        ]
+    )
 
     if bear_signals >= 3:
         return ScenarioType.BEAR, (
@@ -298,6 +325,7 @@ def _composite_impacts(composite: ScenarioType) -> dict[str, str]:
 
 # ── Public API ────────────────────────────────────────────────────────────
 
+
 class MacroScenarioService:
     """Builds a 3-scenario macro matrix from EconomicIndicators.
 
@@ -328,7 +356,8 @@ class MacroScenarioService:
 
         logger.info(
             "MacroScenarioService: composite=%s for run_id=%s",
-            composite_type.value, indicators.run_id,
+            composite_type.value,
+            indicators.run_id,
         )
         return scenario
 
@@ -338,5 +367,6 @@ class MacroScenarioService:
         from research_pipeline.services.economic_indicator_service import (
             EconomicIndicatorService,
         )
+
         indicators = EconomicIndicatorService.get_synthetic(run_id)
         return MacroScenarioService().build_scenario(indicators)

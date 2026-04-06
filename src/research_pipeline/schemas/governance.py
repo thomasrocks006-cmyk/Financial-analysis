@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 # ── Investment Committee ────────────────────────────────────────────────────
 
+
 class CommitteeVote(str, Enum):
     APPROVE = "approve"
     APPROVE_WITH_CONDITIONS = "approve_with_conditions"
@@ -20,6 +21,7 @@ class CommitteeVote(str, Enum):
 
 class CommitteeMember(BaseModel):
     """A voting member of the investment committee."""
+
     member_id: str
     role: str  # "chair", "pm", "risk_officer", "analyst", "compliance"
     name: str = ""
@@ -27,6 +29,7 @@ class CommitteeMember(BaseModel):
 
 class CommitteeVoteRecord(BaseModel):
     """A single vote in a committee decision."""
+
     member: CommitteeMember
     vote: CommitteeVote
     rationale: str = ""
@@ -36,6 +39,7 @@ class CommitteeVoteRecord(BaseModel):
 
 class CommitteeRecord(BaseModel):
     """Full record of an investment committee decision."""
+
     record_id: str
     run_id: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -49,7 +53,11 @@ class CommitteeRecord(BaseModel):
 
     @property
     def approve_count(self) -> int:
-        return sum(1 for v in self.votes if v.vote in (CommitteeVote.APPROVE, CommitteeVote.APPROVE_WITH_CONDITIONS))
+        return sum(
+            1
+            for v in self.votes
+            if v.vote in (CommitteeVote.APPROVE, CommitteeVote.APPROVE_WITH_CONDITIONS)
+        )
 
     @property
     def reject_count(self) -> int:
@@ -57,13 +65,18 @@ class CommitteeRecord(BaseModel):
 
     @property
     def is_approved(self) -> bool:
-        return self.quorum_met and self.outcome in (CommitteeVote.APPROVE, CommitteeVote.APPROVE_WITH_CONDITIONS)
+        return self.quorum_met and self.outcome in (
+            CommitteeVote.APPROVE,
+            CommitteeVote.APPROVE_WITH_CONDITIONS,
+        )
 
 
 # ── Mandate Compliance ──────────────────────────────────────────────────────
 
+
 class MandateRule(BaseModel):
     """A single investment mandate constraint."""
+
     rule_id: str
     rule_type: str  # "max_weight", "sector_cap", "liquidity_floor", "esg_exclusion"
     description: str = ""
@@ -74,6 +87,7 @@ class MandateRule(BaseModel):
 
 class MandateConfig(BaseModel):
     """Full mandate configuration for a portfolio."""
+
     mandate_id: str
     name: str = "Default Mandate"
     rules: list[MandateRule] = []
@@ -86,6 +100,7 @@ class MandateConfig(BaseModel):
 
 class MandateViolation(BaseModel):
     """A violation of a mandate constraint."""
+
     rule: MandateRule
     actual_value: float
     breach_severity: str = "hard"  # "hard" or "soft"
@@ -94,6 +109,7 @@ class MandateViolation(BaseModel):
 
 class MandateCheckResult(BaseModel):
     """Result of checking a portfolio against its mandate."""
+
     run_id: str
     mandate_id: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -103,6 +119,7 @@ class MandateCheckResult(BaseModel):
 
 
 # ── ESG ─────────────────────────────────────────────────────────────────────
+
 
 class ESGRating(str, Enum):
     AAA = "AAA"
@@ -116,6 +133,7 @@ class ESGRating(str, Enum):
 
 class ESGScore(BaseModel):
     """ESG score for a single ticker."""
+
     ticker: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     overall_rating: ESGRating = ESGRating.BBB
@@ -130,6 +148,7 @@ class ESGScore(BaseModel):
 
 class ESGConfig(BaseModel):
     """ESG mandate configuration."""
+
     exclude_below_rating: ESGRating = ESGRating.CCC
     exclude_controversial: bool = True
     min_esg_score: float = 3.0
@@ -138,8 +157,10 @@ class ESGConfig(BaseModel):
 
 # ── Audit Trail ─────────────────────────────────────────────────────────────
 
+
 class AuditEntry(BaseModel):
     """A single audit trail entry."""
+
     entry_id: str
     run_id: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -152,19 +173,34 @@ class AuditEntry(BaseModel):
 
 class AuditTrail(BaseModel):
     """Complete audit trail for a run."""
+
     run_id: str
     entries: list[AuditEntry] = []
 
-    def add_entry(self, action: str, stage: int | None = None, actor: str = "system",
-                  details: dict[str, Any] | None = None, outcome: str = "") -> None:
-        entry_id = f"AUD-{self.run_id}-{len(self.entries)+1:04d}"
-        self.entries.append(AuditEntry(
-            entry_id=entry_id, run_id=self.run_id, action=action,
-            stage=stage, actor=actor, details=details or {}, outcome=outcome,
-        ))
+    def add_entry(
+        self,
+        action: str,
+        stage: int | None = None,
+        actor: str = "system",
+        details: dict[str, Any] | None = None,
+        outcome: str = "",
+    ) -> None:
+        entry_id = f"AUD-{self.run_id}-{len(self.entries) + 1:04d}"
+        self.entries.append(
+            AuditEntry(
+                entry_id=entry_id,
+                run_id=self.run_id,
+                action=action,
+                stage=stage,
+                actor=actor,
+                details=details or {},
+                outcome=outcome,
+            )
+        )
 
 
 # ── Self-Audit Packet ────────────────────────────────────────────────────────
+
 
 class SelfAuditPacket(BaseModel):
     """Per-run structured self-audit attached to every published output.
@@ -173,6 +209,7 @@ class SelfAuditPacket(BaseModel):
     'Audit Appendix'. Enables external verification of evidence quality
     without re-running the full pipeline.
     """
+
     run_id: str
     generated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

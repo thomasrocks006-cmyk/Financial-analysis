@@ -102,7 +102,9 @@ Adjust ALL valuation assumptions based on this context:
 
 Return a JSON array of valuation outputs."""
 
-    def format_input(self, inputs: dict[str, Any]) -> str:  # Session 13: DCF sensitivity + macro header
+    def format_input(
+        self, inputs: dict[str, Any]
+    ) -> str:  # Session 13: DCF sensitivity + macro header
         import json
         from research_pipeline.services.dcf_engine import DCFEngine, DCFAssumptions
 
@@ -132,7 +134,9 @@ Return a JSON array of valuation outputs."""
                 header_row = "WACC \\ TG | " + " | ".join(f"{v:.1%}" for v in st.col_values)
                 table_rows = [header_row]
                 for wacc_val, row in zip(st.row_values, st.grid):
-                    table_rows.append(f"{wacc_val:.1%}     | " + " | ".join(f"${p:.0f}" for p in row))
+                    table_rows.append(
+                        f"{wacc_val:.1%}     | " + " | ".join(f"${p:.0f}" for p in row)
+                    )
                 parts.append("=== DCF SENSITIVITY TABLE (WACC × Terminal Growth) ===")
                 parts.append("\n".join(table_rows))
                 parts.append("=== END SENSITIVITY TABLE ===")
@@ -162,18 +166,21 @@ Return a JSON array of valuation outputs."""
             meth_tag = entry.get("methodology_tag", "")
             entry_quality = entry.get("entry_quality", "")
             if not meth_tag:
-                violations.append(f"[{ticker}] missing 'methodology_tag' — all targets must be tagged HOUSE VIEW or methodology")
+                violations.append(
+                    f"[{ticker}] missing 'methodology_tag' — all targets must be tagged HOUSE VIEW or methodology"
+                )
             if not entry_quality:
                 violations.append(f"[{ticker}] missing 'entry_quality' field")
             scenarios = entry.get("section_5_scenarios", [])
-            for sc in (scenarios if isinstance(scenarios, list) else []):
+            for sc in scenarios if isinstance(scenarios, list) else []:
                 if isinstance(sc, dict) and not sc.get("what_breaks_it"):
-                    violations.append(f"[{ticker}] scenario '{sc.get('case', '?')}' missing 'what_breaks_it' falsification")
+                    violations.append(
+                        f"[{ticker}] scenario '{sc.get('case', '?')}' missing 'what_breaks_it' falsification"
+                    )
 
         if violations:
             raise StructuredOutputError(
-                "ValuationAnalyst: methodology or structure violations:\n"
-                + "\n".join(violations)
+                "ValuationAnalyst: methodology or structure violations:\n" + "\n".join(violations)
             )
 
         if isinstance(parsed, list):

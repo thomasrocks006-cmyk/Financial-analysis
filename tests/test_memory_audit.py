@@ -5,7 +5,6 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-import pytest
 
 from research_pipeline.services.research_memory import ResearchMemory
 from research_pipeline.services.audit_exporter import AuditExporter
@@ -57,23 +56,33 @@ class TestResearchMemory:
 
     def test_search_by_ticker(self):
         self.memory.store_document(
-            doc_id="DOC-001", run_id="RUN-001", doc_type="report",
-            content="NVDA analysis content", ticker="NVDA",
+            doc_id="DOC-001",
+            run_id="RUN-001",
+            doc_type="report",
+            content="NVDA analysis content",
+            ticker="NVDA",
         )
         self.memory.store_document(
-            doc_id="DOC-002", run_id="RUN-001", doc_type="report",
-            content="AVGO analysis content", ticker="AVGO",
+            doc_id="DOC-002",
+            run_id="RUN-001",
+            doc_type="report",
+            content="AVGO analysis content",
+            ticker="AVGO",
         )
         results = self.memory.search("analysis", ticker="NVDA")
         assert all(r.get("ticker") == "NVDA" for r in results)
 
     def test_get_run_documents(self):
         self.memory.store_document(
-            doc_id="DOC-001", run_id="RUN-001", doc_type="report",
+            doc_id="DOC-001",
+            run_id="RUN-001",
+            doc_type="report",
             content="Report content",
         )
         self.memory.store_document(
-            doc_id="DOC-002", run_id="RUN-001", doc_type="claims",
+            doc_id="DOC-002",
+            run_id="RUN-001",
+            doc_type="claims",
             content="Claims content",
         )
         docs = self.memory.get_run_documents("RUN-001")
@@ -138,6 +147,7 @@ class TestAuditExporter:
         assert path.suffix == ".json"
 
         import json
+
         data = json.loads(path.read_text())
         assert data["run_id"] == "RUN-001"
         assert "sections" in data
@@ -145,9 +155,7 @@ class TestAuditExporter:
     def test_export_full_audit(self):
         # Create committee record
         member = CommitteeMember(member_id="IC-1", role="chair", name="Chair")
-        vote = CommitteeVoteRecord(
-            member=member, vote=CommitteeVote.APPROVE, rationale="Good"
-        )
+        vote = CommitteeVoteRecord(member=member, vote=CommitteeVote.APPROVE, rationale="Good")
         committee = CommitteeRecord(
             record_id="IC-RUN-001",
             run_id="RUN-001",
@@ -161,9 +169,7 @@ class TestAuditExporter:
         trail.add_entry(action="gate_check", stage=5, outcome="pass")
 
         # Create mandate check
-        mandate = MandateCheckResult(
-            run_id="RUN-001", mandate_id="M-001", is_compliant=True
-        )
+        mandate = MandateCheckResult(run_id="RUN-001", mandate_id="M-001", is_compliant=True)
 
         path = self.exporter.export_full_audit(
             run_id="RUN-001",
@@ -175,6 +181,7 @@ class TestAuditExporter:
         )
 
         import json
+
         data = json.loads(path.read_text())
         assert data["sections"]["committee_record"]["outcome"] == "approve"
         assert data["sections"]["mandate_compliance"]["is_compliant"] is True
@@ -194,6 +201,7 @@ class TestAuditExporter:
         )
 
         import json
+
         data = json.loads(path.read_text())
         assert data["sections"]["compliance_summary"]["overall_status"] == "non_compliant"
 

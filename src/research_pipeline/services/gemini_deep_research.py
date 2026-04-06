@@ -44,6 +44,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 try:
     import google.generativeai as genai  # type: ignore
+
     _GEMINI_AVAILABLE = True
 except ImportError:
     genai = None  # type: ignore
@@ -54,6 +55,7 @@ except ImportError:
 # Data models
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class DeepResearchClaim:
     """A single qualitative claim extracted from Gemini Deep Research output.
@@ -63,14 +65,15 @@ class DeepResearchClaim:
         source_tier    → 3
         status         → unverified (Evidence Librarian upgrades)
     """
+
     claim_id: str
-    ticker: str                   # primary ticker the claim relates to; "_MACRO" for cross-sector
-    theme_key: str                # e.g. "ai_infrastructure", "us_financials"
+    ticker: str  # primary ticker the claim relates to; "_MACRO" for cross-sector
+    theme_key: str  # e.g. "ai_infrastructure", "us_financials"
     claim_text: str
     evidence_class: str = "qualitative"
     source_tier: int = 3
-    source_ref: str = ""          # Gemini citation if available
-    date_sourced: str = ""        # ISO 8601
+    source_ref: str = ""  # Gemini citation if available
+    date_sourced: str = ""  # ISO 8601
     confidence: float = 0.55
     status: str = "unverified"
     supporting_claims: list[str] = field(default_factory=list)
@@ -80,6 +83,7 @@ class DeepResearchClaim:
 @dataclass
 class DeepResearchThemeResult:
     """Result of a single Gemini Deep Research call for one theme."""
+
     theme_key: str
     theme_label: str
     query: str
@@ -94,6 +98,7 @@ class DeepResearchThemeResult:
 @dataclass
 class DeepResearchRunResult:
     """Aggregated result across all themes for a pipeline run."""
+
     run_id: str
     timestamp: str
     themes_attempted: list[str]
@@ -102,12 +107,13 @@ class DeepResearchRunResult:
     all_claims: list[DeepResearchClaim]
     theme_results: list[DeepResearchThemeResult]
     total_claims_injected: int = 0
-    skipped_reason: Optional[str] = None     # set when deep_research.enabled = False
+    skipped_reason: Optional[str] = None  # set when deep_research.enabled = False
 
 
 # ---------------------------------------------------------------------------
 # Service
 # ---------------------------------------------------------------------------
+
 
 class GeminiDeepResearchService:
     """Orchestrates Gemini Deep Research calls for all active themes.
@@ -244,16 +250,13 @@ Return ONLY a valid JSON array — no surrounding prose. Example:
             logger.info(
                 f"GeminiDeepResearch: capping to {self._max_themes} themes "
                 f"(got {len(active_themes)}). Remaining: "
-                f"{[t.get('key') for t in active_themes[self._max_themes:]]}"
+                f"{[t.get('key') for t in active_themes[self._max_themes :]]}"
             )
 
         self._init_client()
 
         # Run all themes concurrently (but respect timeout per theme)
-        tasks = [
-            self._run_theme(theme, date_str, run_id)
-            for theme in capped_themes
-        ]
+        tasks = [self._run_theme(theme, date_str, run_id) for theme in capped_themes]
         theme_results: list[DeepResearchThemeResult] = await asyncio.gather(
             *tasks, return_exceptions=False
         )
@@ -288,7 +291,7 @@ Return ONLY a valid JSON array — no surrounding prose. Example:
         self._client = genai.GenerativeModel(
             model_name=self._model_name,
             generation_config=genai.types.GenerationConfig(
-                temperature=0.3,          # slight creativity for synthesis
+                temperature=0.3,  # slight creativity for synthesis
                 max_output_tokens=8192,
             ),
         )
@@ -310,7 +313,7 @@ Return ONLY a valid JSON array — no surrounding prose. Example:
         query_template = theme.get(
             "deep_research_query",
             f"Synthesise the current investment outlook for {theme_label} as of {{date}}. "
-            f"Focus on: {{tickers}}."
+            f"Focus on: {{tickers}}.",
         )
         query = query_template.format(date=date_str, tickers=ticker_str, instruments=ticker_str)
         full_prompt = query.strip() + self._EXTRACTION_SUFFIX
@@ -324,8 +327,7 @@ Return ONLY a valid JSON array — no surrounding prose. Example:
             latency = time.monotonic() - start_time
             claims = self._extract_claims(raw_response, theme_key, tickers, run_id)
             logger.info(
-                f"GeminiDeepResearch: theme={theme_key} OK — "
-                f"{len(claims)} claims in {latency:.1f}s"
+                f"GeminiDeepResearch: theme={theme_key} OK — {len(claims)} claims in {latency:.1f}s"
             )
             return DeepResearchThemeResult(
                 theme_key=theme_key,
@@ -431,20 +433,22 @@ Return ONLY a valid JSON array — no surrounding prose. Example:
             confidence = float(raw.get("confidence", self._confidence_floor))
             confidence = max(self._confidence_floor, min(0.85, confidence))
 
-            claims.append(DeepResearchClaim(
-                claim_id=claim_id,
-                ticker=ticker,
-                theme_key=theme_key,
-                claim_text=claim_text,
-                evidence_class="qualitative",
-                source_tier=self._claim_tier,
-                source_ref=raw.get("source_ref", "Gemini Deep Research synthesis"),
-                date_sourced=raw.get("date_sourced", today_iso),
-                confidence=confidence,
-                status="unverified",
-                supporting_claims=[],
-                notes=extra_note + raw.get("notes", ""),
-            ))
+            claims.append(
+                DeepResearchClaim(
+                    claim_id=claim_id,
+                    ticker=ticker,
+                    theme_key=theme_key,
+                    claim_text=claim_text,
+                    evidence_class="qualitative",
+                    source_tier=self._claim_tier,
+                    source_ref=raw.get("source_ref", "Gemini Deep Research synthesis"),
+                    date_sourced=raw.get("date_sourced", today_iso),
+                    confidence=confidence,
+                    status="unverified",
+                    supporting_claims=[],
+                    notes=extra_note + raw.get("notes", ""),
+                )
+            )
 
         return claims
 
@@ -487,6 +491,7 @@ Return ONLY a valid JSON array — no surrounding prose. Example:
 # ---------------------------------------------------------------------------
 # Convenience: convert DeepResearchClaim → ClaimLedger dict format
 # ---------------------------------------------------------------------------
+
 
 def deep_research_claim_to_ledger_dict(claim: DeepResearchClaim) -> dict[str, Any]:
     """Convert a DeepResearchClaim into the ClaimLedger JSON schema.

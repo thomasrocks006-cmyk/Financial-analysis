@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -22,20 +22,67 @@ DEFAULT_FACTOR_PREMIA = {
 
 # Heuristic factor loadings by subtheme (used when no regression data available)
 SUBTHEME_FACTOR_PROFILES = {
-    "compute": {"market_beta": 1.35, "size_loading": -0.3, "value_loading": -0.5, "momentum_loading": 0.4, "quality_loading": 0.3, "volatility_loading": 0.4},
-    "power": {"market_beta": 0.85, "size_loading": 0.1, "value_loading": 0.2, "momentum_loading": 0.2, "quality_loading": 0.4, "volatility_loading": -0.1},
-    "infrastructure": {"market_beta": 1.05, "size_loading": 0.2, "value_loading": 0.1, "momentum_loading": 0.15, "quality_loading": 0.2, "volatility_loading": 0.0},
-    "materials": {"market_beta": 1.10, "size_loading": 0.0, "value_loading": 0.3, "momentum_loading": -0.1, "quality_loading": 0.1, "volatility_loading": 0.2},
-    "etf": {"market_beta": 1.0, "size_loading": 0.0, "value_loading": 0.0, "momentum_loading": 0.0, "quality_loading": 0.0, "volatility_loading": 0.0},
+    "compute": {
+        "market_beta": 1.35,
+        "size_loading": -0.3,
+        "value_loading": -0.5,
+        "momentum_loading": 0.4,
+        "quality_loading": 0.3,
+        "volatility_loading": 0.4,
+    },
+    "power": {
+        "market_beta": 0.85,
+        "size_loading": 0.1,
+        "value_loading": 0.2,
+        "momentum_loading": 0.2,
+        "quality_loading": 0.4,
+        "volatility_loading": -0.1,
+    },
+    "infrastructure": {
+        "market_beta": 1.05,
+        "size_loading": 0.2,
+        "value_loading": 0.1,
+        "momentum_loading": 0.15,
+        "quality_loading": 0.2,
+        "volatility_loading": 0.0,
+    },
+    "materials": {
+        "market_beta": 1.10,
+        "size_loading": 0.0,
+        "value_loading": 0.3,
+        "momentum_loading": -0.1,
+        "quality_loading": 0.1,
+        "volatility_loading": 0.2,
+    },
+    "etf": {
+        "market_beta": 1.0,
+        "size_loading": 0.0,
+        "value_loading": 0.0,
+        "momentum_loading": 0.0,
+        "quality_loading": 0.0,
+        "volatility_loading": 0.0,
+    },
 }
 
 # Ticker -> subtheme mapping
 TICKER_SUBTHEMES = {
-    "NVDA": "compute", "AVGO": "compute", "TSM": "compute", "AMD": "compute", "ANET": "compute",
-    "CEG": "power", "VST": "power", "GEV": "power", "NLR": "power",
-    "PWR": "infrastructure", "ETN": "infrastructure", "HUBB": "infrastructure",
-    "APH": "infrastructure", "FIX": "infrastructure", "NXT": "infrastructure",
-    "FCX": "materials", "BHP": "materials",
+    "NVDA": "compute",
+    "AVGO": "compute",
+    "TSM": "compute",
+    "AMD": "compute",
+    "ANET": "compute",
+    "CEG": "power",
+    "VST": "power",
+    "GEV": "power",
+    "NLR": "power",
+    "PWR": "infrastructure",
+    "ETN": "infrastructure",
+    "HUBB": "infrastructure",
+    "APH": "infrastructure",
+    "FIX": "infrastructure",
+    "NXT": "infrastructure",
+    "FCX": "materials",
+    "BHP": "materials",
 }
 
 
@@ -131,8 +178,12 @@ class FactorExposureEngine:
     ) -> dict[str, float]:
         """Compute weighted portfolio-level factor exposures."""
         portfolio = {
-            "market_beta": 0.0, "size_loading": 0.0, "value_loading": 0.0,
-            "momentum_loading": 0.0, "quality_loading": 0.0, "volatility_loading": 0.0,
+            "market_beta": 0.0,
+            "size_loading": 0.0,
+            "value_loading": 0.0,
+            "momentum_loading": 0.0,
+            "quality_loading": 0.0,
+            "volatility_loading": 0.0,
         }
 
         total_weight = sum(weights.values())
@@ -194,22 +245,22 @@ class FactorExposureEngine:
 # FRED series IDs for Kenneth French's 5-factor data (daily)
 _FRED_FF5_SERIES: dict[str, str] = {
     "mkt_rf": "F-F_Research_Data_5_Factors_2x3_daily_MKT-RF",
-    "smb":    "F-F_Research_Data_5_Factors_2x3_daily_SMB",
-    "hml":    "F-F_Research_Data_5_Factors_2x3_daily_HML",
-    "rmw":    "F-F_Research_Data_5_Factors_2x3_daily_RMW",
-    "cma":    "F-F_Research_Data_5_Factors_2x3_daily_CMA",
-    "rf":     "F-F_Research_Data_5_Factors_2x3_daily_RF",
+    "smb": "F-F_Research_Data_5_Factors_2x3_daily_SMB",
+    "hml": "F-F_Research_Data_5_Factors_2x3_daily_HML",
+    "rmw": "F-F_Research_Data_5_Factors_2x3_daily_RMW",
+    "cma": "F-F_Research_Data_5_Factors_2x3_daily_CMA",
+    "rf": "F-F_Research_Data_5_Factors_2x3_daily_RF",
 }
 
 # Synthetic daily factor return distributions (used when FRED is unavailable)
 # Annualised premia → divide by 252 for daily
 _SYNTHETIC_FACTOR_DAILY: dict[str, float] = {
     "mkt_rf": 0.08 / 252,
-    "smb":    0.02 / 252,
-    "hml":    0.03 / 252,
-    "rmw":    0.025 / 252,
-    "cma":    0.015 / 252,
-    "rf":     0.05 / 252,
+    "smb": 0.02 / 252,
+    "hml": 0.03 / 252,
+    "rmw": 0.025 / 252,
+    "cma": 0.015 / 252,
+    "rf": 0.05 / 252,
 }
 
 
@@ -246,7 +297,9 @@ class FactorRefitResult:
             "is_live": self.is_live,
             "obs_count": self.obs_count,
             "source": self.source,
-            "factor_returns_mean": {k: round(float(np.mean(v)), 6) for k, v in self.factor_returns.items() if v},
+            "factor_returns_mean": {
+                k: round(float(np.mean(v)), 6) for k, v in self.factor_returns.items() if v
+            },
             "r_squared": self.r_squared,
             "alpha": self.alpha,
         }
@@ -282,6 +335,7 @@ class FREDFactorFetcher:
             FactorRefitResult with factor_returns dict keyed by factor name.
         """
         import time
+
         now = time.time()
         cache_key = f"ff5_{obs}"
         if cache_key in self._CACHE and (now - self._CACHE_TS) < self._CACHE_TTL:
@@ -384,7 +438,10 @@ class FREDFactorFetcher:
                 ss_res = float(np.sum((y - y_hat) ** 2))
                 ss_tot = float(np.sum((y - np.mean(y)) ** 2))
                 r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else 0.0
-                row: dict[str, float] = {"r_squared": round(r2, 4), "alpha": round(float(betas[0]), 6)}
+                row: dict[str, float] = {
+                    "r_squared": round(r2, 4),
+                    "alpha": round(float(betas[0]), 6),
+                }
                 for i, f in enumerate(factor_names):
                     row[f] = round(float(betas[i + 1]), 4)
                 results[ticker] = row

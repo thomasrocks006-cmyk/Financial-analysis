@@ -11,8 +11,10 @@ from pydantic import BaseModel, Field
 
 # ── Portfolio Snapshot (for historical tracking) ────────────────────────────
 
+
 class PortfolioSnapshot(BaseModel):
     """Price-stamped portfolio at a point in time."""
+
     run_id: str
     snapshot_date: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     variant_name: str  # "balanced", "higher_return", "lower_volatility"
@@ -24,8 +26,10 @@ class PortfolioSnapshot(BaseModel):
 
 # ── Brinson-Hood-Beebower Attribution ───────────────────────────────────────
 
+
 class BHBAttribution(BaseModel):
     """Brinson-Hood-Beebower return attribution decomposition."""
+
     run_id: str
     period_start: datetime
     period_end: datetime
@@ -41,8 +45,10 @@ class BHBAttribution(BaseModel):
 
 # ── Factor Attribution ──────────────────────────────────────────────────────
 
+
 class FactorExposure(BaseModel):
     """Factor loadings for a single ticker."""
+
     ticker: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     market_beta: float = 1.0
@@ -55,6 +61,7 @@ class FactorExposure(BaseModel):
 
 class FactorAttribution(BaseModel):
     """Attribution of returns to factor exposures."""
+
     run_id: str
     period_start: datetime
     period_end: datetime
@@ -69,8 +76,10 @@ class FactorAttribution(BaseModel):
 
 # ── Benchmark Analytics ─────────────────────────────────────────────────────
 
+
 class BenchmarkComparison(BaseModel):
     """Portfolio vs benchmark comparison."""
+
     run_id: str
     benchmark_name: str  # "SPY", "QQQ", "XLK", etc.
     period_days: int = 0
@@ -88,6 +97,7 @@ class BenchmarkComparison(BaseModel):
 
 # ── Thesis Tracking ────────────────────────────────────────────────────────
 
+
 class ThesisStatus(str, Enum):
     ACTIVE = "active"
     CONFIRMED = "confirmed"
@@ -97,6 +107,7 @@ class ThesisStatus(str, Enum):
 
 class ThesisRecord(BaseModel):
     """Track a thesis from creation through validation."""
+
     thesis_id: str
     run_id: str  # originating run
     ticker: str
@@ -114,8 +125,10 @@ class ThesisRecord(BaseModel):
 
 # ── VaR / Drawdown ──────────────────────────────────────────────────────────
 
+
 class VaRResult(BaseModel):
     """Value at Risk computation result."""
+
     run_id: str
     method: str = "parametric"  # "parametric", "historical", "monte_carlo"
     confidence_level: float = 0.95
@@ -129,6 +142,7 @@ class VaRResult(BaseModel):
 
 class DrawdownAnalysis(BaseModel):
     """Maximum drawdown analysis."""
+
     run_id: str
     max_drawdown_pct: float = 0.0
     drawdown_start: Optional[datetime] = None
@@ -142,8 +156,10 @@ class DrawdownAnalysis(BaseModel):
 
 # ── Liquidity Profile ──────────────────────────────────────────────────────
 
+
 class LiquidityProfile(BaseModel):
     """Liquidity analysis for a single position."""
+
     ticker: str
     avg_daily_volume: float = 0.0  # shares
     avg_daily_value: float = 0.0  # dollars

@@ -46,7 +46,6 @@ _warnings.warn(
 import json
 import logging
 import os
-import sys
 import textwrap
 import time
 import uuid
@@ -63,6 +62,7 @@ try:
     from research_pipeline.services.dcf_engine import DCFEngine, DCFAssumptions
     from research_pipeline.services.scenario_engine import ScenarioStressEngine
     from research_pipeline.services.risk_engine import RiskEngine
+
     _ENGINES_AVAILABLE = True
 except ImportError:
     _ENGINES_AVAILABLE = False
@@ -70,16 +70,16 @@ except ImportError:
 
 # ── Stage definitions ─────────────────────────────────────────────────────
 STAGES = [
-    (0,  "Bootstrap & Configuration"),
-    (1,  "Universe Definition"),
-    (2,  "Data Ingestion"),
-    (3,  "Reconciliation"),
-    (4,  "Data QA & Lineage"),
-    (5,  "Evidence Librarian / Claim Ledger"),
-    (6,  "Sector Analysis"),
-    (7,  "Valuation & Modelling"),
-    (8,  "Macro & Political Overlay"),
-    (9,  "Quant Risk & Scenario Testing"),
+    (0, "Bootstrap & Configuration"),
+    (1, "Universe Definition"),
+    (2, "Data Ingestion"),
+    (3, "Reconciliation"),
+    (4, "Data QA & Lineage"),
+    (5, "Evidence Librarian / Claim Ledger"),
+    (6, "Sector Analysis"),
+    (7, "Valuation & Modelling"),
+    (8, "Macro & Political Overlay"),
+    (9, "Quant Risk & Scenario Testing"),
     (10, "Red Team Analysis"),
     (11, "Associate Review / Publish Gate"),
     (12, "Portfolio Construction"),
@@ -92,7 +92,7 @@ STAGES = [
 class StageResult:
     stage_num: int
     stage_name: str
-    status: str = "pending"   # pending | running | done | failed
+    status: str = "pending"  # pending | running | done | failed
     output: dict[str, Any] = field(default_factory=dict)
     raw_text: str = ""
     elapsed_secs: float = 0.0
@@ -130,7 +130,7 @@ class PipelineRunner:
         client_profile: Optional[Any] = None,
     ):
         self.provider_keys = provider_keys  # {"anthropic": key, "openai": key, "gemini": key, "fmp": key, "finnhub": key}
-        self.model = model          # default / display model
+        self.model = model  # default / display model
         self.temperature = temperature
         self.max_retries = 3
         self.tickers = tickers or ["NVDA", "CEG", "PWR"]
@@ -145,7 +145,7 @@ class PipelineRunner:
 
     def _client_context(self) -> str:
         """Return client profile context for LLM prompts, or fallback."""
-        if self.client_profile and hasattr(self.client_profile, 'to_prompt_context'):
+        if self.client_profile and hasattr(self.client_profile, "to_prompt_context"):
             return self.client_profile.to_prompt_context()
         return "\n═══ CLIENT: Default institutional analysis (no specific client profile) ═══\n"
 
@@ -175,6 +175,7 @@ class PipelineRunner:
         finnhub_key = self.provider_keys.get("finnhub", os.environ.get("FINNHUB_API_KEY", ""))
 
         from frontend.market_data import fetch_universe, fetch_macro_context
+
         try:
             market_data = await fetch_universe(
                 self.tickers,
@@ -184,7 +185,8 @@ class PipelineRunner:
             )
             logger.info(
                 "Live market data loaded: %d/%d tickers",
-                market_data.get("live_count", 0), len(self.tickers),
+                market_data.get("live_count", 0),
+                len(self.tickers),
             )
         except Exception as _live_exc:
             logger.warning("Live data fetch failed (%s) — falling back", _live_exc)
@@ -192,16 +194,22 @@ class PipelineRunner:
                 "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
                 "data_source": "Fallback — no live data",
                 "live_count": 0,
-                "stocks": {t: {"ticker": t, "company_name": t, "_live": False} for t in self.tickers},
+                "stocks": {
+                    t: {"ticker": t, "company_name": t, "_live": False} for t in self.tickers
+                },
             }
 
         try:
             macro_data = await fetch_macro_context(finnhub_key=finnhub_key)
         except Exception:
-            macro_data = {"date": datetime.now(timezone.utc).strftime("%Y-%m-%d"), "source": "unavailable"}
+            macro_data = {
+                "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+                "source": "unavailable",
+            }
 
         # ── Load qualitative intelligence (8 sources per ticker) ────────
         from frontend.qualitative_data import fetch_qualitative_universe
+
         try:
             qual_packages = await fetch_qualitative_universe(
                 self.tickers,
@@ -212,7 +220,8 @@ class PipelineRunner:
             total_signals = sum(p.signal_count for p in qual_packages.values())
             logger.info(
                 "Qualitative data loaded: %d signals across %d tickers",
-                total_signals, len(self.tickers),
+                total_signals,
+                len(self.tickers),
             )
             if self._activity_cb:
                 coverage = {t: p.coverage_score for t, p in qual_packages.items()}
@@ -220,81 +229,149 @@ class PipelineRunner:
         except Exception as _qual_exc:
             logger.warning("Qualitative data fetch failed (%s)", _qual_exc)
             from frontend.qualitative_data import QualitativePackage
+
             qual_packages = {
                 t: QualitativePackage(ticker=t, coverage_gaps=[f"TOTAL FAILURE: {_qual_exc}"])
                 for t in self.tickers
             }
 
         # ── Stage 0: Bootstrap ────────────────────────────────────────────
-        s0 = await self._run_stage(0, "Bootstrap & Configuration", _cb, self._stage_bootstrap, run_id, market_data, qual_packages)
+        s0 = await self._run_stage(
+            0,
+            "Bootstrap & Configuration",
+            _cb,
+            self._stage_bootstrap,
+            run_id,
+            market_data,
+            qual_packages,
+        )
         result.stages.append(s0)
 
         # ── Stage 1: Universe ─────────────────────────────────────────────
-        s1 = await self._run_stage(1, "Universe Definition", _cb, self._stage_universe, self.tickers)
+        s1 = await self._run_stage(
+            1, "Universe Definition", _cb, self._stage_universe, self.tickers
+        )
         result.stages.append(s1)
 
         # ── Stages 2-4: Data (deterministic) ─────────────────────────────
-        s2 = await self._run_stage(2, "Data Ingestion", _cb, self._stage_data_ingestion, market_data)
+        s2 = await self._run_stage(
+            2, "Data Ingestion", _cb, self._stage_data_ingestion, market_data
+        )
         result.stages.append(s2)
 
-        s3 = await self._run_stage(3, "Reconciliation", _cb, self._stage_reconciliation, market_data)
+        s3 = await self._run_stage(
+            3, "Reconciliation", _cb, self._stage_reconciliation, market_data
+        )
         result.stages.append(s3)
 
         s4 = await self._run_stage(4, "Data QA & Lineage", _cb, self._stage_qa, market_data)
         result.stages.append(s4)
 
         # ── Stage 5: Evidence Librarian + Qualitative Synthesis (LLM) ──
-        s5 = await self._run_stage(5, "Evidence Librarian / Claim Ledger", _cb, self._stage_evidence, market_data, qual_packages)
+        s5 = await self._run_stage(
+            5,
+            "Evidence Librarian / Claim Ledger",
+            _cb,
+            self._stage_evidence,
+            market_data,
+            qual_packages,
+        )
         result.stages.append(s5)
         claim_ledger_text = s5.raw_text
 
         # ── Stage 6: Sector Analysis + Narrative Intelligence (LLM) ──────
-        s6 = await self._run_stage(6, "Sector Analysis", _cb, self._stage_sector, market_data, qual_packages)
+        s6 = await self._run_stage(
+            6, "Sector Analysis", _cb, self._stage_sector, market_data, qual_packages
+        )
         result.stages.append(s6)
         sector_outputs = s6.raw_text
 
         # ── Stage 7: Valuation (LLM) ─────────────────────────────────────
-        s7 = await self._run_stage(7, "Valuation & Modelling", _cb, self._stage_valuation, market_data, sector_outputs)
+        s7 = await self._run_stage(
+            7, "Valuation & Modelling", _cb, self._stage_valuation, market_data, sector_outputs
+        )
         result.stages.append(s7)
         valuation_outputs = s7.raw_text
 
         # ── Stage 8: Macro & Political (LLM) ─────────────────────────────
-        s8 = await self._run_stage(8, "Macro & Political Overlay", _cb, self._stage_macro, macro_data, sector_outputs)
+        s8 = await self._run_stage(
+            8, "Macro & Political Overlay", _cb, self._stage_macro, macro_data, sector_outputs
+        )
         result.stages.append(s8)
         macro_outputs = s8.raw_text
 
         # ── Stage 9: Risk (LLM + quant) ──────────────────────────────────
-        s9 = await self._run_stage(9, "Quant Risk & Scenario Testing", _cb, self._stage_risk, market_data, sector_outputs, valuation_outputs, macro_outputs)
+        s9 = await self._run_stage(
+            9,
+            "Quant Risk & Scenario Testing",
+            _cb,
+            self._stage_risk,
+            market_data,
+            sector_outputs,
+            valuation_outputs,
+            macro_outputs,
+        )
         result.stages.append(s9)
         risk_outputs = s9.raw_text
 
         # ── Stage 10: Red Team (LLM) ──────────────────────────────────────
-        s10 = await self._run_stage(10, "Red Team Analysis", _cb, self._stage_red_team, sector_outputs, valuation_outputs)
+        s10 = await self._run_stage(
+            10, "Red Team Analysis", _cb, self._stage_red_team, sector_outputs, valuation_outputs
+        )
         result.stages.append(s10)
         red_team_outputs = s10.raw_text
 
         # ── Stage 11: Associate Review (LLM) ─────────────────────────────
-        s11 = await self._run_stage(11, "Associate Review / Publish Gate", _cb, self._stage_review, sector_outputs, valuation_outputs, red_team_outputs)
+        s11 = await self._run_stage(
+            11,
+            "Associate Review / Publish Gate",
+            _cb,
+            self._stage_review,
+            sector_outputs,
+            valuation_outputs,
+            red_team_outputs,
+        )
         result.stages.append(s11)
         review_output = s11.raw_text
 
         # ── Stage 12: Portfolio Construction (LLM) ────────────────────────
-        s12 = await self._run_stage(12, "Portfolio Construction", _cb, self._stage_portfolio, sector_outputs, valuation_outputs, risk_outputs, review_output)
+        s12 = await self._run_stage(
+            12,
+            "Portfolio Construction",
+            _cb,
+            self._stage_portfolio,
+            sector_outputs,
+            valuation_outputs,
+            risk_outputs,
+            review_output,
+        )
         result.stages.append(s12)
         portfolio_output = s12.raw_text
 
         # ── Stage 13: Report Assembly ─────────────────────────────────────
         s13 = await self._run_stage(
-            13, "Report Assembly", _cb, self._stage_report_assembly,
-            run_id, market_data, claim_ledger_text, sector_outputs,
-            valuation_outputs, macro_outputs, risk_outputs,
-            red_team_outputs, review_output, portfolio_output,
+            13,
+            "Report Assembly",
+            _cb,
+            self._stage_report_assembly,
+            run_id,
+            market_data,
+            claim_ledger_text,
+            sector_outputs,
+            valuation_outputs,
+            macro_outputs,
+            risk_outputs,
+            red_team_outputs,
+            review_output,
+            portfolio_output,
         )
         result.stages.append(s13)
         result.final_report_md = s13.raw_text
 
         # ── Stage 14: Monitoring & Run Registry ──────────────────────────
-        s14 = await self._run_stage(14, "Monitoring & Run Registry", _cb, self._stage_monitoring, run_id, result.stages)
+        s14 = await self._run_stage(
+            14, "Monitoring & Run Registry", _cb, self._stage_monitoring, run_id, result.stages
+        )
         result.stages.append(s14)
 
         result.completed_at = datetime.now(timezone.utc).isoformat()
@@ -317,7 +394,9 @@ class PipelineRunner:
         t_start = time.monotonic()
         try:
             result = await fn(*args)
-            sr.raw_text = result if isinstance(result, str) else json.dumps(result, indent=2, default=str)
+            sr.raw_text = (
+                result if isinstance(result, str) else json.dumps(result, indent=2, default=str)
+            )
             sr.output = result if isinstance(result, dict) else {}
             sr.status = "done"
         except Exception as exc:
@@ -334,16 +413,19 @@ class PipelineRunner:
     @staticmethod
     def _provider_for(model: str) -> str:
         m = model.lower()
-        if m.startswith("claude"):  return "anthropic"
-        if m.startswith("gpt") or m.startswith("o1") or m.startswith("o3"): return "openai"
-        if m.startswith("gemini"): return "gemini"
+        if m.startswith("claude"):
+            return "anthropic"
+        if m.startswith("gpt") or m.startswith("o1") or m.startswith("o3"):
+            return "openai"
+        if m.startswith("gemini"):
+            return "gemini"
         return "anthropic"
 
     async def _call_llm(self, system_prompt: str, user_content: str, stage_num: int = -1) -> str:
         """Route to the correct provider; tracks token usage per stage."""
-        model    = self.stage_models.get(stage_num, self.model)
+        model = self.stage_models.get(stage_num, self.model)
         provider = self._provider_for(model)
-        api_key  = self.provider_keys.get(provider, "")
+        api_key = self.provider_keys.get(provider, "")
         if not api_key:
             raise ValueError(
                 f"No API key for provider '{provider}' "
@@ -351,96 +433,122 @@ class PipelineRunner:
             )
         # Emit live activity so the UI knows exactly what the pipeline is doing
         if self._activity_cb:
-            prov_label = {"anthropic": "Anthropic", "openai": "OpenAI", "gemini": "Google"}.get(provider, provider.title())
+            prov_label = {"anthropic": "Anthropic", "openai": "OpenAI", "gemini": "Google"}.get(
+                provider, provider.title()
+            )
             self._activity_cb(f"S{stage_num} → {prov_label} / {model} (sending request…)")
         if provider == "openai":
-            text, in_tok, out_tok = await self._call_openai(system_prompt, user_content, model, api_key)
+            text, in_tok, out_tok = await self._call_openai(
+                system_prompt, user_content, model, api_key
+            )
         elif provider == "gemini":
-            text, in_tok, out_tok = await self._call_gemini(system_prompt, user_content, model, api_key)
+            text, in_tok, out_tok = await self._call_gemini(
+                system_prompt, user_content, model, api_key
+            )
         else:
-            text, in_tok, out_tok = await self._call_anthropic(system_prompt, user_content, model, api_key)
-        self.token_log.append({
-            "stage_num":     stage_num,
-            "model":         model,
-            "input_tokens":  in_tok,
-            "output_tokens": out_tok,
-        })
+            text, in_tok, out_tok = await self._call_anthropic(
+                system_prompt, user_content, model, api_key
+            )
+        self.token_log.append(
+            {
+                "stage_num": stage_num,
+                "model": model,
+                "input_tokens": in_tok,
+                "output_tokens": out_tok,
+            }
+        )
         return text
 
-    async def _call_anthropic(self, system_prompt: str, user_content: str, model: str, api_key: str) -> tuple[str, int, int]:
+    async def _call_anthropic(
+        self, system_prompt: str, user_content: str, model: str, api_key: str
+    ) -> tuple[str, int, int]:
         import anthropic
+
         client = anthropic.AsyncAnthropic(api_key=api_key)
         last_exc: Exception | None = None
         for attempt in range(1, self.max_retries + 1):
             try:
                 response = await client.messages.create(
-                    model=model, max_tokens=8192, temperature=self.temperature,
+                    model=model,
+                    max_tokens=8192,
+                    temperature=self.temperature,
                     system=system_prompt,
                     messages=[{"role": "user", "content": user_content}],
                 )
-                in_tok  = getattr(response.usage, "input_tokens",  0) or 0
+                in_tok = getattr(response.usage, "input_tokens", 0) or 0
                 out_tok = getattr(response.usage, "output_tokens", 0) or 0
                 return response.content[0].text or "", in_tok, out_tok
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
                 logger.warning("Anthropic attempt %d/%d failed: %s", attempt, self.max_retries, exc)
                 if attempt < self.max_retries:
-                    await asyncio.sleep(2 ** attempt)
+                    await asyncio.sleep(2**attempt)
         raise last_exc  # type: ignore[misc]
 
-    async def _call_openai(self, system_prompt: str, user_content: str, model: str, api_key: str) -> tuple[str, int, int]:
+    async def _call_openai(
+        self, system_prompt: str, user_content: str, model: str, api_key: str
+    ) -> tuple[str, int, int]:
         import openai
+
         client = openai.AsyncOpenAI(api_key=api_key)
         last_exc: Exception | None = None
         for attempt in range(1, self.max_retries + 1):
             try:
                 response = await client.chat.completions.create(
-                    model=model, max_tokens=8192, temperature=self.temperature,
+                    model=model,
+                    max_tokens=8192,
+                    temperature=self.temperature,
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_content},
                     ],
                 )
-                usage   = response.usage
-                in_tok  = getattr(usage, "prompt_tokens",     0) or 0
+                usage = response.usage
+                in_tok = getattr(usage, "prompt_tokens", 0) or 0
                 out_tok = getattr(usage, "completion_tokens", 0) or 0
                 return response.choices[0].message.content or "", in_tok, out_tok
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
                 logger.warning("OpenAI attempt %d/%d failed: %s", attempt, self.max_retries, exc)
                 if attempt < self.max_retries:
-                    await asyncio.sleep(2 ** attempt)
+                    await asyncio.sleep(2**attempt)
         raise last_exc  # type: ignore[misc]
 
-    async def _call_gemini(self, system_prompt: str, user_content: str, model: str, api_key: str) -> tuple[str, int, int]:
+    async def _call_gemini(
+        self, system_prompt: str, user_content: str, model: str, api_key: str
+    ) -> tuple[str, int, int]:
         from google import genai
         from google.genai import types
+
         client = genai.Client(api_key=api_key)
         last_exc: Exception | None = None
         for attempt in range(1, self.max_retries + 1):
             try:
                 response = await client.aio.models.generate_content(
-                    model=model, contents=user_content,
+                    model=model,
+                    contents=user_content,
                     config=types.GenerateContentConfig(
                         system_instruction=system_prompt,
                         max_output_tokens=8192,
                         temperature=self.temperature,
                     ),
                 )
-                meta    = getattr(response, "usage_metadata", None)
-                in_tok  = int(getattr(meta, "prompt_token_count",     0) or 0) if meta else 0
+                meta = getattr(response, "usage_metadata", None)
+                in_tok = int(getattr(meta, "prompt_token_count", 0) or 0) if meta else 0
                 out_tok = int(getattr(meta, "candidates_token_count", 0) or 0) if meta else 0
                 return response.text or "", in_tok, out_tok
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
                 logger.warning("Gemini attempt %d/%d failed: %s", attempt, self.max_retries, exc)
                 if attempt < self.max_retries:
-                    await asyncio.sleep(2 ** attempt)
+                    await asyncio.sleep(2**attempt)
         raise last_exc  # type: ignore[misc]
 
     # ── Individual stage implementations ─────────────────────────────────
 
-    async def _stage_bootstrap(self, run_id: str, market_data: dict, qual_packages: dict = None) -> dict:
+    async def _stage_bootstrap(
+        self, run_id: str, market_data: dict, qual_packages: dict = None
+    ) -> dict:
         qual_summary = {}
         if qual_packages:
             for t, pkg in qual_packages.items():
@@ -459,17 +567,21 @@ class PipelineRunner:
             "config_valid": True,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "client_profile": self.client_profile.name if self.client_profile else "Default",
-            "risk_tolerance": self.client_profile.risk_tolerance if self.client_profile else "moderate",
+            "risk_tolerance": self.client_profile.risk_tolerance
+            if self.client_profile
+            else "moderate",
             "qualitative_coverage": qual_summary,
         }
 
     async def _stage_universe(self, tickers: list[str]) -> dict:
         universe = []
         for ticker in tickers:
-            universe.append({
-                "ticker": ticker,
-                "approved": True,
-            })
+            universe.append(
+                {
+                    "ticker": ticker,
+                    "approved": True,
+                }
+            )
         return {"universe": universe, "total": len(universe)}
 
     async def _stage_data_ingestion(self, market_data: dict) -> dict:
@@ -497,19 +609,30 @@ class PipelineRunner:
                 "forward_pe": snap.get("forward_pe"),
                 "reconciliation_status": status,
                 "cross_checks": cross_checks,
-                "notes": f"FMP+Finnhub cross-validated" if cross_checks else "Single source",
+                "notes": "FMP+Finnhub cross-validated" if cross_checks else "Single source",
             }
         red_total = sum(1 for r in results.values() if r["reconciliation_status"] == "RED")
         amber_total = sum(1 for r in results.values() if r["reconciliation_status"] == "AMBER")
         green_total = sum(1 for r in results.values() if r["reconciliation_status"] == "GREEN")
-        return {"reconciliation": results, "red_fields": red_total, "amber_fields": amber_total, "green_fields": green_total}
+        return {
+            "reconciliation": results,
+            "red_fields": red_total,
+            "amber_fields": amber_total,
+            "green_fields": green_total,
+        }
 
     async def _stage_qa(self, market_data: dict) -> dict:
         stocks = market_data.get("stocks", {})
         live_count = sum(1 for s in stocks.values() if s.get("_live"))
         has_cross_val = sum(1 for s in stocks.values() if s.get("cross_validation"))
         score = 9.0 if live_count == len(stocks) else 7.0 if live_count > 0 else 4.0
-        tier = "Tier 1/2 — dual-source verified" if has_cross_val else "Tier 2 — single live source" if live_count else "Tier 3 — no live data"
+        tier = (
+            "Tier 1/2 — dual-source verified"
+            if has_cross_val
+            else "Tier 2 — single live source"
+            if live_count
+            else "Tier 3 — no live data"
+        )
         return {
             "schema_valid": True,
             "timestamps_valid": True,
@@ -537,22 +660,39 @@ class PipelineRunner:
         quant_blocks = []
         for ticker, snap in market_data.get("stocks", {}).items():
             parts = [f"**{ticker} ({snap.get('company_name', ticker)})**:"]
-            if snap.get("price"): parts.append(f"price ${snap['price']}")
-            if snap.get("market_cap_bn"): parts.append(f"mkt cap ${snap['market_cap_bn']}B")
-            if snap.get("forward_pe"): parts.append(f"fwd P/E {snap['forward_pe']}x")
-            if snap.get("trailing_pe"): parts.append(f"trailing P/E {snap['trailing_pe']}x")
-            if snap.get("consensus_target_12m"): parts.append(f"consensus target ${snap['consensus_target_12m']}")
-            if snap.get("revenue_ttm_bn"): parts.append(f"revenue ${snap['revenue_ttm_bn']}B")
-            if snap.get("gross_margin_pct"): parts.append(f"gross margin {snap['gross_margin_pct']}%")
-            if snap.get("operating_margin_pct"): parts.append(f"op margin {snap['operating_margin_pct']}%")
-            if snap.get("free_cash_flow_ttm_bn"): parts.append(f"FCF ${snap['free_cash_flow_ttm_bn']}B")
-            if snap.get("ev_ebitda"): parts.append(f"EV/EBITDA {snap['ev_ebitda']}x")
-            if snap.get("debt_to_equity"): parts.append(f"D/E {snap['debt_to_equity']}")
+            if snap.get("price"):
+                parts.append(f"price ${snap['price']}")
+            if snap.get("market_cap_bn"):
+                parts.append(f"mkt cap ${snap['market_cap_bn']}B")
+            if snap.get("forward_pe"):
+                parts.append(f"fwd P/E {snap['forward_pe']}x")
+            if snap.get("trailing_pe"):
+                parts.append(f"trailing P/E {snap['trailing_pe']}x")
+            if snap.get("consensus_target_12m"):
+                parts.append(f"consensus target ${snap['consensus_target_12m']}")
+            if snap.get("revenue_ttm_bn"):
+                parts.append(f"revenue ${snap['revenue_ttm_bn']}B")
+            if snap.get("gross_margin_pct"):
+                parts.append(f"gross margin {snap['gross_margin_pct']}%")
+            if snap.get("operating_margin_pct"):
+                parts.append(f"op margin {snap['operating_margin_pct']}%")
+            if snap.get("free_cash_flow_ttm_bn"):
+                parts.append(f"FCF ${snap['free_cash_flow_ttm_bn']}B")
+            if snap.get("ev_ebitda"):
+                parts.append(f"EV/EBITDA {snap['ev_ebitda']}x")
+            if snap.get("debt_to_equity"):
+                parts.append(f"D/E {snap['debt_to_equity']}")
             if snap.get("roe"):
                 roe_val = snap["roe"]
-                parts.append(f"ROE {roe_val:.1%}" if isinstance(roe_val, float) and roe_val < 1 else f"ROE {roe_val}")
-            if snap.get("eps_growth_yoy"): parts.append(f"EPS growth {snap['eps_growth_yoy']}%")
-            if snap.get("beta"): parts.append(f"beta {snap['beta']}")
+                parts.append(
+                    f"ROE {roe_val:.1%}"
+                    if isinstance(roe_val, float) and roe_val < 1
+                    else f"ROE {roe_val}"
+                )
+            if snap.get("eps_growth_yoy"):
+                parts.append(f"EPS growth {snap['eps_growth_yoy']}%")
+            if snap.get("beta"):
+                parts.append(f"beta {snap['beta']}")
             quant_blocks.append(", ".join(parts))
 
         # Build qualitative blocks per ticker
@@ -570,7 +710,11 @@ class PipelineRunner:
                     )
 
         qual_text = "\n\n".join(qual_blocks) if qual_blocks else "(No qualitative data available)"
-        hints_text = "\n\n".join(correlation_hints_all) if correlation_hints_all else "(No correlation signals detected)"
+        hints_text = (
+            "\n\n".join(correlation_hints_all)
+            if correlation_hints_all
+            else "(No correlation signals detected)"
+        )
 
         system = textwrap.dedent(f"""
             You are the Evidence Librarian and Qualitative Intelligence Analyst for an
@@ -644,9 +788,9 @@ class PipelineRunner:
         """).strip()
 
         user_content = f"""
-Date: {market_data.get('date')}
-Universe: {', '.join(self.tickers)}
-Data source: {market_data.get('data_source')}
+Date: {market_data.get("date")}
+Universe: {", ".join(self.tickers)}
+Data source: {market_data.get("data_source")}
 
 ═══════════════════════════════════════════════════════════════
 SECTION A — QUANTITATIVE DATA (live from FMP + Finnhub)
@@ -682,13 +826,29 @@ correlation analysis for each company in the universe.
                 "industry": snap.get("industry", ""),
             }
             # Add available quantitative fields
-            for fld in ["price", "market_cap_bn", "forward_pe", "trailing_pe",
-                          "ev_ebitda", "ev_to_sales", "consensus_target_12m",
-                          "upside_to_consensus_pct", "revenue_ttm_bn",
-                          "gross_margin_pct", "operating_margin_pct", "net_margin_pct",
-                          "free_cash_flow_ttm_bn", "eps", "eps_growth_yoy",
-                          "roe", "roic", "debt_to_equity", "beta",
-                          "week52_high", "week52_low"]:
+            for fld in [
+                "price",
+                "market_cap_bn",
+                "forward_pe",
+                "trailing_pe",
+                "ev_ebitda",
+                "ev_to_sales",
+                "consensus_target_12m",
+                "upside_to_consensus_pct",
+                "revenue_ttm_bn",
+                "gross_margin_pct",
+                "operating_margin_pct",
+                "net_margin_pct",
+                "free_cash_flow_ttm_bn",
+                "eps",
+                "eps_growth_yoy",
+                "roe",
+                "roic",
+                "debt_to_equity",
+                "beta",
+                "week52_high",
+                "week52_low",
+            ]:
                 val = snap.get(fld)
                 if val is not None:
                     entry[fld] = val
@@ -716,8 +876,14 @@ correlation analysis for each company in the universe.
 
                 # Analyst actions summary
                 if pkg.analyst_actions:
-                    upgrades = sum(1 for a in pkg.analyst_actions if "upgrade" in (a.get("action", "")).lower())
-                    downgrades = sum(1 for a in pkg.analyst_actions if "downgrade" in (a.get("action", "")).lower())
+                    upgrades = sum(
+                        1 for a in pkg.analyst_actions if "upgrade" in (a.get("action", "")).lower()
+                    )
+                    downgrades = sum(
+                        1
+                        for a in pkg.analyst_actions
+                        if "downgrade" in (a.get("action", "")).lower()
+                    )
                     actions_list = [
                         f"  {a.get('gradeCompany', '?')}: {a.get('action', '')} "
                         f"{a.get('previousGrade', '')} → {a.get('newGrade', '')} ({a.get('gradingDate', '')})"
@@ -731,11 +897,13 @@ correlation analysis for each company in the universe.
                 # Insider activity net
                 if pkg.insider_activity:
                     buys = sum(
-                        1 for tx in pkg.insider_activity
+                        1
+                        for tx in pkg.insider_activity
                         if tx.get("acquistionOrDisposition") in ("A", "P")
                     )
                     sells = sum(
-                        1 for tx in pkg.insider_activity
+                        1
+                        for tx in pkg.insider_activity
                         if tx.get("acquistionOrDisposition") in ("D", "S")
                     )
                     total_val = sum(tx.get("value", 0) for tx in pkg.insider_activity)
@@ -768,12 +936,13 @@ correlation analysis for each company in the universe.
                 # Key news headlines (top 5)
                 if pkg.news:
                     headlines = [n.get("headline", "") for n in pkg.news[:5]]
-                    block_parts.append("**Key Headlines:**\n" + "\n".join(f"  • {h}" for h in headlines))
+                    block_parts.append(
+                        "**Key Headlines:**\n" + "\n".join(f"  • {h}" for h in headlines)
+                    )
 
                 # Coverage assessment
                 block_parts.append(
-                    f"**Qualitative Coverage:** {pkg.coverage_score} "
-                    f"({pkg.signal_count} signals)"
+                    f"**Qualitative Coverage:** {pkg.coverage_score} ({pkg.signal_count} signals)"
                 )
                 if pkg.coverage_gaps:
                     block_parts.append(f"**Gaps:** {', '.join(pkg.coverage_gaps[:3])}")
@@ -788,7 +957,9 @@ correlation analysis for each company in the universe.
 
                 qual_context_blocks.append("\n".join(block_parts))
 
-        qual_text = "\n\n".join(qual_context_blocks) if qual_context_blocks else "(No qualitative data)"
+        qual_text = (
+            "\n\n".join(qual_context_blocks) if qual_context_blocks else "(No qualitative data)"
+        )
 
         system = textwrap.dedent(f"""
             You are a team of Sector Analysts for an institutional research platform.
@@ -855,8 +1026,8 @@ correlation analysis for each company in the universe.
         """).strip()
 
         user_content = f"""
-Date: {market_data.get('date')}
-Universe: {', '.join(self.tickers)}
+Date: {market_data.get("date")}
+Universe: {", ".join(self.tickers)}
 
 ═══════════════════════════════════════════════════════════════
 QUANTITATIVE DATA (live from FMP + Finnhub):
@@ -931,23 +1102,35 @@ Reason deeply about qualitative-quantitative alignment and divergence.
             },
             "base": {
                 "growth_rates": [
-                    base_g * 1.05, base_g, base_g,
-                    base_g * 0.85, base_g * 0.75,
+                    base_g * 1.05,
+                    base_g,
+                    base_g,
+                    base_g * 0.85,
+                    base_g * 0.75,
                 ],
                 "ebitda_margins": [
-                    ebitda_base, ebitda_base + 0.02, ebitda_base + 0.03,
-                    ebitda_base + 0.04, ebitda_base + 0.04,
+                    ebitda_base,
+                    ebitda_base + 0.02,
+                    ebitda_base + 0.03,
+                    ebitda_base + 0.04,
+                    ebitda_base + 0.04,
                 ],
                 "terminal_growth": 0.030,
             },
             "bull": {
                 "growth_rates": [
-                    bull_g, bull_g * 0.9, bull_g * 0.8,
-                    bull_g * 0.7, bull_g * 0.6,
+                    bull_g,
+                    bull_g * 0.9,
+                    bull_g * 0.8,
+                    bull_g * 0.7,
+                    bull_g * 0.6,
                 ],
                 "ebitda_margins": [
-                    ebitda_base + 0.03, ebitda_base + 0.06, ebitda_base + 0.08,
-                    ebitda_base + 0.09, ebitda_base + 0.10,
+                    ebitda_base + 0.03,
+                    ebitda_base + 0.06,
+                    ebitda_base + 0.08,
+                    ebitda_base + 0.09,
+                    ebitda_base + 0.10,
                 ],
                 "terminal_growth": 0.035,
             },
@@ -1005,11 +1188,11 @@ Reason deeply about qualitative-quantitative alignment and divergence.
             try:
                 tbl = engine.sensitivity_table(base_assumptions_obj, net_debt)
                 rows = []
-                header = "WACC \\ TG  | " + "  ".join(f"{tg*100:.1f}%" for tg in tbl.col_values)
+                header = "WACC \\ TG  | " + "  ".join(f"{tg * 100:.1f}%" for tg in tbl.col_values)
                 rows.append(header)
                 rows.append("-" * len(header))
                 for i, w_val in enumerate(tbl.row_values):
-                    row_str = f"{w_val*100:.0f}%        | " + "  ".join(
+                    row_str = f"{w_val * 100:.0f}%        | " + "  ".join(
                         f"${tbl.grid[i][j]:7.2f}" for j in range(len(tbl.col_values))
                     )
                     rows.append(row_str)
@@ -1054,12 +1237,12 @@ Reason deeply about qualitative-quantitative alignment and divergence.
             f"  Methodology : {dcf['methodology']}",
             f"  WACC used   : {dcf['wacc_used_pct']}%  (CAPM: rf 4.5% + beta × ERP 5.5%)",
             f"  Base CAGR   : {dcf['base_cagr_assumed_pct']}%  (derived from market data)",
-            f"",
-            f"  Fair Value Estimates (implied share price):",
+            "",
+            "  Fair Value Estimates (implied share price):",
             f"    Bear case : ${dcf['fair_value_bear']}",
             f"    Base case : ${dcf['fair_value_base']}",
             f"    Bull case : ${dcf['fair_value_bull']}",
-            f"",
+            "",
             f"  Current price : ${dcf['current_price']}",
             f"  Signal        : {dcf['vs_current_price']}",
         ]
@@ -1070,8 +1253,8 @@ Reason deeply about qualitative-quantitative alignment and divergence.
             )
         if dcf.get("sensitivity_wacc_x_tg"):
             lines += [
-                f"",
-                f"  Sensitivity Table (base scenario assumptions, implied $/share):",
+                "",
+                "  Sensitivity Table (base scenario assumptions, implied $/share):",
             ]
             for row in dcf["sensitivity_wacc_x_tg"].split("\n"):
                 lines.append(f"    {row}")
@@ -1082,14 +1265,32 @@ Reason deeply about qualitative-quantitative alignment and divergence.
         stocks_dict = {}
         for t, s in market_data.get("stocks", {}).items():
             entry: dict[str, Any] = {"ticker": t, "company": s.get("company_name", t)}
-            for fld in ["price", "market_cap_bn", "forward_pe", "trailing_pe",
-                          "ev_ebitda", "ev_to_sales", "revenue_ttm_bn",
-                          "free_cash_flow_ttm_bn", "consensus_target_12m",
-                          "upside_to_consensus_pct", "analyst_ratings",
-                          "gross_margin_pct", "operating_margin_pct", "net_margin_pct",
-                          "eps", "eps_growth_yoy", "roe", "roic", "debt_to_equity",
-                          "fcf_yield", "dividend_yield", "beta",
-                          "week52_high", "week52_low"]:
+            for fld in [
+                "price",
+                "market_cap_bn",
+                "forward_pe",
+                "trailing_pe",
+                "ev_ebitda",
+                "ev_to_sales",
+                "revenue_ttm_bn",
+                "free_cash_flow_ttm_bn",
+                "consensus_target_12m",
+                "upside_to_consensus_pct",
+                "analyst_ratings",
+                "gross_margin_pct",
+                "operating_margin_pct",
+                "net_margin_pct",
+                "eps",
+                "eps_growth_yoy",
+                "roe",
+                "roic",
+                "debt_to_equity",
+                "fcf_yield",
+                "dividend_yield",
+                "beta",
+                "week52_high",
+                "week52_low",
+            ]:
                 val = s.get(fld)
                 if val is not None:
                     entry[fld] = val
@@ -1199,8 +1400,8 @@ Reason deeply about qualitative-quantitative alignment and divergence.
         """).strip()
 
         user_content = f"""
-Date: {market_data.get('date')}
-Universe: {', '.join(self.tickers)}
+Date: {market_data.get("date")}
+Universe: {", ".join(self.tickers)}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 DETERMINISTIC DCF MODEL OUTPUTS  [computed by quant engine — NOT LLM estimates]
@@ -1254,22 +1455,32 @@ Reference qualitative signals where they inform scenario probabilities.
             and which stocks are most/least exposed.
         """).strip()
 
-        sector_ctx = f"\n\nSECTOR ANALYSIS CONTEXT (for overlay calibration):\n{sector_outputs[:2000]}..." if sector_outputs else ""
+        sector_ctx = (
+            f"\n\nSECTOR ANALYSIS CONTEXT (for overlay calibration):\n{sector_outputs[:2000]}..."
+            if sector_outputs
+            else ""
+        )
 
         user_content = f"""
-Date: {macro_data.get('date')}
+Date: {macro_data.get("date")}
 
 MACRO CONTEXT:
 {json.dumps(macro_data, indent=2)}
 
-PORTFOLIO UNIVERSE: {', '.join(self.tickers)}{sector_ctx}
+PORTFOLIO UNIVERSE: {", ".join(self.tickers)}{sector_ctx}
 
 Please produce the macro and political risk analysis.
         """.strip()
 
         return await self._call_llm(system, user_content, stage_num=8)
 
-    async def _stage_risk(self, market_data: dict, sector_outputs: str, valuation_outputs: str = "", macro_outputs: str = "") -> str:
+    async def _stage_risk(
+        self,
+        market_data: dict,
+        sector_outputs: str,
+        valuation_outputs: str = "",
+        macro_outputs: str = "",
+    ) -> str:
         """Quant risk summary incorporating sector, valuation, and macro context."""
         stocks = market_data.get("stocks", {})
 
@@ -1286,7 +1497,11 @@ Please produce the macro and political risk analysis.
                 "sector": snap.get("sector", ""),
                 "implied_upside_pct": round(upside, 1),
                 "forward_pe": pe,
-                "multiple_percentile_estimate": "High" if pe > 35 else "Medium" if pe > 20 else "Low",
+                "multiple_percentile_estimate": "High"
+                if pe > 35
+                else "Medium"
+                if pe > 20
+                else "Low",
                 "beta": beta,
                 "market_cap_bn": snap.get("market_cap_bn"),
                 "debt_to_equity": snap.get("debt_to_equity"),
@@ -1310,7 +1525,8 @@ Please produce the macro and political risk analysis.
                 # Format as readable table
                 table_lines = [
                     "=== DETERMINISTIC SCENARIO STRESS IMPACTS (% drawdown per ticker) ===",
-                    "Scenario                       | " + " | ".join(f"{t:>6}" for t in self.tickers),
+                    "Scenario                       | "
+                    + " | ".join(f"{t:>6}" for t in self.tickers),
                     "-" * (34 + 10 * len(self.tickers)),
                 ]
                 for scenario_name, impacts in scenario_map.items():
@@ -1322,7 +1538,8 @@ Please produce the macro and political risk analysis.
                 # Severity summary
                 severe_flags = [
                     f"  {sr.ticker} under '{sr.scenario_name}': {sr.estimated_impact_pct:+.1f}% [{sr.severity.upper()}]"
-                    for sr in scenario_results if sr.severity in ("high", "severe")
+                    for sr in scenario_results
+                    if sr.severity in ("high", "severe")
                 ]
                 table_lines.append("")
                 table_lines.append("High/Severe exposures:")
@@ -1345,15 +1562,13 @@ Please produce the macro and political risk analysis.
                 # Synthetic beta-scaled return series (60 monthly periods)
                 # sigma_market ≈ 4% monthly volatility
                 import random as _random
+
                 _random.seed(42)
                 sigma_mkt = 0.04
                 synthetic_returns: dict[str, list[float]] = {}
                 for t in self.tickers:
                     b = stocks.get(t, {}).get("beta") or 1.2
-                    synthetic_returns[t] = [
-                        b * (_random.gauss(0, sigma_mkt))
-                        for _ in range(60)
-                    ]
+                    synthetic_returns[t] = [b * (_random.gauss(0, sigma_mkt)) for _ in range(60)]
 
                 corr_matrix = risk_eng.compute_correlation_matrix(synthetic_returns)
                 var_contrib = risk_eng.compute_contribution_to_variance(
@@ -1368,7 +1583,10 @@ Please produce the macro and political risk analysis.
                     sector = (snap.get("sector") or "").lower()
                     if any(k in company for k in ["nvidia", "broadcom", "marvell", "amd"]):
                         subthemes[t] = "compute_semiconductors"
-                    elif any(k in company for k in ["constellation", "vistra", "ge vernova", "nextracker"]):
+                    elif any(
+                        k in company
+                        for k in ["constellation", "vistra", "ge vernova", "nextracker"]
+                    ):
                         subthemes[t] = "power_energy"
                     elif any(k in company for k in ["eaton", "hubbell", "quanta", "aecom"]):
                         subthemes[t] = "infrastructure"
@@ -1461,12 +1679,16 @@ Please produce the macro and political risk analysis.
             For each stock.
         """).strip()
 
-        val_ctx = f"\n\nVALUATION SCENARIOS (for drawdown calibration):\n{valuation_outputs[:1500]}..." if valuation_outputs else ""
+        val_ctx = (
+            f"\n\nVALUATION SCENARIOS (for drawdown calibration):\n{valuation_outputs[:1500]}..."
+            if valuation_outputs
+            else ""
+        )
         macro_ctx = f"\n\nMACRO REGIME OVERLAY:\n{macro_outputs[:1200]}..." if macro_outputs else ""
 
         user_content = f"""
-Date: {market_data.get('date')}
-Universe: {', '.join(self.tickers)}
+Date: {market_data.get("date")}
+Universe: {", ".join(self.tickers)}
 {quant_risk_context}
 
 ━━━ MARKET-BASED RISK METRICS ━━━
@@ -1535,7 +1757,7 @@ Reference [SCENARIO ENGINE] and [RISK ENGINE] data throughout.
         """).strip()
 
         user_content = f"""
-Universe: {', '.join(self.tickers)}
+Universe: {", ".join(self.tickers)}
 
 SECTOR ANALYSIS (includes qualitative intelligence — Six-Box format):
 {sector_outputs[:4000]}
@@ -1549,7 +1771,9 @@ Challenge both the quantitative AND qualitative reasoning.
 
         return await self._call_llm(system, user_content, stage_num=10)
 
-    async def _stage_review(self, sector_outputs: str, valuation_outputs: str, red_team_outputs: str) -> str:
+    async def _stage_review(
+        self, sector_outputs: str, valuation_outputs: str, red_team_outputs: str
+    ) -> str:
         system = textwrap.dedent(f"""
             You are the Associate Reviewer for an institutional research platform.
 
@@ -1584,7 +1808,7 @@ Challenge both the quantitative AND qualitative reasoning.
         """).strip()
 
         user_content = f"""
-Universe: {', '.join(self.tickers)}
+Universe: {", ".join(self.tickers)}
 
 SECTOR ANALYSIS (excerpt):
 {sector_outputs[:2000]}
@@ -1600,13 +1824,19 @@ Please conduct the full associate review and produce the self-audit scorecard.
 
         return await self._call_llm(system, user_content, stage_num=11)
 
-    async def _stage_portfolio(self, sector_outputs: str, valuation_outputs: str, risk_outputs: str, review_output: str = "") -> str:
+    async def _stage_portfolio(
+        self,
+        sector_outputs: str,
+        valuation_outputs: str,
+        risk_outputs: str,
+        review_output: str = "",
+    ) -> str:
         # Build constraints from client profile
-        if self.client_profile and hasattr(self.client_profile, 'get_portfolio_constraints'):
+        if self.client_profile and hasattr(self.client_profile, "get_portfolio_constraints"):
             constraints = self.client_profile.get_portfolio_constraints()
-            max_single = constraints.get('max_single_position_pct', 15)
-            max_sector = constraints.get('max_sector_pct', 50)
-            amount = getattr(self.client_profile, 'investment_amount_usd', None)
+            max_single = constraints.get("max_single_position_pct", 15)
+            max_sector = constraints.get("max_sector_pct", 50)
+            amount = getattr(self.client_profile, "investment_amount_usd", None)
             amount_str = f"\n            - **Investment amount**: ${amount:,.0f}" if amount else ""
         else:
             max_single = 15
@@ -1651,7 +1881,7 @@ Please conduct the full associate review and produce the self-audit scorecard.
         """).strip()
 
         user_content = f"""
-Universe: {', '.join(self.tickers)}
+Universe: {", ".join(self.tickers)}
 
 SECTOR ANALYSIS (excerpt):
 {sector_outputs[:2500]}
@@ -1663,7 +1893,7 @@ RISK ANALYSIS (excerpt):
 {risk_outputs[:1500]}
 
 ASSOCIATE REVIEW (full — mandatory constraint):
-{review_output or '(not available)'}
+{review_output or "(not available)"}
 
 HARD RULE: If the associate review contains a FAIL decision, you must note it explicitly
 and flag that any portfolio recommendation is provisional pending remediation.
@@ -1726,7 +1956,7 @@ Please construct the three portfolio variants.
                 f"**Time Horizon:** {getattr(cp, 'time_horizon_years', 'N/A')} years\n"
                 f"**Investment Theme:** {getattr(cp, 'investment_theme', 'custom').replace('_', ' ').title()}"
             )
-            if getattr(cp, 'investment_amount_usd', None):
+            if getattr(cp, "investment_amount_usd", None):
                 client_header += f"\n**Investment Amount:** ${cp.investment_amount_usd:,.0f}"
         else:
             client_header = "**Client:** Default institutional analysis"

@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import sys
-from pathlib import Path
 from typing import Optional
 
 import typer
@@ -24,11 +22,21 @@ console = Console()
 # ── Default universe from the skill files ──────────────────────────────
 DEFAULT_UNIVERSE = [
     # Compute & Silicon
-    "NVDA", "AVGO", "TSM",
+    "NVDA",
+    "AVGO",
+    "TSM",
     # Power & Energy
-    "CEG", "VST", "GEV",
+    "CEG",
+    "VST",
+    "GEV",
     # Infrastructure, Materials & Build-out
-    "PWR", "ETN", "APH", "FIX", "FCX", "BHP", "NXT",
+    "PWR",
+    "ETN",
+    "APH",
+    "FIX",
+    "FCX",
+    "BHP",
+    "NXT",
 ]
 
 
@@ -45,16 +53,20 @@ def setup_logging(verbose: bool = False):
 def run(
     tickers: Optional[str] = typer.Option(
         None,
-        "--tickers", "-t",
+        "--tickers",
+        "-t",
         help="Comma-separated ticker list. Defaults to AI infrastructure universe.",
     ),
     config: Optional[str] = typer.Option(
         None,
-        "--config", "-c",
+        "--config",
+        "-c",
         help="Path to pipeline YAML config.",
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging."),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Validate config without executing pipeline."),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Validate config without executing pipeline."
+    ),
 ):
     """Run the full 15-stage research pipeline."""
     setup_logging(verbose)
@@ -67,13 +79,15 @@ def run(
 
     universe = tickers.split(",") if tickers else DEFAULT_UNIVERSE
 
-    console.print(Panel.fit(
-        f"[bold blue]AI Infrastructure Research Pipeline v8[/]\n"
-        f"Universe: {len(universe)} tickers\n"
-        f"Config: {config or 'default'}\n"
-        f"Run ID: pending",
-        title="Pipeline Startup",
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold blue]AI Infrastructure Research Pipeline v8[/]\n"
+            f"Universe: {len(universe)} tickers\n"
+            f"Config: {config or 'default'}\n"
+            f"Run ID: pending",
+            title="Pipeline Startup",
+        )
+    )
 
     if dry_run:
         console.print("[yellow]Dry run mode — validating configuration only.[/]")
@@ -82,25 +96,30 @@ def run(
         return
 
     from research_pipeline.pipeline.engine import PipelineEngine
+
     engine = PipelineEngine(settings, pipeline_config)
     result = asyncio.run(engine.run_full_pipeline(universe))
 
     # Display results
     if result["status"] == "completed":
-        console.print(Panel.fit(
-            f"[bold green]Pipeline COMPLETED[/]\n"
-            f"Run ID: {result['run_id']}\n"
-            f"Stages: {len(result.get('stages_completed', []))} completed\n"
-            f"Report: {result.get('report_path', 'N/A')}",
-            title="Result",
-        ))
+        console.print(
+            Panel.fit(
+                f"[bold green]Pipeline COMPLETED[/]\n"
+                f"Run ID: {result['run_id']}\n"
+                f"Stages: {len(result.get('stages_completed', []))} completed\n"
+                f"Report: {result.get('report_path', 'N/A')}",
+                title="Result",
+            )
+        )
     else:
-        console.print(Panel.fit(
-            f"[bold red]Pipeline FAILED[/]\n"
-            f"Run ID: {result.get('run_id', 'N/A')}\n"
-            f"Blocked at stage: {result.get('blocked_at', '?')}",
-            title="Result",
-        ))
+        console.print(
+            Panel.fit(
+                f"[bold red]Pipeline FAILED[/]\n"
+                f"Run ID: {result.get('run_id', 'N/A')}\n"
+                f"Blocked at stage: {result.get('blocked_at', '?')}",
+                title="Result",
+            )
+        )
         raise typer.Exit(1)
 
 
@@ -116,7 +135,9 @@ def validate(
     settings = Settings()
     try:
         pipeline_config = load_pipeline_config(config or settings.config_dir / "pipeline.yaml")
-        console.print(f"[green]Config valid:[/] {pipeline_config.version} — {pipeline_config.project_name}")
+        console.print(
+            f"[green]Config valid:[/] {pipeline_config.version} — {pipeline_config.project_name}"
+        )
         console.print(f"  Stages defined: {len(pipeline_config.stages)}")
         console.print(f"  Portfolio variants: {pipeline_config.portfolio_variants}")
         console.print(f"  Test categories: {pipeline_config.test_categories}")
@@ -154,7 +175,9 @@ def test(
         table.add_row(detail["test_id"], detail["category"], status, detail["rule"][:60])
 
     console.print(table)
-    console.print(f"\n[bold]Total: {results['total']} | Passed: {results['passed']} | Failed: {results['failed']}[/]")
+    console.print(
+        f"\n[bold]Total: {results['total']} | Passed: {results['passed']} | Failed: {results['failed']}[/]"
+    )
 
 
 @app.command()
@@ -200,11 +223,20 @@ def universe():
 
 def _show_universe_table(tickers: list[str]):
     subthemes = {
-        "NVDA": "Compute", "AVGO": "Compute", "TSM": "Compute",
-        "CEG": "Power", "VST": "Power", "GEV": "Power",
-        "PWR": "Infrastructure", "ETN": "Infrastructure", "APH": "Infrastructure",
-        "FIX": "Infrastructure", "FCX": "Materials", "BHP": "Materials",
-        "NXT": "Data Centres", "NLR": "ETF",
+        "NVDA": "Compute",
+        "AVGO": "Compute",
+        "TSM": "Compute",
+        "CEG": "Power",
+        "VST": "Power",
+        "GEV": "Power",
+        "PWR": "Infrastructure",
+        "ETN": "Infrastructure",
+        "APH": "Infrastructure",
+        "FIX": "Infrastructure",
+        "FCX": "Materials",
+        "BHP": "Materials",
+        "NXT": "Data Centres",
+        "NLR": "ETF",
     }
     table = Table(title="Research Universe")
     table.add_column("Ticker", style="cyan")

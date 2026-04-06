@@ -112,6 +112,7 @@ Return a single flat JSON object (not an array)."""
 
     def format_input(self, inputs: dict[str, Any]) -> str:
         import json
+
         return json.dumps(inputs, indent=2, default=str)
 
     def parse_output(self, raw_response: str) -> dict[str, Any]:
@@ -124,13 +125,13 @@ Return a single flat JSON object (not an array)."""
 
         # Enforce mandatory fields
         required = {
-            "yield_curve_regime":       "unknown",
-            "cost_of_capital_trend":    "unknown",
-            "rate_sensitivity_score":   5,
-            "methodology_note":         "",
-            "key_risks":                [],
-            "offsetting_factors":       [],
-            "credit_quality_flags":     [],
+            "yield_curve_regime": "unknown",
+            "cost_of_capital_trend": "unknown",
+            "rate_sensitivity_score": 5,
+            "methodology_note": "",
+            "key_risks": [],
+            "offsetting_factors": [],
+            "credit_quality_flags": [],
         }
         for key, default in required.items():
             if key not in parsed or parsed[key] is None:
@@ -145,8 +146,7 @@ Return a single flat JSON object (not an array)."""
 
         if not parsed.get("methodology_note"):
             parsed["methodology_note"] = (
-                "No methodology note provided by model — "
-                "treat as indicative/unverified"
+                "No methodology note provided by model — treat as indicative/unverified"
             )
 
         return parsed

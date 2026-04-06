@@ -14,24 +14,64 @@ logger = logging.getLogger(__name__)
 
 _ETF_HOLDINGS: dict[str, dict[str, float]] = {
     "BOTZ": {  # Global X Robotics & AI ETF
-        "NVDA": 8.5, "AVGO": 3.2, "ABB": 5.1, "FANUC": 4.8, "KEYENCE": 4.2,
-        "ISRG": 3.9, "SIEMENS": 2.8, "KUKA": 1.9, "COGNEX": 2.1, "TSM": 2.4,
+        "NVDA": 8.5,
+        "AVGO": 3.2,
+        "ABB": 5.1,
+        "FANUC": 4.8,
+        "KEYENCE": 4.2,
+        "ISRG": 3.9,
+        "SIEMENS": 2.8,
+        "KUKA": 1.9,
+        "COGNEX": 2.1,
+        "TSM": 2.4,
     },
     "AIQ": {  # Global X AI & Technology ETF
-        "NVDA": 6.2, "MSFT": 5.8, "GOOGL": 5.3, "META": 4.7, "AVGO": 3.9,
-        "AMD": 3.1, "TSM": 2.8, "ORCL": 2.5, "CRM": 2.2, "ADBE": 2.0,
+        "NVDA": 6.2,
+        "MSFT": 5.8,
+        "GOOGL": 5.3,
+        "META": 4.7,
+        "AVGO": 3.9,
+        "AMD": 3.1,
+        "TSM": 2.8,
+        "ORCL": 2.5,
+        "CRM": 2.2,
+        "ADBE": 2.0,
     },
     "SOXX": {  # iShares Semiconductor ETF
-        "NVDA": 9.1, "AVGO": 8.7, "AMD": 5.4, "TSM": 4.9, "QCOM": 4.6,
-        "INTC": 4.2, "MRVL": 3.8, "TXN": 3.5, "MU": 3.3, "AMAT": 3.1,
+        "NVDA": 9.1,
+        "AVGO": 8.7,
+        "AMD": 5.4,
+        "TSM": 4.9,
+        "QCOM": 4.6,
+        "INTC": 4.2,
+        "MRVL": 3.8,
+        "TXN": 3.5,
+        "MU": 3.3,
+        "AMAT": 3.1,
     },
     "XLK": {  # Technology Select Sector SPDR
-        "MSFT": 22.4, "NVDA": 21.5, "AAPL": 18.3, "AVGO": 4.8, "AMD": 2.9,
-        "ORCL": 2.4, "ADBE": 2.1, "AMAT": 1.9, "QCOM": 1.8, "CSCO": 1.7,
+        "MSFT": 22.4,
+        "NVDA": 21.5,
+        "AAPL": 18.3,
+        "AVGO": 4.8,
+        "AMD": 2.9,
+        "ORCL": 2.4,
+        "ADBE": 2.1,
+        "AMAT": 1.9,
+        "QCOM": 1.8,
+        "CSCO": 1.7,
     },
     "ROBO": {  # ROBO Global Robotics & Automation ETF
-        "IRBT": 1.8, "FANUC": 1.7, "YASK": 1.7, "ABB": 1.6, "ISRG": 1.6,
-        "NVDA": 1.5, "KION": 1.5, "DANAHER": 1.4, "KEYENCE": 1.4, "COGNEX": 1.4,
+        "IRBT": 1.8,
+        "FANUC": 1.7,
+        "YASK": 1.7,
+        "ABB": 1.6,
+        "ISRG": 1.6,
+        "NVDA": 1.5,
+        "KION": 1.5,
+        "DANAHER": 1.4,
+        "KEYENCE": 1.4,
+        "COGNEX": 1.4,
     },
 }
 
@@ -39,11 +79,12 @@ _ETF_HOLDINGS: dict[str, dict[str, float]] = {
 @dataclass
 class ETFOverlapResult:
     """Overlap between a portfolio ticker and a single ETF."""
+
     ticker: str
     etf_name: str
     portfolio_weight_pct: float  # portfolio weight (0-100)
-    etf_weight_pct: float        # ETF constituent weight (0-100)
-    active_weight_pct: float     # portfolio - ETF weight
+    etf_weight_pct: float  # ETF constituent weight (0-100)
+    active_weight_pct: float  # portfolio - ETF weight
     is_benchmark_position: bool  # True if ETF weight > 0
     tracking_contribution: float  # contribution to tracking error (approx)
 
@@ -51,22 +92,24 @@ class ETFOverlapResult:
 @dataclass
 class PortfolioETFOverlap:
     """Full ETF overlap analysis for a portfolio."""
+
     run_id: str
     etf_name: str
     overlapping_tickers: list[str] = field(default_factory=list)
-    overlap_weight_pct: float = 0.0        # sum of ETF weights in portfolio
-    unique_weight_pct: float = 0.0         # sum of portfolio weights not in ETF
-    weighted_overlap_score: float = 0.0    # portfolio-weighted similarity 0-100
+    overlap_weight_pct: float = 0.0  # sum of ETF weights in portfolio
+    unique_weight_pct: float = 0.0  # sum of portfolio weights not in ETF
+    weighted_overlap_score: float = 0.0  # portfolio-weighted similarity 0-100
     positions: list[ETFOverlapResult] = field(default_factory=list)
 
 
 @dataclass
 class UniverseOverlapReport:
     """Consolidated ETF overlap for all ETFs."""
+
     run_id: str
-    portfolio_weights: dict[str, float]    # {ticker: pct}
+    portfolio_weights: dict[str, float]  # {ticker: pct}
     etf_overlaps: list[PortfolioETFOverlap] = field(default_factory=list)
-    most_similar_etf: str = ""             # ETF with highest overlap
+    most_similar_etf: str = ""  # ETF with highest overlap
     max_overlap_score: float = 0.0
     differentiation_score: float = 100.0  # 100 = fully differentiated, 0 = ETF clone
 
@@ -130,17 +173,19 @@ class ETFOverlapEngine:
                 overlap_weight += etf_wt
 
             # Approximate tracking contribution: squared active weight
-            tracking_contrib = (active_wt ** 2) / max(total_port_weight, 1.0)
+            tracking_contrib = (active_wt**2) / max(total_port_weight, 1.0)
 
-            result.positions.append(ETFOverlapResult(
-                ticker=ticker,
-                etf_name=etf_name,
-                portfolio_weight_pct=port_wt,
-                etf_weight_pct=etf_wt,
-                active_weight_pct=active_wt,
-                is_benchmark_position=is_bench,
-                tracking_contribution=round(tracking_contrib, 4),
-            ))
+            result.positions.append(
+                ETFOverlapResult(
+                    ticker=ticker,
+                    etf_name=etf_name,
+                    portfolio_weight_pct=port_wt,
+                    etf_weight_pct=etf_wt,
+                    active_weight_pct=active_wt,
+                    is_benchmark_position=is_bench,
+                    tracking_contribution=round(tracking_contrib, 4),
+                )
+            )
 
         result.overlap_weight_pct = round(overlap_weight, 2)
         result.unique_weight_pct = round(max(0, total_port_weight - overlap_weight), 2)

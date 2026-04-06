@@ -100,9 +100,7 @@ class ScenarioStressEngine:
         if custom_scenarios:
             self.scenarios.update(custom_scenarios)
 
-    def apply_scenario(
-        self, scenario_key: str, tickers: list[str]
-    ) -> list[ScenarioResult]:
+    def apply_scenario(self, scenario_key: str, tickers: list[str]) -> list[ScenarioResult]:
         """Apply a scenario to a list of tickers."""
         scenario = self.scenarios.get(scenario_key)
         if not scenario:
@@ -129,13 +127,15 @@ class ScenarioStressEngine:
             elif abs(impact) >= 8:
                 severity = "moderate"
 
-            results.append(ScenarioResult(
-                ticker=ticker,
-                scenario_name=scenario.name,
-                impact_description=scenario.description,
-                estimated_impact_pct=round(impact, 1),
-                severity=severity,
-            ))
+            results.append(
+                ScenarioResult(
+                    ticker=ticker,
+                    scenario_name=scenario.name,
+                    impact_description=scenario.description,
+                    estimated_impact_pct=round(impact, 1),
+                    severity=severity,
+                )
+            )
         return results
 
     def run_all_scenarios(self, tickers: list[str]) -> list[ScenarioResult]:
@@ -160,8 +160,7 @@ class ScenarioStressEngine:
         for key in self.scenarios:
             results = self.apply_scenario(key, tickers)
             weighted_impact = sum(
-                (r.estimated_impact_pct or 0) * weights.get(r.ticker, 0) / 100
-                for r in results
+                (r.estimated_impact_pct or 0) * weights.get(r.ticker, 0) / 100 for r in results
             )
             summary[self.scenarios[key].name] = round(weighted_impact, 2)
         return summary
@@ -179,22 +178,53 @@ class ScenarioStressEngine:
         # Axis definitions: (axis_name, bear_description, base_impact_pct, high_exposure, low_exposure)
         # Impact percentages are indicative — AU/global macro bear scenarios
         MACRO_AXIS_IMPACTS = [
-            ("au_rates_bear", macro_scenario.au_rates.bear, -10.0,
-             ["CBA.AX", "WBC.AX", "ANZ.AX", "NAB.AX", "MQG.AX", "WES.AX"],  # rate-sensitive AU names
-             ["BHP.AX", "CSL.AX", "GMG.AX"]),
-            ("us_rates_bear", macro_scenario.us_rates.bear, -12.0,
-             ["NVDA", "AVGO", "NXT", "ANET"],  # duration-sensitive growth names
-             ["FCX", "BHP", "CEG"]),
-            ("au_inflation_bear", macro_scenario.au_inflation.bear, -8.0,
-             ["WOW.AX", "WES.AX", "CBA.AX"],  # consumer / margin-squeeze names
-             ["BHP.AX", "CSL.AX"]),
-            ("au_housing_bear", macro_scenario.au_housing.bear, -14.0,
-             ["CBA.AX", "WBC.AX", "ANZ.AX", "NAB.AX"],  # bank mortgage book
-             ["GMG.AX", "CSL.AX", "BHP.AX"]),
-            ("aud_usd_bear", macro_scenario.aud_usd.bear, -6.0,
-             ["WOW.AX", "WES.AX"],              # import-cost exposed AU names
-             ["BHP.AX", "CSL.AX",               # exporters benefit from weak AUD
-              "NVDA", "AVGO"]),                  # USD assets: AUD return improves
+            (
+                "au_rates_bear",
+                macro_scenario.au_rates.bear,
+                -10.0,
+                [
+                    "CBA.AX",
+                    "WBC.AX",
+                    "ANZ.AX",
+                    "NAB.AX",
+                    "MQG.AX",
+                    "WES.AX",
+                ],  # rate-sensitive AU names
+                ["BHP.AX", "CSL.AX", "GMG.AX"],
+            ),
+            (
+                "us_rates_bear",
+                macro_scenario.us_rates.bear,
+                -12.0,
+                ["NVDA", "AVGO", "NXT", "ANET"],  # duration-sensitive growth names
+                ["FCX", "BHP", "CEG"],
+            ),
+            (
+                "au_inflation_bear",
+                macro_scenario.au_inflation.bear,
+                -8.0,
+                ["WOW.AX", "WES.AX", "CBA.AX"],  # consumer / margin-squeeze names
+                ["BHP.AX", "CSL.AX"],
+            ),
+            (
+                "au_housing_bear",
+                macro_scenario.au_housing.bear,
+                -14.0,
+                ["CBA.AX", "WBC.AX", "ANZ.AX", "NAB.AX"],  # bank mortgage book
+                ["GMG.AX", "CSL.AX", "BHP.AX"],
+            ),
+            (
+                "aud_usd_bear",
+                macro_scenario.aud_usd.bear,
+                -6.0,
+                ["WOW.AX", "WES.AX"],  # import-cost exposed AU names
+                [
+                    "BHP.AX",
+                    "CSL.AX",  # exporters benefit from weak AUD
+                    "NVDA",
+                    "AVGO",
+                ],
+            ),  # USD assets: AUD return improves
         ]
 
         registered: list[str] = []
@@ -211,6 +241,7 @@ class ScenarioStressEngine:
 
         logger.info(
             "ScenarioStressEngine: registered %d macro scenarios from MacroScenario (run_id=%s)",
-            len(registered), macro_scenario.run_id,
+            len(registered),
+            macro_scenario.run_id,
         )
         return registered

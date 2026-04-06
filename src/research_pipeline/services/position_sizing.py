@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -109,9 +108,7 @@ class PositionSizingEngine:
         shifted = {t: s - min_score + 0.1 for t, s in composite_scores.items()}
         total = sum(shifted.values())
 
-        raw_weights = {
-            t: (v / total) * risk_budget_pct for t, v in shifted.items()
-        }
+        raw_weights = {t: (v / total) * risk_budget_pct for t, v in shifted.items()}
         return self._apply_constraints(raw_weights)
 
     def from_optimisation(
@@ -119,9 +116,7 @@ class PositionSizingEngine:
         optimal_weights: dict[str, float],
     ) -> dict[str, float]:
         """Apply position constraints to optimizer output weights."""
-        return self._apply_constraints(
-            {t: w * 100 for t, w in optimal_weights.items()}
-        )
+        return self._apply_constraints({t: w * 100 for t, w in optimal_weights.items()})
 
     def _apply_constraints(self, weights: dict[str, float]) -> dict[str, float]:
         """Apply min/max position constraints iteratively.
@@ -196,5 +191,7 @@ class PositionSizingEngine:
         elif method == "risk_budget" and conviction_scores and volatilities:
             return self.risk_budget_weighted(conviction_scores, volatilities, **kwargs)
         else:
-            logger.warning("Unknown sizing method '%s' or missing data — falling back to equal weight", method)
+            logger.warning(
+                "Unknown sizing method '%s' or missing data — falling back to equal weight", method
+            )
             return self.equal_weight(tickers)
