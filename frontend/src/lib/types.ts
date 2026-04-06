@@ -2,6 +2,7 @@
 
 export interface RunRequest {
   universe: string[];
+  universe_mode?: "discovery" | "preset" | "custom";
   run_label?: string;
   llm_model?: string;
   llm_temperature?: number;

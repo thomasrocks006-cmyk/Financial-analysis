@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { listRuns, listSavedRuns } from "@/lib/api";
+import { listRuns, listSavedRuns, getMarketIndices } from "@/lib/api";
 import { MetricCard } from "@/components/ui/metric-card";
 import { LiveEventFeed } from "@/components/pipeline/live-event-feed";
 import Link from "next/link";
@@ -10,13 +10,17 @@ import { cn } from "@/lib/utils";
 import { usePipelineStore } from "@/lib/store";
 import { getApiTargetLabel } from "@/lib/runtime-settings";
 
-const MARKET_BOARD = [
-  { sym: "SPX", value: "5421.8", pct: "+0.23%" },
-  { sym: "NDX", value: "19284", pct: "+0.47%" },
-  { sym: "ASX200", value: "7892.1", pct: "-0.23%" },
-  { sym: "NVDA", value: "892.4", pct: "+2.41%" },
-  { sym: "TSM", value: "164.2", pct: "+0.80%" },
-  { sym: "VIX", value: "18.42", pct: "+4.78%" },
+// Market board now loaded live from the API.  This fallback is shown while
+// the API call is in-flight or if the backend is offline.
+const MARKET_BOARD_FALLBACK = [
+  { sym: "SPY",  label: "S&P 500",      price: "—", change_pct_str: "—" },
+  { sym: "QQQ",  label: "NASDAQ 100",   price: "—", change_pct_str: "—" },
+  { sym: "IWM",  label: "Russell 2000", price: "—", change_pct_str: "—" },
+  { sym: "EFA",  label: "Int'l Dev.",   price: "—", change_pct_str: "—" },
+  { sym: "GLD",  label: "Gold",         price: "—", change_pct_str: "—" },
+  { sym: "TLT",  label: "20yr Treasury",price: "—", change_pct_str: "—" },
+  { sym: "IBIT", label: "Bitcoin ETF",  price: "—", change_pct_str: "—" },
+  { sym: "USO",  label: "Crude Oil",    price: "—", change_pct_str: "—" },
 ];
 
 const QUICK_ACTIONS = [
@@ -37,7 +41,7 @@ const STARTUP_CHECKLIST = [
   "Verify the FastAPI backend target in Settings",
   "Review saved defaults for market, benchmark, and position limits",
   "Check prior saved reports before starting a fresh run",
-  "Use New Run to select a preset universe or custom basket",
+  "Use New Run to select Discovery (broad market) or a named preset",
 ];
 
 const PORTFOLIO_ROLES = ["CORE", "GROWTH", "HEDGE", "QUALITY", "TACTICAL", "INFRA"];
@@ -61,6 +65,34 @@ export default function DashboardPage() {
     queryKey: ["saved-runs"],
     queryFn: listSavedRuns,
   });
+
+  // Live market indices — poll every 60 s (FMP free tier rate-limit friendly)
+  const { data: indicesData } = useQuery({
+    queryKey: ["market-indices"],
+    queryFn: getMarketIndices,
+    refetchInterval: 60_000,
+    staleTime: 55_000,
+    retry: 1,
+  });
+
+  const marketBoard =
+    indicesData?.indices && indicesData.indices.length > 0
+      ? indicesData.indices.slice(0, 8).map((q) => ({
+          sym: q.sym,
+          label: q.label,
+          price:
+            q.price != null
+              ? q.price >= 1000
+                ? q.price.toLocaleString("en-US", { maximumFractionDigits: 0 })
+                : q.price.toFixed(2)
+              : "—",
+          change_pct_str: q.change_pct_str ?? "—",
+          positive: (q.change_pct ?? 0) >= 0,
+        }))
+      : MARKET_BOARD_FALLBACK.map((q) => ({
+          ...q,
+          positive: false,
+        }));
 
   const runs  = activeRuns?.runs  || [];
   const saved = savedRuns?.runs   || [];
@@ -97,7 +129,7 @@ export default function DashboardPage() {
             Meridian Research Terminal
           </span>
           <div className="mt-1 text-[10px] tracking-[.08em] text-[var(--text-muted)] uppercase">
-            AI Infrastructure Pipeline — JPAM AU Market
+            Multi-Asset Research Platform — Broad Market Coverage
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -167,15 +199,21 @@ export default function DashboardPage() {
 
       <div className="grid md:grid-cols-[1.3fr_1fr]" style={{ gap: "1px", background: "var(--border)" }}>
         <div className="bg-[var(--surface)]">
-          <div className="px-4 py-1.5 bg-[var(--surface-2)]">
+          <div className="px-4 py-1.5 bg-[var(--surface-2)] flex items-center justify-between">
             <span className="text-[var(--text-label)] text-[9px] tracking-[.1em] uppercase">Market Pulse</span>
+            <span className="text-[9px] text-[var(--text-muted)]">
+              {indicesData ? "LIVE · refreshes every 60s" : "LOADING…"}
+            </span>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-3">
-            {MARKET_BOARD.map((item) => (
+          <div className="grid grid-cols-2 md:grid-cols-4">
+            {marketBoard.map((item) => (
               <div key={item.sym} className="border border-[var(--border)] px-4 py-3">
                 <div className="text-[10px] tracking-[.08em] text-[var(--info)] uppercase">{item.sym}</div>
-                <div className="mt-1 text-[16px] text-[var(--text-primary)] tabular-nums">{item.value}</div>
-                <div className={cn("mt-1 text-[10px] tabular-nums", item.pct.startsWith("+") ? "text-[var(--success)]" : "text-[var(--error)]")}>{item.pct}</div>
+                <div className="text-[8px] text-[var(--text-muted)] uppercase mt-0.5">{item.label}</div>
+                <div className="mt-1 text-[15px] text-[var(--text-primary)] tabular-nums">{item.price}</div>
+                <div className={cn("mt-1 text-[10px] tabular-nums", item.positive ? "text-[var(--success)]" : "text-[var(--error)]")}>
+                  {item.change_pct_str}
+                </div>
               </div>
             ))}
           </div>
@@ -195,7 +233,7 @@ export default function DashboardPage() {
             </div>
             <div className="border border-[var(--border)] p-3">
               <div className="text-[10px] tracking-[.08em] text-[var(--accent)] uppercase">Current platform state</div>
-              <div className="mt-2">Premium frontend is Bloomberg-styled, but still evolving toward the full multi-screen mockup with deeper report, audit, and provenance flows.</div>
+              <div className="mt-2">Multi-asset Bloomberg-style terminal with live market data, broad cross-asset research coverage, and AI-driven universe discovery.</div>
             </div>
           </div>
         </div>

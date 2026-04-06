@@ -14,24 +14,14 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
-# ── Default universes ────────────────────────────────────────────────────────
+from research_pipeline.config.universe_config import BROAD_MARKET_UNIVERSE
 
-_DEFAULT_US_UNIVERSE = [
-    "NVDA",
-    "AMD",
-    "AVGO",
-    "MRVL",
-    "ARM",
-    "TSM",
-    "MSFT",
-    "AMZN",
-    "GOOGL",
-    "META",
-    "EQIX",
-    "DLR",
-    "VRT",
-    "DELL",
-    "SMCI",
+# ── Legacy preset default (kept for backwards compatibility) ─────────────────
+
+_LEGACY_AI_US_UNIVERSE = [
+    "NVDA", "AMD", "AVGO", "MRVL", "ARM", "TSM",
+    "MSFT", "AMZN", "GOOGL", "META",
+    "EQIX", "DLR", "VRT", "DELL", "SMCI",
 ]
 
 _DEFAULT_AU_UNIVERSE = [
@@ -54,14 +44,39 @@ class RunRequest(BaseModel):
     Mirrors the internal Settings + PipelineConfig in a consumer-friendly,
     API-stable schema.  The FastAPI layer maps these fields onto the engine
     before launching the run.
+
+    Universe selection:
+      - universe_mode="discovery" (default): start from BROAD_MARKET_UNIVERSE,
+        spanning equities, ETFs, fixed income, commodities, and alternatives.
+        The pipeline's own stage-1 validation and research stages narrow the
+        list down to a high-conviction shortlist.
+      - universe_mode="preset": use the tickers in ``universe`` as-is (the
+        caller is expected to supply a named preset list).
+      - universe_mode="custom": use an arbitrary caller-supplied ticker list.
     """
+
+    # ── Universe mode ────────────────────────────────────────────────────
+    universe_mode: Literal["discovery", "preset", "custom"] = Field(
+        default="discovery",
+        description=(
+            "How the universe is sourced. "
+            "'discovery' = live broad-market scan (default); "
+            "'preset' = named preset supplied in the universe field; "
+            "'custom' = caller-supplied ticker list."
+        ),
+    )
 
     # ── Core run config ──────────────────────────────────────────────────
     universe: list[str] = Field(
-        default_factory=lambda: list(_DEFAULT_US_UNIVERSE),
+        default_factory=lambda: list(BROAD_MARKET_UNIVERSE),
         min_length=1,
-        max_length=100,
-        description="List of ticker symbols to analyse.",
+        max_length=500,
+        description=(
+            "List of ticker symbols to analyse. "
+            "When universe_mode='discovery' this defaults to BROAD_MARKET_UNIVERSE "
+            "and the pipeline narrows it via live research. "
+            "Pass an explicit list to override."
+        ),
     )
     run_label: Optional[str] = Field(
         default=None,
@@ -132,3 +147,8 @@ class RunRequest(BaseModel):
             "llm_model": self.llm_model,
             "llm_temperature": self.llm_temperature,
         }
+
+    @property
+    def is_discovery_mode(self) -> bool:
+        """True when the run uses the broad-market discovery starting point."""
+        return self.universe_mode == "discovery"
