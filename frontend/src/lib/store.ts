@@ -20,6 +20,8 @@ import type {
   OrchestrationMode,
 } from "./types";
 
+export type UniverseMode = "discovery" | "preset" | "custom";
+
 export interface StageState {
   stage_num: number;
   label: string;
@@ -54,6 +56,8 @@ interface PipelineStore {
 
   // ── Config state ───────────────────────────────────────────────────
   universe: string[];
+  universeMode: UniverseMode;
+  universePreset: string;
   model: string;
   orchestrationMode: OrchestrationMode;
   temperature: number;
@@ -69,6 +73,8 @@ interface PipelineStore {
   processEvent: (event: PipelineEvent) => void;
   resetRun: () => void;
   setUniverse: (tickers: string[]) => void;
+  setUniverseMode: (mode: UniverseMode) => void;
+  setUniversePreset: (preset: string) => void;
   setModel: (model: string) => void;
   setOrchestrationMode: (mode: OrchestrationMode) => void;
   setTemperature: (temp: number) => void;
@@ -123,7 +129,13 @@ export const usePipelineStore = create<PipelineStore>()(persist((set, get) => ({
   error: null,
 
   // Config defaults
-  universe: ["NVDA", "AMD", "AVGO", "MRVL", "ARM", "TSM", "MSFT", "AMZN", "GOOGL", "META", "EQIX", "DLR", "VRT", "DELL", "SMCI"],
+  universe: ["AAPL", "MSFT", "NVDA", "GOOGL", "META", "AMZN", "AVGO", "AMD", "ORCL", "CRM",
+             "ARM", "TSM", "ANET", "INTC", "MRVL", "QCOM", "NOW", "PLTR", "AI", "SNOW",
+             "LLY", "UNH", "JNJ", "ABBV", "MRK", "JPM", "BAC", "GS", "V", "MA",
+             "TSLA", "WMT", "COST", "HD", "MCD", "XOM", "CVX", "NEE", "SPY", "QQQ",
+             "TLT", "IEF", "LQD", "HYG", "GLD", "IBIT"],
+  universeMode: "discovery" as UniverseMode,
+  universePreset: "broad_market",
   model: "claude-sonnet-4-6",
   orchestrationMode: "auto",
   temperature: 0.3,
@@ -259,6 +271,8 @@ export const usePipelineStore = create<PipelineStore>()(persist((set, get) => ({
     }),
 
   setUniverse: (tickers) => set({ universe: tickers }),
+  setUniverseMode: (universeMode) => set({ universeMode }),
+  setUniversePreset: (universePreset) => set({ universePreset }),
   setModel: (model) => set({ model }),
   setOrchestrationMode: (orchestrationMode) => set({ orchestrationMode }),
   setTemperature: (temp) => set({ temperature: temp }),
@@ -278,6 +292,8 @@ export const usePipelineStore = create<PipelineStore>()(persist((set, get) => ({
   name: "meridian-run-defaults",
   partialize: (state) => ({
     universe: state.universe,
+    universeMode: state.universeMode,
+    universePreset: state.universePreset,
     model: state.model,
     orchestrationMode: state.orchestrationMode,
     temperature: state.temperature,

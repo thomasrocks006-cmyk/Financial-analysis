@@ -183,7 +183,67 @@ export async function downloadReportPdf(runId: string): Promise<Blob> {
   return res.blob();
 }
 
-// ── SSE event stream ────────────────────────────────────────────────────
+// ── Market Data ─────────────────────────────────────────────────────────
+
+export interface MarketQuote {
+  sym: string;
+  label: string;
+  price: number | null;
+  change_pct: number | null;
+  change_pct_str: string;
+  market_cap_bn?: number | null;
+  volume?: number | null;
+  day_high?: number | null;
+  day_low?: number | null;
+  "52w_high"?: number | null;
+  "52w_low"?: number | null;
+  exchange?: string;
+  error?: string;
+}
+
+export async function getMarketQuotes(tickers: string[]): Promise<{
+  quotes: MarketQuote[];
+  count: number;
+  source: string;
+}> {
+  if (!tickers.length) return { quotes: [], count: 0, source: "none" };
+  const params = new URLSearchParams({ tickers: tickers.join(",") });
+  return fetchJSON(`${getApiPrefix()}/market/quotes?${params.toString()}`);
+}
+
+export async function getMarketIndices(): Promise<{
+  indices: MarketQuote[];
+  count: number;
+  source: string;
+}> {
+  return fetchJSON(`${getApiPrefix()}/market/indices`);
+}
+
+// ── Universe Presets ─────────────────────────────────────────────────────
+
+export interface UniversePreset {
+  id: string;
+  label: string;
+  description: string;
+  asset_classes: string;
+  ticker_count: number;
+}
+
+export async function getUniversePresets(): Promise<{
+  universes: UniversePreset[];
+  count: number;
+  default: string;
+}> {
+  return fetchJSON(`${getApiPrefix()}/universes`);
+}
+
+export async function getUniverseTickers(name: string): Promise<{
+  name: string;
+  tickers: string[];
+  count: number;
+}> {
+  return fetchJSON(`${getApiPrefix()}/universes/${encodeURIComponent(name)}`);
+}
 
 export function createEventStream(
   runId: string,

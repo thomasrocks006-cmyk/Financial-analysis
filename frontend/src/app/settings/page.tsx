@@ -169,7 +169,7 @@ export default function SettingsPage() {
                 onChange={(e) => store.setModel(e.target.value)}
                 className="w-full border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-[11px] text-[var(--text-primary)]"
               >
-                {["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5-20251001", "gpt-4o", "gpt-4o-mini"].map((model) => (
+                {["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5-20251001", "gpt-4o", "gpt-4o-mini", "gemini-1.5-pro"].map((model) => (
                   <option key={model} value={model}>{model}</option>
                 ))}
               </select>
@@ -341,10 +341,10 @@ export default function SettingsPage() {
         <div className="space-y-2 text-sm text-[var(--text-secondary)]">
           <p>AI Infrastructure Research Platform — Premium Frontend</p>
           <p className="text-xs text-[var(--text-muted)]">
-            Bloomberg-style Meridian operator shell with live SSE pipeline tracking.
+            Multi-asset Bloomberg-style Meridian terminal covering equities, ETFs, fixed income, commodities, and alternatives.
           </p>
           <p className="text-xs text-[var(--text-muted)]">
-            15-stage pipeline with live SSE tracking, report generation, audit quality scoring, provenance, quant panels, and configurable runtime defaults.
+            15-stage pipeline with broad-market discovery mode, live market data, SSE pipeline tracking, report generation, audit quality scoring, provenance, and quant panels.
           </p>
           <p className="text-xs text-[var(--text-muted)]">
             This shell is Bloomberg-inspired, but it does not yet fully replicate the original multi-panel mockup. The biggest remaining gaps are deeper stage-detail views, richer report/audit operator screens, and more surface-level desk modules.
