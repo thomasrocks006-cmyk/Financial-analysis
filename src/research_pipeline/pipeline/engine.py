@@ -554,69 +554,96 @@ class PipelineEngine:
         """Await a stage coroutine, record its wall-clock duration, emit stage events, and
         update the supervisor health record.
 
-        Retry behaviour:
-          - On transient network/rate-limit errors, the stage is retried up to
-            ``_TRANSIENT_RETRY_ATTEMPTS`` times with exponential backoff.
-          - On hard failures (gate returned False) or other exceptions, the
-            supervisor is notified and the exception propagates.
+        Note on retries: coroutine objects can only be awaited once.  Retry logic
+        for transient errors (rate limits, timeouts) must be implemented inside
+        the individual stage methods using ``_run_with_retry(callable_factory)``.
+        This method logs transient errors for diagnostics and routes all exceptions
+        through the supervisor, but does not attempt to retry the coroutine.
         """
         run_id = self.run_record.run_id if self.run_record else "unknown"
         await self._emit(PipelineEvent.stage_started(run_id, stage_num))
         _t = time.monotonic()
-        last_exc: Optional[Exception] = None
+        try:
+            result = await coro
+            duration_ms = round((time.monotonic() - _t) * 1000, 1)
+            self._stage_timings[stage_num] = duration_ms
+            if result:
+                await self._emit(PipelineEvent.stage_completed(run_id, stage_num, duration_ms))
+            else:
+                await self._emit(PipelineEvent.stage_failed(run_id, stage_num))
+            # Supervisor health check
+            if self.supervisor is not None:
+                self.supervisor.check_stage(
+                    stage_num=stage_num,
+                    stage_passed=bool(result),
+                    stage_output=self.stage_outputs.get(stage_num),
+                    duration_ms=duration_ms,
+                )
+            return result
+        except Exception as exc:
+            duration_ms = round((time.monotonic() - _t) * 1000, 1)
+            self._stage_timings[stage_num] = duration_ms
+            if self._is_transient_error(exc):
+                logger.warning(
+                    "Stage %d transient error — %s: %s (retryable via _run_with_retry)",
+                    stage_num,
+                    type(exc).__name__,
+                    exc,
+                )
+            await self._emit(PipelineEvent.stage_failed(run_id, stage_num, reason=str(exc)))
+            # Supervisor failure notification
+            if self.supervisor is not None:
+                self.supervisor.check_stage(
+                    stage_num=stage_num,
+                    stage_passed=False,
+                    stage_output=self.stage_outputs.get(stage_num),
+                    duration_ms=duration_ms,
+                    exception=exc,
+                )
+            raise
 
-        for attempt in range(1, self._TRANSIENT_RETRY_ATTEMPTS + 1):
+    async def _run_with_retry(
+        self,
+        stage_num: int,
+        coro_factory: "Callable[[], Any]",
+        max_attempts: Optional[int] = None,
+    ) -> Any:
+        """Execute a coroutine factory with exponential-backoff retry on transient errors.
+
+        Unlike ``_timed_stage``, this method accepts a **callable** (coroutine factory)
+        that is invoked fresh on each attempt.  Use this for any stage-internal operation
+        (e.g. an LLM API call) that should be retried on rate-limit or timeout errors::
+
+            result = await self._run_with_retry(
+                stage_num=5,
+                coro_factory=lambda: self.evidence_agent.run(context),
+            )
+
+        Args:
+            stage_num: Stage number for log messages.
+            coro_factory: Zero-argument callable returning a new coroutine each call.
+            max_attempts: Override class-level ``_TRANSIENT_RETRY_ATTEMPTS`` if provided.
+        """
+        attempts = max_attempts if max_attempts is not None else self._TRANSIENT_RETRY_ATTEMPTS
+        last_exc: Optional[Exception] = None
+        for attempt in range(1, attempts + 1):
             try:
-                result = await coro
-                duration_ms = round((time.monotonic() - _t) * 1000, 1)
-                self._stage_timings[stage_num] = duration_ms
-                if result:
-                    await self._emit(PipelineEvent.stage_completed(run_id, stage_num, duration_ms))
-                else:
-                    await self._emit(PipelineEvent.stage_failed(run_id, stage_num))
-                # Supervisor health check
-                if self.supervisor is not None:
-                    self.supervisor.check_stage(
-                        stage_num=stage_num,
-                        stage_passed=bool(result),
-                        stage_output=self.stage_outputs.get(stage_num),
-                        duration_ms=duration_ms,
-                    )
-                return result
+                return await coro_factory()
             except Exception as exc:
                 last_exc = exc
-                if attempt < self._TRANSIENT_RETRY_ATTEMPTS and self._is_transient_error(exc):
+                if attempt < attempts and self._is_transient_error(exc):
                     backoff = self._TRANSIENT_RETRY_BACKOFF_BASE * (2 ** (attempt - 1))
                     logger.warning(
                         "Stage %d transient error (attempt %d/%d), retrying in %.1fs: %s",
                         stage_num,
                         attempt,
-                        self._TRANSIENT_RETRY_ATTEMPTS,
+                        attempts,
                         backoff,
                         exc,
                     )
                     await asyncio.sleep(backoff)
-                    # Recreate the coroutine is not possible here — if the caller passed
-                    # a coroutine object it is already consumed after the first await.
-                    # Break immediately so callers with retryable stages can wrap at a
-                    # higher level; we do the supervisor notification and re-raise below.
-                    break
                 else:
-                    break
-
-        # Reached here only via exception path
-        duration_ms = round((time.monotonic() - _t) * 1000, 1)
-        self._stage_timings[stage_num] = duration_ms
-        await self._emit(PipelineEvent.stage_failed(run_id, stage_num, reason=str(last_exc)))
-        # Supervisor failure notification
-        if self.supervisor is not None:
-            self.supervisor.check_stage(
-                stage_num=stage_num,
-                stage_passed=False,
-                stage_output=self.stage_outputs.get(stage_num),
-                duration_ms=duration_ms,
-                exception=last_exc,
-            )
+                    raise
         raise last_exc  # type: ignore[misc]
 
     # Retry configuration (class-level so tests can patch)

@@ -332,3 +332,52 @@ class TestPipelineEngineErrorHandling:
         engine = self._make_engine()
         assert hasattr(engine, "_supervisor_report")
         assert engine._supervisor_report is None
+
+    def test_run_with_retry_succeeds_on_first_attempt(self):
+        """_run_with_retry returns result when factory succeeds first time."""
+        engine = self._make_engine()
+
+        async def _run():
+            return await engine._run_with_retry(5, lambda: self._coro_returning("ok"))
+
+        result = asyncio.run(_run())
+        assert result == "ok"
+
+    @staticmethod
+    async def _coro_returning(value):
+        return value
+
+    def test_run_with_retry_retries_on_transient_error(self):
+        """_run_with_retry retries on transient errors and succeeds."""
+        engine = self._make_engine()
+        call_count = [0]
+
+        async def _factory():
+            call_count[0] += 1
+            if call_count[0] < 2:
+                raise Exception("RateLimitError: retry please")
+            return "success"
+
+        # Override backoff to 0 for test speed
+        original_backoff = PipelineEngine._TRANSIENT_RETRY_BACKOFF_BASE
+        PipelineEngine._TRANSIENT_RETRY_BACKOFF_BASE = 0.0
+        try:
+            result = asyncio.run(engine._run_with_retry(5, _factory, max_attempts=3))
+            assert result == "success"
+            assert call_count[0] == 2
+        finally:
+            PipelineEngine._TRANSIENT_RETRY_BACKOFF_BASE = original_backoff
+
+    def test_run_with_retry_raises_non_transient_immediately(self):
+        """_run_with_retry does not retry non-transient errors."""
+        engine = self._make_engine()
+        call_count = [0]
+
+        async def _factory():
+            call_count[0] += 1
+            raise ValueError("permanent error")
+
+        with pytest.raises(ValueError, match="permanent error"):
+            asyncio.run(engine._run_with_retry(5, _factory, max_attempts=3))
+        # Should only be called once — no retry for non-transient
+        assert call_count[0] == 1
