@@ -86,7 +86,7 @@ export default function SavedRunsPage() {
                       <Clock className="h-3 w-3" />
                       {formatTimestamp(run.completed_at)}
                     </span>
-                    {run.md_path && (
+                    {run.json_path && (
                       <a
                         href={`/api/v1/saved-runs/${run.run_id}`}
                         className="inline-flex items-center gap-1 rounded-lg border border-[var(--border)] px-2 py-1 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface-2)]"

@@ -37,6 +37,42 @@ jobs:
         run: |
           npm install --prefix frontend --legacy-peer-deps
 
+      - name: Frontend typecheck
+        run: |
+          npm --prefix frontend run typecheck
+
+      - name: Frontend production build
+        run: |
+          npm --prefix frontend run build
+
+      - name: Install Playwright system dependencies
+        run: |
+          sudo apt-get update -o Dir::Etc::sourceparts='-' -o APT::Get::List-Cleanup='0'
+          sudo apt-get install -y \
+            libasound2t64 \
+            libatk-bridge2.0-0t64 \
+            libatk1.0-0t64 \
+            libatspi2.0-0t64 \
+            libcups2t64 \
+            libdrm2 \
+            libgbm1 \
+            libgtk-3-0t64 \
+            libnspr4 \
+            libnss3 \
+            libxcomposite1 \
+            libxdamage1 \
+            libxfixes3 \
+            libxkbcommon0 \
+            libxrandr2
+
+      - name: Install Playwright Chromium
+        run: |
+          npx --prefix frontend playwright install chromium
+
+      - name: Frontend browser smoke tests
+        run: |
+          npm --prefix frontend run test:e2e
+
       - name: Run ruff linter
         run: |
           ruff check src/ tests/ --output-format=github

@@ -219,6 +219,8 @@ class Thresholds(BaseModel):
 class StageConfig(BaseModel):
     name: str
     owners: list[str] = []
+    blocking: bool = True
+    description: str = ""
 
 
 # ── Top-level pipeline config ──────────────────────────────────────────────
@@ -246,7 +248,7 @@ class PipelineConfig(BaseModel):
     version: str = "v8"
     project_name: str = "ai_infrastructure_research_platform"
     thresholds: Thresholds = Thresholds()
-    stages: dict[int, StageConfig] = {}
+    stages: dict[str, StageConfig] = {}
     # ARC-5: sector routing — override defaults by providing a config file entry
     sector_routing: dict[str, list[str]] = Field(default_factory=lambda: dict(SECTOR_ROUTING))
     # Session 12: multi-market config — AU/US/Global market scope
@@ -299,9 +301,9 @@ def load_pipeline_config(config_path: Path | str | None = None) -> PipelineConfi
     )
 
     # Parse stages
-    stages = {}
+    stages: dict[str, StageConfig] = {}
     for k, v in raw.get("stages", {}).items():
-        stages[int(k)] = StageConfig(**v)
+        stages[str(k)] = StageConfig(**v)
 
     # Parse outputs
     portfolio_raw = raw.get("portfolio_outputs", {})

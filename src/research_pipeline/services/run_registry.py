@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import sqlite3
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,15 +25,84 @@ logger = logging.getLogger(__name__)
 class RunRegistryService:
     """Persistent run registry — every run is logged for reproducibility.
 
-    Uses a JSON-file-based store (upgradeable to SQLite/Postgres).
+    Uses a SQLite-backed store with legacy JSON migration for backward
+    compatibility with earlier sessions.
     """
 
     def __init__(self, storage_dir: Path):
         self.storage_dir = storage_dir / "registry"
         self.storage_dir.mkdir(parents=True, exist_ok=True)
+        self._db_path = self.storage_dir / "registry.db"
         self._runs_file = self.storage_dir / "runs.json"
         self._prompts_file = self.storage_dir / "prompt_versions.json"
         self._overrides_file = self.storage_dir / "overrides.json"
+        self._init_db()
+        self._migrate_legacy_json_if_needed()
+
+    def _connect(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(str(self._db_path))
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def _init_db(self) -> None:
+        with self._connect() as conn:
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS runs (
+                    run_id TEXT PRIMARY KEY,
+                    timestamp TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    completed_at TEXT,
+                    record_json TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS prompt_versions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    agent_name TEXT NOT NULL,
+                    changed_at TEXT NOT NULL,
+                    prompt_json TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS overrides (
+                    override_id TEXT PRIMARY KEY,
+                    run_id TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    override_json TEXT NOT NULL
+                );
+                """
+            )
+
+    def _migrate_legacy_json_if_needed(self) -> None:
+        """One-time import from historical JSON registry files."""
+        with self._connect() as conn:
+            row = conn.execute("SELECT COUNT(*) AS count FROM runs").fetchone()
+            existing_runs = int(row["count"]) if row else 0
+        if existing_runs > 0:
+            return
+
+        legacy_runs = self._load_json(self._runs_file, {})
+        if isinstance(legacy_runs, dict) and legacy_runs:
+            for payload in legacy_runs.values():
+                try:
+                    self._upsert_run(RunRecord.model_validate(payload))
+                except Exception as exc:  # pragma: no cover
+                    logger.warning("Failed to migrate legacy run registry row: %s", exc)
+
+        legacy_prompts = self._load_json(self._prompts_file, [])
+        if isinstance(legacy_prompts, list):
+            for payload in legacy_prompts:
+                try:
+                    self._insert_prompt(PromptVersion.model_validate(payload))
+                except Exception as exc:  # pragma: no cover
+                    logger.warning("Failed to migrate legacy prompt registry row: %s", exc)
+
+        legacy_overrides = self._load_json(self._overrides_file, [])
+        if isinstance(legacy_overrides, list):
+            for payload in legacy_overrides:
+                try:
+                    self._insert_override(HumanOverride.model_validate(payload))
+                except Exception as exc:  # pragma: no cover
+                    logger.warning("Failed to migrate legacy override row: %s", exc)
 
     # ── Run management ─────────────────────────────────────────────────
     def create_run(
@@ -100,18 +170,21 @@ class RunRegistryService:
         sorted_runs = sorted(runs.values(), key=lambda r: r.timestamp, reverse=True)
         return sorted_runs[:limit]
 
+    def delete_run(self, run_id: str) -> bool:
+        """Delete a run from the registry store."""
+        with self._connect() as conn:
+            cur = conn.execute("DELETE FROM runs WHERE run_id = ?", (run_id,))
+            deleted = cur.rowcount > 0
+        return deleted
+
     # ── Override logging ───────────────────────────────────────────────
     def log_override(self, override: HumanOverride) -> None:
-        overrides = self._load_json(self._overrides_file, [])
-        overrides.append(override.model_dump(mode="json"))
-        self._write_json(self._overrides_file, overrides)
+        self._insert_override(override)
         logger.info("Logged override %s for run %s", override.override_id, override.run_id)
 
     # ── Prompt versioning ──────────────────────────────────────────────
     def register_prompt(self, pv: PromptVersion) -> None:
-        prompts = self._load_json(self._prompts_file, [])
-        prompts.append(pv.model_dump(mode="json"))
-        self._write_json(self._prompts_file, prompts)
+        self._insert_prompt(pv)
 
     # ── Self-audit ─────────────────────────────────────────────────────
     def build_self_audit(self, run_id: str, claim_ledger: Any) -> SelfAudit:
@@ -143,15 +216,66 @@ class RunRegistryService:
 
     # ── persistence helpers ────────────────────────────────────────────
     def _load_runs(self) -> dict[str, RunRecord]:
-        data = self._load_json(self._runs_file, {})
-        # Use model_validate (not **v) so Pydantic handles forward refs,
-        # nested model deserialization, and enum coercion from JSON strings.
-        return {k: RunRecord.model_validate(v) for k, v in data.items()}
+        with self._connect() as conn:
+            rows = conn.execute("SELECT run_id, record_json FROM runs").fetchall()
+        return {
+            str(row["run_id"]): RunRecord.model_validate(json.loads(str(row["record_json"])))
+            for row in rows
+        }
 
     def _save_run(self, record: RunRecord) -> None:
-        runs = self._load_json(self._runs_file, {})
-        runs[record.run_id] = record.model_dump(mode="json")
-        self._write_json(self._runs_file, runs)
+        self._upsert_run(record)
+
+    def _upsert_run(self, record: RunRecord) -> None:
+        payload = record.model_dump(mode="json")
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO runs (run_id, timestamp, status, completed_at, record_json)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(run_id) DO UPDATE SET
+                    timestamp = excluded.timestamp,
+                    status = excluded.status,
+                    completed_at = excluded.completed_at,
+                    record_json = excluded.record_json
+                """,
+                (
+                    record.run_id,
+                    record.timestamp.isoformat(),
+                    record.status.value,
+                    record.completed_at.isoformat() if record.completed_at else None,
+                    json.dumps(payload, default=str),
+                ),
+            )
+
+    def _insert_prompt(self, pv: PromptVersion) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO prompt_versions (agent_name, changed_at, prompt_json)
+                VALUES (?, ?, ?)
+                """,
+                (
+                    pv.agent_name,
+                    pv.changed_at.isoformat(),
+                    pv.model_dump_json(),
+                ),
+            )
+
+    def _insert_override(self, override: HumanOverride) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO overrides (override_id, run_id, timestamp, override_json)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    override.override_id,
+                    override.run_id,
+                    override.timestamp.isoformat(),
+                    override.model_dump_json(),
+                ),
+            )
 
     def _load_json(self, path: Path, default: Any) -> Any:
         if path.exists():

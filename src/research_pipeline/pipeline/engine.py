@@ -12,6 +12,11 @@ from typing import Any, Optional
 from research_pipeline.config.loader import PipelineConfig, load_pipeline_config  # noqa: F401 – re-exported for test patching
 from research_pipeline.config.settings import Settings
 from research_pipeline.pipeline.gates import GateResult, PipelineGates
+from research_pipeline.pipeline.stage_runtime import (
+    build_provenance_for_stage,
+    persist_stage_output,
+    record_gate_result,
+)
 from research_pipeline.schemas.claims import ClaimLedger
 from research_pipeline.schemas.market_data import (
     MarketSnapshot,
@@ -753,45 +758,35 @@ class PipelineEngine:
 
     def _save_stage_output(self, stage: int, data: Any) -> None:
         """Persist stage output to disk and build provenance card."""
-        self.stage_outputs[stage] = data
-        output_dir = self.settings.storage_dir / "artifacts" / self.run_record.run_id
-        output_dir.mkdir(parents=True, exist_ok=True)
-        filepath = output_dir / f"stage_{stage:02d}.json"
-        filepath.write_text(json.dumps(data, indent=2, default=str))
-        logger.info("Stage %d output saved to %s", stage, filepath)
+        persist_stage_output(
+            stage_outputs=self.stage_outputs,
+            storage_dir=self.settings.storage_dir,
+            run_id=self.run_record.run_id,
+            stage=stage,
+            data=data,
+        )
 
         # Session 17: build provenance card for this stage
         if self._provenance is not None:
             try:
-                gate_data = self.gate_results.get(stage)
-                self._provenance.build_stage_card(
-                    stage_num=stage,
-                    stage_label=STAGE_LABELS.get(stage, f"Stage {stage}"),
-                    stage_output=data,
-                    gate_passed=gate_data.passed if gate_data else None,
-                    gate_reason=gate_data.reason if gate_data else "",
-                    gate_blockers=gate_data.blockers if gate_data else [],
-                    duration_ms=self._stage_timings.get(stage, 0.0),
-                    error=None,
+                build_provenance_for_stage(
+                    provenance=self._provenance,
+                    stage=stage,
+                    data=data,
+                    gate_results=self.gate_results,
+                    stage_timings=self._stage_timings,
                 )
             except Exception as exc:
                 logger.debug("Provenance card build failed for stage %d: %s", stage, exc)
 
     def _check_gate(self, gate_result: GateResult) -> bool:
         """Record gate result and return whether it passed."""
-        self.gate_results[gate_result.stage] = gate_result
-        if gate_result.passed:
-            logger.info("Gate %d PASSED: %s", gate_result.stage, gate_result.reason)
-            self.registry.mark_stage_complete(self.run_record.run_id, gate_result.stage)
-        else:
-            logger.error(
-                "Gate %d FAILED: %s — %s",
-                gate_result.stage,
-                gate_result.reason,
-                gate_result.blockers,
-            )
-            self.registry.mark_stage_failed(self.run_record.run_id, gate_result.stage)
-        return gate_result.passed
+        return record_gate_result(
+            gate_results=self.gate_results,
+            registry=self.registry,
+            run_id=self.run_record.run_id,
+            gate_result=gate_result,
+        )
 
     # ── Stage execution methods ────────────────────────────────────────
     async def stage_0_bootstrap(self, universe: list[str]) -> bool:

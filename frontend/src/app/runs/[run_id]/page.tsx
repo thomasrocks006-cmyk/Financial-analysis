@@ -9,6 +9,7 @@ import {
   getRunStatus,
   getReport,
   getAudit,
+  getStageDetail,
   createEventStream,
   downloadReportPdf,
 } from "@/lib/api";
@@ -91,6 +92,12 @@ export default function RunDetailPage() {
     enabled: store.runStatus === "completed",
   });
 
+  const { data: selectedStageDetail, isLoading: stageDetailLoading } = useQuery({
+    queryKey: ["stage-detail", runId, showStageDetail],
+    queryFn: () => getStageDetail(runId, showStageDetail as number),
+    enabled: !!runId && activeTab === "stages" && showStageDetail !== null,
+  });
+
   const completedStages = store.stages.filter((s) => s.status === "completed").length;
   const failedStages = store.stages.filter((s) => s.status === "failed").length;
   const timings: Record<string, number> = {};
@@ -108,6 +115,11 @@ export default function RunDetailPage() {
     { id: "quant" as const, label: "Quant Analytics", icon: TrendingDown },
     { id: "stages" as const, label: "Stage Detail", icon: BarChart3 },
   ];
+
+  const auditPacket = auditData?.audit_packet;
+  const gatePassCount = auditPacket?.gates_passed?.length || 0;
+  const gateFailCount = auditPacket?.gates_failed?.length || 0;
+  const icVotes = Object.entries(auditPacket?.ic_vote_breakdown || {});
 
   return (
     <div className="space-y-6">
@@ -183,6 +195,50 @@ export default function RunDetailPage() {
           icon={<FileText className="h-4 w-4" />}
           subtext={reportData?.estimated_pages ? `~${reportData.estimated_pages} pages` : ""}
         />
+      </div>
+
+      <div className="grid gap-[1px] bg-[var(--border)] md:grid-cols-[1.2fr_1fr]">
+        <div className="bg-[var(--surface)]">
+          <div className="px-4 py-1.5 bg-[var(--surface-2)]">
+            <span className="text-[var(--text-label)] text-[9px] tracking-[.1em] uppercase">Operator Console</span>
+          </div>
+          <div className="grid md:grid-cols-4">
+            {[
+              ["LIVE TRACKER", "Monitor stage progression and event flow", "live"],
+              ["REPORT", "Read markdown, export packets, review investment note", "report"],
+              ["AUDIT", "Check IC gates, blockers, and claim quality", "audit"],
+              ["PROVENANCE", "Trace section lineage and source coverage", "provenance"],
+            ].map(([label, detail, tab]) => (
+              <button
+                key={String(label)}
+                onClick={() => setActiveTab(tab as typeof activeTab)}
+                className="border border-[var(--border)] px-4 py-4 text-left hover:bg-[var(--surface-2)] transition-colors"
+              >
+                <div className="text-[10px] tracking-[.08em] uppercase text-[var(--accent)]">{label}</div>
+                <div className="mt-2 text-[11px] text-[var(--text-secondary)]">{detail}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="bg-[var(--surface)]">
+          <div className="px-4 py-1.5 bg-[var(--surface-2)]">
+            <span className="text-[var(--text-label)] text-[9px] tracking-[.1em] uppercase">Run State Snapshot</span>
+          </div>
+          <div className="px-4 py-3 space-y-2 text-[11px]">
+            {[
+              ["Run label", runStatus?.run_label || "Untitled run"],
+              ["Status", store.runStatus || "pending"],
+              ["Universe", runStatus?.universe?.slice(0, 5).join(" · ") || "—"],
+              ["Completed stages", `${completedStages}/15`],
+              ["Events captured", String(store.events.length)],
+            ].map(([label, value]) => (
+              <div key={String(label)} className="flex justify-between gap-3 border-b border-[var(--border-2)] py-1.5">
+                <span className="text-[var(--text-label)] uppercase tracking-[.08em]">{label}</span>
+                <span className="text-[var(--text-secondary)] text-right">{value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Tab bar */}
@@ -267,7 +323,7 @@ export default function RunDetailPage() {
                 </div>
               </div>
               <div
-                className="report-content prose prose-invert max-w-none"
+                className="report-content max-w-none"
                 dangerouslySetInnerHTML={{ __html: markdownToHtml(reportData.report_markdown) }}
               />
             </>
@@ -314,13 +370,71 @@ export default function RunDetailPage() {
                 <TimingChart timings={timings} />
               )}
 
+              <div className="grid gap-[1px] bg-[var(--border)] lg:grid-cols-[1.15fr_0.85fr]">
+                <div className="bg-[var(--surface)]">
+                  <div className="px-4 py-1.5 bg-[var(--surface-2)]">
+                    <span className="text-[var(--text-label)] text-[9px] tracking-[.1em] uppercase">Gate Console</span>
+                  </div>
+                  <div className="grid md:grid-cols-2">
+                    <div className="border border-[var(--border)] p-4">
+                      <div className="text-[10px] tracking-[.08em] uppercase text-[var(--success)]">Passed Gates ({gatePassCount})</div>
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {(auditPacket?.gates_passed || []).map((gate: number) => (
+                          <span key={gate} className="border border-[var(--border)] bg-[var(--success-faint)] px-2 py-1 text-[11px] text-[var(--success)] font-mono">
+                            S{gate}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="border border-[var(--border)] p-4">
+                      <div className="text-[10px] tracking-[.08em] uppercase text-[var(--error)]">Failed Gates ({gateFailCount})</div>
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {(auditPacket?.gates_failed || []).length > 0 ? (auditPacket?.gates_failed || []).map((gate: number) => (
+                          <span key={gate} className="border border-[var(--border)] bg-[var(--error-faint)] px-2 py-1 text-[11px] text-[var(--error)] font-mono">
+                            S{gate}
+                          </span>
+                        )) : <span className="text-[11px] text-[var(--text-muted)]">No gate failures recorded.</span>}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-[var(--surface)]">
+                  <div className="px-4 py-1.5 bg-[var(--surface-2)]">
+                    <span className="text-[var(--text-label)] text-[9px] tracking-[.1em] uppercase">Investment Committee</span>
+                  </div>
+                  <div className="p-4 space-y-3">
+                    <div className="border border-[var(--border)] p-3 text-[11px]">
+                      <div className="text-[10px] tracking-[.08em] uppercase text-[var(--text-label)]">Approval state</div>
+                      <div className="mt-2 text-[var(--text-primary)]">
+                        {auditPacket?.ic_approved === true ? "APPROVED" : auditPacket?.ic_approved === false ? "REJECTED" : "NOT RECORDED"}
+                      </div>
+                    </div>
+                    <div className="border border-[var(--border)] p-3 text-[11px]">
+                      <div className="text-[10px] tracking-[.08em] uppercase text-[var(--text-label)]">Vote Breakdown</div>
+                      {icVotes.length > 0 ? (
+                        <div className="mt-2 space-y-1.5">
+                          {icVotes.map(([member, vote]) => (
+                            <div key={member} className="flex items-center justify-between border-b border-[var(--border-2)] pb-1">
+                              <span className="text-[var(--text-secondary)] uppercase tracking-[.06em]">{member}</span>
+                              <span className="text-[var(--text-primary)] font-mono">{String(vote)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="mt-2 text-[var(--text-muted)]">No IC vote details recorded.</div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Blockers */}
               {(auditData.audit_packet.blockers?.length || 0) > 0 && (
-                <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4">
-                  <h3 className="mb-2 text-sm font-semibold text-red-400">Blockers</h3>
+                <div className="border border-[var(--error)] bg-[var(--error-faint)] p-4">
+                  <h3 className="mb-2 text-[10px] tracking-[.1em] uppercase text-[var(--error)]">Blockers</h3>
                   <ul className="space-y-1">
                     {auditData.audit_packet.blockers?.map((b: string, i: number) => (
-                      <li key={i} className="text-sm text-red-300">• {b}</li>
+                      <li key={i} className="text-sm text-[var(--error)]">• {b}</li>
                     ))}
                   </ul>
                 </div>
@@ -328,25 +442,25 @@ export default function RunDetailPage() {
 
               {/* Agent outcomes */}
               <div className="grid grid-cols-2 gap-4">
-                <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
-                  <h3 className="mb-2 text-sm font-semibold text-green-400">
+                <div className="border border-[var(--border)] bg-[var(--surface)] p-4">
+                  <h3 className="mb-2 text-[10px] tracking-[.1em] uppercase text-[var(--success)]">
                     Agents Succeeded ({auditData.audit_packet.agents_succeeded?.length || 0})
                   </h3>
                   <div className="flex flex-wrap gap-1">
                     {auditData.audit_packet.agents_succeeded?.map((a: string, i: number) => (
-                      <span key={i} className="rounded-md bg-green-500/10 px-2 py-0.5 text-xs text-green-400">
+                      <span key={i} className="border border-[var(--border)] bg-[var(--success-faint)] px-2 py-0.5 text-xs text-[var(--success)]">
                         {a}
                       </span>
                     ))}
                   </div>
                 </div>
-                <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
-                  <h3 className="mb-2 text-sm font-semibold text-red-400">
+                <div className="border border-[var(--border)] bg-[var(--surface)] p-4">
+                  <h3 className="mb-2 text-[10px] tracking-[.1em] uppercase text-[var(--error)]">
                     Agents Failed ({auditData.audit_packet.agents_failed?.length || 0})
                   </h3>
                   <div className="flex flex-wrap gap-1">
                     {auditData.audit_packet.agents_failed?.map((a: string, i: number) => (
-                      <span key={i} className="rounded-md bg-red-500/10 px-2 py-0.5 text-xs text-red-400">
+                      <span key={i} className="border border-[var(--border)] bg-[var(--error-faint)] px-2 py-0.5 text-xs text-[var(--error)]">
                         {a}
                       </span>
                     ))}
@@ -354,9 +468,22 @@ export default function RunDetailPage() {
                 </div>
               </div>
 
+              {(auditPacket?.esg_exclusions?.length || 0) > 0 && (
+                <div className="border border-[var(--border)] bg-[var(--surface)] p-4">
+                  <h3 className="mb-2 text-[10px] tracking-[.1em] uppercase text-[var(--warning)]">ESG Exclusions</h3>
+                  <div className="flex flex-wrap gap-1.5">
+                    {auditPacket?.esg_exclusions?.map((item: string, idx: number) => (
+                      <span key={idx} className="border border-[var(--border)] px-2 py-1 text-[11px] text-[var(--warning)]">
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Raw packet */}
-              <details className="rounded-xl border border-[var(--border)] bg-[var(--surface)]">
-                <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-[var(--text-primary)]">
+              <details className="border border-[var(--border)] bg-[var(--surface)]">
+                <summary className="cursor-pointer px-4 py-3 text-[10px] tracking-[.1em] uppercase text-[var(--text-label)]">
                   Raw Audit Packet
                 </summary>
                 <pre className="overflow-auto p-4 text-xs text-[var(--text-secondary)]">
@@ -406,7 +533,13 @@ export default function RunDetailPage() {
               open={showStageDetail === stage.stage_num}
               className="rounded-xl border border-[var(--border)] bg-[var(--surface)]"
             >
-              <summary className="flex cursor-pointer items-center justify-between px-4 py-3">
+              <summary
+                onClick={(event) => {
+                  event.preventDefault();
+                  setShowStageDetail((current) => current === stage.stage_num ? null : stage.stage_num);
+                }}
+                className="flex cursor-pointer items-center justify-between px-4 py-3"
+              >
                 <div className="flex items-center gap-3">
                   <span className="text-xs font-mono text-[var(--text-muted)]">
                     S{stage.stage_num}
@@ -453,10 +586,27 @@ export default function RunDetailPage() {
                       <span className="text-[var(--text-secondary)]">{stage.agent_name}</span>
                     </div>
                   )}
+                  {showStageDetail === stage.stage_num && selectedStageDetail?.gate_reason && (
+                    <div className="col-span-2">
+                      <span className="text-[var(--text-muted)]">Gate reason:</span>{" "}
+                      <span className="text-[var(--text-secondary)]">{selectedStageDetail.gate_reason}</span>
+                    </div>
+                  )}
                 </div>
-                <div className="mt-3 text-xs text-[var(--text-muted)]">
-                  Stage output data is available via the API endpoint.
-                </div>
+                {showStageDetail === stage.stage_num && (
+                  <div className="mt-4 border border-[var(--border)] bg-[var(--surface-2)] p-3">
+                    <div className="mb-2 text-[10px] tracking-[.08em] uppercase text-[var(--text-label)]">Stage output</div>
+                    {stageDetailLoading ? (
+                      <div className="text-xs text-[var(--text-muted)]">Loading output…</div>
+                    ) : selectedStageDetail?.has_output ? (
+                      <pre className="overflow-auto text-[11px] leading-5 text-[var(--text-secondary)]">
+                        {JSON.stringify(selectedStageDetail.output, null, 2)}
+                      </pre>
+                    ) : (
+                      <div className="text-xs text-[var(--text-muted)]">No structured output was persisted for this stage.</div>
+                    )}
+                  </div>
+                )}
               </div>
             </details>
           ))}

@@ -7,7 +7,7 @@ import { usePipelineStore } from "@/lib/store";
 import { STAGE_COUNT } from "@/lib/types";
 
 const navItems = [
-  { href: "/",          label: "DASHBOARD",    key: "F1" },
+  { href: "/monitor",   label: "MONITOR",      key: "F1" },
   { href: "/runs/new",  label: "NEW RUN",       key: "F9" },
   { href: "/runs",      label: "ACTIVE RUNS",   key: "F3" },
   { href: "/saved",     label: "SAVED REPORTS", key: "F4" },
@@ -70,7 +70,9 @@ export function Sidebar() {
       <nav className="flex-1 px-1 py-3 space-y-0.5">
         {navItems.map(({ href, label, key }) => {
           const isActive =
-            href === "/" ? pathname === "/" : pathname.startsWith(href);
+            href === "/monitor"
+              ? pathname === "/" || pathname.startsWith("/monitor")
+              : pathname.startsWith(href);
           return (
             <Link
               key={href}

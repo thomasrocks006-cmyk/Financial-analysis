@@ -51,3 +51,6 @@ storage/raw/
 storage/registry/
 frontend/node_modules/
 frontend/.next/
+frontend/test-results/
+frontend/playwright-report/
+frontend/tsconfig.tsbuildinfo

@@ -12,6 +12,8 @@ export interface RunRequest {
   client_profile?: ClientProfile | null;
 }
 
+export type OrchestrationMode = "auto" | "single";
+
 export interface ClientProfile {
   name: string;
   primary_objective: string;

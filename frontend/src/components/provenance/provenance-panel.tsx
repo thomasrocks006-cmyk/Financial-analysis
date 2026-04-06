@@ -29,7 +29,7 @@ export function ProvenancePanel({ runId }: Props) {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-12 text-[var(--muted-foreground)]">
+      <div className="flex items-center justify-center py-12 text-[var(--text-muted)] text-[11px]">
         <Loader2 className="w-5 h-5 animate-spin mr-2" />
         Loading provenance data...
       </div>
@@ -48,7 +48,7 @@ export function ProvenancePanel({ runId }: Props) {
 
   if (!packet || !packet.stage_cards?.length) {
     return (
-      <div className="text-center py-12 text-[var(--muted-foreground)] text-sm">
+      <div className="text-center py-12 text-[var(--text-muted)] text-sm">
         No provenance data available for this run.
       </div>
     );
@@ -57,27 +57,27 @@ export function ProvenancePanel({ runId }: Props) {
   return (
     <div className="space-y-6">
       {/* Completeness header */}
-      <div className="bg-[var(--card)] border border-[var(--border)] rounded-lg p-4 flex items-center gap-6">
+      <div className="border border-[var(--border)] bg-[var(--surface)] p-4 flex items-center gap-6">
         <div className="flex items-center gap-2">
-          <ShieldCheck className="w-5 h-5 text-emerald-400" />
-          <span className="font-semibold text-sm">Provenance Coverage</span>
+          <ShieldCheck className="w-5 h-5 text-[var(--success)]" />
+          <span className="text-[10px] tracking-[.1em] text-[var(--text-label)] uppercase">Provenance Coverage</span>
         </div>
         <div className="flex-1">
-          <div className="w-full bg-[var(--muted)] rounded-full h-2">
+          <div className="w-full bg-[var(--border-2)] h-2">
             <div
-              className="bg-emerald-500 h-2 rounded-full transition-all"
+              className="bg-[var(--success)] h-2 transition-all"
               style={{ width: `${packet.completeness_pct}%` }}
             />
           </div>
         </div>
-        <span className="text-sm font-mono">
+        <span className="text-sm font-mono text-[var(--text-primary)]">
           {packet.stages_with_provenance}/{packet.total_stages} stages ({packet.completeness_pct}%)
         </span>
       </div>
 
       {/* Stage provenance cards */}
       <div>
-        <h3 className="text-sm font-semibold text-[var(--muted-foreground)] uppercase tracking-wider px-1 mb-3 flex items-center gap-1">
+        <h3 className="text-[10px] tracking-[.1em] text-[var(--text-label)] uppercase px-1 mb-3 flex items-center gap-1">
           <Layers className="w-4 h-4" /> Stage Provenance ({packet.stage_cards.length})
         </h3>
         <div className="space-y-2">
@@ -92,7 +92,7 @@ export function ProvenancePanel({ runId }: Props) {
       {/* Report section provenance */}
       {packet.report_sections && packet.report_sections.length > 0 && (
         <div>
-          <div className="flex items-center gap-1 text-sm font-semibold text-[var(--muted-foreground)] uppercase tracking-wider px-1 mb-3">
+          <div className="flex items-center gap-1 text-[10px] tracking-[.1em] text-[var(--text-label)] uppercase px-1 mb-3">
             <FileText className="w-4 h-4" /> Report Section Traceability
           </div>
           <ReportProvenancePanel sections={packet.report_sections} />

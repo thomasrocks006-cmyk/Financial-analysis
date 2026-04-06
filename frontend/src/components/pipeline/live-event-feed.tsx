@@ -109,16 +109,16 @@ export function LiveEventFeed() {
   }, [events.length]);
 
   return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] flex flex-col">
+    <div className="border border-[var(--border)] bg-[var(--surface)] flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
+      <div className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--surface-2)] px-4 py-2">
         <div className="flex items-center gap-2">
           <Activity className="h-4 w-4 text-[var(--accent)]" />
-          <h3 className="text-sm font-semibold text-[var(--text-primary)]">
+          <h3 className="text-[10px] tracking-[.1em] text-[var(--text-label)] uppercase">
             Live Event Feed
           </h3>
         </div>
-        <span className="text-xs text-[var(--text-muted)]">
+        <span className="text-[10px] text-[var(--text-muted)] tabular-nums">
           {events.length} events
         </span>
       </div>
@@ -126,7 +126,7 @@ export function LiveEventFeed() {
       {/* Event list */}
       <div className="flex-1 overflow-auto max-h-[500px] p-1">
         {events.length === 0 ? (
-          <div className="flex items-center justify-center p-8 text-sm text-[var(--text-muted)]">
+          <div className="flex items-center justify-center p-8 text-[11px] text-[var(--text-muted)]">
             Waiting for pipeline events…
           </div>
         ) : (

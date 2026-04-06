@@ -95,7 +95,7 @@ Streamlit has no dashboard — the page opens directly to the run configuration.
 |---|---|---|
 | Rendered markdown | ✅ `st.markdown(unsafe_allow_html=True)` | ✅ `dangerouslySetInnerHTML` with prose styles |
 | Download as `.md` | ✅ `st.download_button` | ✅ button |
-| **Export as PDF** | ✅ `_generate_report_pdf()` via fpdf2, cover page + sections | ❌ **GAP — not implemented** |
+| **Export as PDF** | ✅ `_generate_report_pdf()` via fpdf2, cover page + sections | ✅ `GET /runs/{id}/report/pdf` + download button |
 | Report loads from API | No (direct Python) | ✅ `GET /runs/{id}/report` |
 
 ---
@@ -137,15 +137,15 @@ Streamlit had an expander `"📊 Quant Analytics"` (lines 1252–1640) with thes
 
 | Sub-panel | Streamlit | Next.js |
 |---|---|---|
-| VaR 95% / CVaR | ✅ metric cards | ❌ **GAP** |
-| ETF Overlap & Differentiation | ✅ dataframe | ❌ **GAP** |
-| Factor Exposures | ✅ bar chart | ❌ **GAP** |
-| Mandate Constraints | ✅ per-ticker table | ❌ **GAP** |
-| ESG Scores | ✅ composite per ticker | ❌ **GAP** |
-| Portfolio Weights (equal weight) | ✅ | ❌ **GAP** |
-| Portfolio Optimisation | ✅ efficient frontier + table | ❌ **GAP** |
-| BHB Performance Attribution | ✅ portfolio vs SPY | ❌ **GAP** |
-| Sector Attribution Detail | ✅ dataframe | ❌ **GAP** |
+| VaR 95% / CVaR | ✅ metric cards | ✅ quant panel |
+| ETF Overlap & Differentiation | ✅ dataframe | ✅ quant panel |
+| Factor Exposures | ✅ bar chart | ✅ quant panel |
+| Mandate Constraints | ✅ per-ticker table | ✅ quant panel |
+| ESG Scores | ✅ composite per ticker | ✅ quant panel |
+| Portfolio Weights (equal weight) | ✅ | ✅ quant panel |
+| Portfolio Optimisation | ✅ efficient frontier + table | ✅ quant panel |
+| BHB Performance Attribution | ✅ portfolio vs SPY | ✅ quant panel |
+| Sector Attribution Detail | ✅ dataframe | ✅ via attribution / optimisation views |
 
 > **Note:** Most of these sub-panels were **already dormant** in Streamlit (data sourced from mock/synthetic output). They rendered only when the pipeline produced the matching keys in the audit packet. The `ProvenanceService` now maps these stages cleanly, so a dedicated Quant page in Next.js would have accurate source data to display.
 
@@ -156,8 +156,8 @@ Streamlit had an expander `"📊 Quant Analytics"` (lines 1252–1640) with thes
 |---|---|---|
 | List saved runs | ✅ radio selector | ✅ card list with metadata |
 | Load + view run | ✅ (loads report + audit) | ✅ `GET /saved-runs/{id}` |
-| Delete run | ✅ `st.button("🗑️ Delete")` | ❌ **GAP — no delete button yet** |
-| Download JSON | ✅ `st.download_button` | ❌ **GAP** |
+| Delete run | ✅ `st.button("🗑️ Delete")` | ✅ confirmation flow + `DELETE /saved-runs/{id}` |
+| Download JSON | ✅ `st.download_button` | ✅ link from Saved Runs view |
 | Download Markdown | ✅ `st.download_button` | ✅ (from Report tab) |
 
 ---
@@ -188,11 +188,11 @@ These bugs affected both UIs but are now fixed in the pipeline adapter:
 
 | Layer | Streamlit Era | Now |
 |---|---|---|
-| API endpoints | 6 | **15** (all typed, all tested) |
+| API endpoints | 6 | **18** (typed API + SSE + PDF + quant + delete) |
 | SSE event types handled | 4 (rough) | **11** (all named, Zustand reducer) |
-| Backend tests | ~903 | **972** (68 new for sessions 16+17) |
-| Frontend tests | 0 | 68 (route integrity, SSE helper, event schema, provenance logic) |
-| Build pipeline | `streamlit run` | `npx next build` ✓ — 7 routes, Turbopack |
+| Backend tests | ~903 | **1,102** passing in current repo state |
+| Frontend checks | 0 | TypeScript typecheck + production build + Playwright smoke tests enforced in CI |
+| Build pipeline | `streamlit run` | `npm run typecheck` + `npm run build` + `npm run test:e2e` ✓ |
 
 ---
 
@@ -204,20 +204,20 @@ These bugs affected both UIs but are now fixed in the pipeline adapter:
 - **Type safety end-to-end** — 18 TypeScript interfaces mirror the Pydantic schemas exactly
 - **Truthful data** — all bugs producing zero-value metrics are fixed; charts now show real numbers
 - **Test coverage** — the frontend structure and all 15 API endpoints are regression-tested
+- **Browser proof** — dashboard, new-run, saved-run delete, and command-bar routing now have Playwright smoke coverage
 - **Component decomposition** — 11 reusable components vs 1 monolith file
 - **Build verification** — compiled successfully, no TypeScript errors
 
-### Gaps (Priority Order)
+### Remaining Gaps (Priority Order)
 
 | Priority | Gap | Effort |
 |---|---|---|
-| **High** | PDF export on Report page | Small — port `_generate_report_pdf()` to API endpoint, add download button |
-| **High** | Delete button on Saved Runs page | Trivial — call `DELETE /saved-runs/{id}` |
-| **Medium** | Quant Analytics page | Medium — new page with VaR, ETF Overlap, Factor Exposure, Attribution panels |
-| **Medium** | Per-stage model override in New Run configuration | Small — add expandable section |
-| **Low** | API key entry wired to requests | Small — store keys in Zustand, pass as headers |
-| **Low** | Run cost estimator | Medium — call `estimate_run_cost()` from new API endpoint |
-| **Low** | Benchmark selector | Trivial — add selectbox to New Run form |
+| **High** | Per-stage model override in New Run configuration | Small — add expandable section |
+| **Medium** | API key entry wired to requests | Small — store keys in Zustand, pass as headers |
+| **Medium** | Run cost estimator | Medium — call `estimate_run_cost()` from new API endpoint |
+| **Medium** | Benchmark selector | Trivial — add selectbox to New Run form |
+| **Low** | Saved-run deep-link detail route | Small — dedicated per-saved-run page |
+| **Low** | Expand Playwright from smoke to deeper report/audit/provenance flows | Medium |
 
 ---
 
@@ -227,8 +227,8 @@ The Next.js frontend is **production-quality in core functionality** and surpass
 - Live streaming fidelity
 - Provenance / traceability (entirely new capability)
 - Data accuracy (all zero-value bugs fixed)
-- Type safety and maintainability
+- Type safety, maintainability, and browser-level regression proof
 
-It has **three meaningful gaps** relative to Streamlit today: PDF export, delete button on saved runs, and the Quant Analytics panel. The quant panel is the largest gap but was also largely dormant in Streamlit itself. The other two are small, targeted additions.
+Its main remaining gaps are configuration depth in the new-run flow, settings wiring, broader browser-journey coverage, and a more dedicated saved-run detail experience. The most material product gap versus the legacy surface remains deeper quant/report workflow parity, not basic operational functionality.
 
-Both frontends remain operational and co-exist. The Streamlit app can be retired once the three gaps above are addressed, or immediately if the quant analytics panels are de-scoped (given they were dormant there too).
+Both frontends remain operational and co-exist. The Streamlit app can be retired once the remaining workflow-parity items are addressed, or earlier if the dormant legacy-only analytics are explicitly de-scoped.

@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 
 const ROUTE_MAP: Record<string, string> = {
   DASHBOARD:  "/",
-  MONITOR:    "/",
+  MONITOR:    "/monitor",
   PORTFOLIO:  "/",
   "NEW RUN":  "/runs/new",
   "NEW":      "/runs/new",

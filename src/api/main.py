@@ -79,7 +79,17 @@ def create_app() -> FastAPI:
     )
 
     # ── CORS ────────────────────────────────────────────────────────────
-    allowed_origins = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+    allowed_origins_env = os.getenv("ALLOWED_ORIGINS")
+    allowed_origins = (
+        [o.strip() for o in allowed_origins_env.split(",") if o.strip()]
+        if allowed_origins_env
+        else [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:8501",
+            "http://127.0.0.1:8501",
+        ]
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins,
@@ -90,6 +100,9 @@ def create_app() -> FastAPI:
 
     # ── Optional API-key auth middleware ─────────────────────────────────
     api_key = os.getenv("API_KEY", "")
+    app_env = os.getenv("APP_ENV", "development").lower()
+    if app_env in {"prod", "production"} and not api_key:
+        logger.warning("APP_ENV=%s but API_KEY is not set; API routes are unauthenticated", app_env)
     if api_key:
 
         @app.middleware("http")

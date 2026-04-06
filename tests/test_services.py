@@ -312,6 +312,45 @@ class TestRunRegistry:
         runs = registry.list_runs()
         assert len(runs) == 2
 
+    def test_registry_uses_sqlite_storage(self, tmp_path):
+        from research_pipeline.services.run_registry import RunRegistryService
+
+        registry = RunRegistryService(tmp_path)
+        record = registry.create_run(config={"test": True}, universe=["NVDA"])
+
+        db_path = tmp_path / "registry" / "registry.db"
+        assert db_path.exists()
+        assert registry.get_run(record.run_id) is not None
+
+    def test_delete_run(self, tmp_path):
+        from research_pipeline.services.run_registry import RunRegistryService
+
+        registry = RunRegistryService(tmp_path)
+        record = registry.create_run(config={"test": True}, universe=["NVDA"])
+
+        assert registry.delete_run(record.run_id) is True
+        assert registry.get_run(record.run_id) is None
+
+    def test_migrates_legacy_json_runs(self, tmp_path):
+        import json
+
+        from research_pipeline.schemas.registry import RunRecord
+        from research_pipeline.services.run_registry import RunRegistryService
+
+        legacy_dir = tmp_path / "registry"
+        legacy_dir.mkdir(parents=True, exist_ok=True)
+        legacy_record = RunRecord(run_id="run_legacy_001", universe=["NVDA"], config_hash="abc123")
+        (legacy_dir / "runs.json").write_text(
+            json.dumps({legacy_record.run_id: legacy_record.model_dump(mode="json")}, default=str),
+            encoding="utf-8",
+        )
+
+        registry = RunRegistryService(tmp_path)
+        migrated = registry.get_run("run_legacy_001")
+
+        assert migrated is not None
+        assert migrated.run_id == "run_legacy_001"
+
 
 # ── Scheduler Monitoring ──────────────────────────────────────────────────
 

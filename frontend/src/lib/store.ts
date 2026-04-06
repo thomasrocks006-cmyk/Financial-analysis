@@ -9,6 +9,7 @@
  */
 
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import type {
   PipelineEvent,
   PipelineEventType,
@@ -16,6 +17,7 @@ import type {
   StageInfo,
   ClientProfile,
   STAGE_COUNT,
+  OrchestrationMode,
 } from "./types";
 
 export interface StageState {
@@ -53,10 +55,14 @@ interface PipelineStore {
   // ── Config state ───────────────────────────────────────────────────
   universe: string[];
   model: string;
+  orchestrationMode: OrchestrationMode;
   temperature: number;
   runLabel: string;
   clientProfile: ClientProfile | null;
   market: "us" | "au" | "global" | "mixed";
+  benchmarkTicker: string;
+  maxPositions: number;
+  portfolioVariants: string[];
 
   // ── Actions ────────────────────────────────────────────────────────
   setRunStarted: (runId: string) => void;
@@ -64,10 +70,14 @@ interface PipelineStore {
   resetRun: () => void;
   setUniverse: (tickers: string[]) => void;
   setModel: (model: string) => void;
+  setOrchestrationMode: (mode: OrchestrationMode) => void;
   setTemperature: (temp: number) => void;
   setRunLabel: (label: string) => void;
   setClientProfile: (profile: ClientProfile | null) => void;
   setMarket: (market: "us" | "au" | "global" | "mixed") => void;
+  setBenchmarkTicker: (ticker: string) => void;
+  setMaxPositions: (positions: number) => void;
+  togglePortfolioVariant: (variant: string) => void;
   setError: (error: string | null) => void;
 }
 
@@ -100,7 +110,7 @@ function createInitialStages(): StageState[] {
   }));
 }
 
-export const usePipelineStore = create<PipelineStore>((set, get) => ({
+export const usePipelineStore = create<PipelineStore>()(persist((set, get) => ({
   // Initial state
   activeRunId: null,
   runStatus: null,
@@ -115,10 +125,14 @@ export const usePipelineStore = create<PipelineStore>((set, get) => ({
   // Config defaults
   universe: ["NVDA", "AMD", "AVGO", "MRVL", "ARM", "TSM", "MSFT", "AMZN", "GOOGL", "META", "EQIX", "DLR", "VRT", "DELL", "SMCI"],
   model: "claude-sonnet-4-6",
+  orchestrationMode: "auto",
   temperature: 0.3,
   runLabel: "",
   clientProfile: null,
   market: "us",
+  benchmarkTicker: "^GSPC",
+  maxPositions: 25,
+  portfolioVariants: ["balanced", "higher_return", "lower_volatility"],
 
   // ── Actions ────────────────────────────────────────────────────────
   setRunStarted: (runId: string) =>
@@ -246,9 +260,32 @@ export const usePipelineStore = create<PipelineStore>((set, get) => ({
 
   setUniverse: (tickers) => set({ universe: tickers }),
   setModel: (model) => set({ model }),
+  setOrchestrationMode: (orchestrationMode) => set({ orchestrationMode }),
   setTemperature: (temp) => set({ temperature: temp }),
   setRunLabel: (label) => set({ runLabel: label }),
   setClientProfile: (profile) => set({ clientProfile: profile }),
   setMarket: (market) => set({ market }),
+  setBenchmarkTicker: (benchmarkTicker) => set({ benchmarkTicker }),
+  setMaxPositions: (maxPositions) => set({ maxPositions }),
+  togglePortfolioVariant: (variant) =>
+    set((state) => ({
+      portfolioVariants: state.portfolioVariants.includes(variant)
+        ? state.portfolioVariants.filter((item) => item !== variant)
+        : [...state.portfolioVariants, variant],
+    })),
   setError: (error) => set({ error }),
+}), {
+  name: "meridian-run-defaults",
+  partialize: (state) => ({
+    universe: state.universe,
+    model: state.model,
+    orchestrationMode: state.orchestrationMode,
+    temperature: state.temperature,
+    runLabel: state.runLabel,
+    clientProfile: state.clientProfile,
+    market: state.market,
+    benchmarkTicker: state.benchmarkTicker,
+    maxPositions: state.maxPositions,
+    portfolioVariants: state.portfolioVariants,
+  }),
 }));

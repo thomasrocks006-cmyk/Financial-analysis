@@ -38,15 +38,15 @@ export function TimingChart({ timings, className }: TimingChartProps) {
 
   if (data.length === 0) {
     return (
-      <div className={cn("rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6 text-center text-sm text-[var(--text-muted)]", className)}>
+      <div className={cn("border border-[var(--border)] bg-[var(--surface)] p-6 text-center text-sm text-[var(--text-muted)]", className)}>
         No timing data available
       </div>
     );
   }
 
   return (
-    <div className={cn("rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4", className)}>
-      <h3 className="mb-4 text-sm font-semibold text-[var(--text-primary)]">
+    <div className={cn("border border-[var(--border)] bg-[var(--surface)] p-4", className)}>
+      <h3 className="mb-4 text-[10px] tracking-[.1em] text-[var(--text-label)] uppercase">
         Stage Execution Times
       </h3>
       <ResponsiveContainer width="100%" height={300}>
@@ -71,7 +71,6 @@ export function TimingChart({ timings, className }: TimingChartProps) {
             contentStyle={{
               backgroundColor: "var(--surface-2)",
               border: "1px solid var(--border)",
-              borderRadius: "0.5rem",
               fontSize: 12,
               color: "var(--text-primary)",
             }}
@@ -81,7 +80,7 @@ export function TimingChart({ timings, className }: TimingChartProps) {
               return item?.label || label;
             }}
           />
-          <Bar dataKey="seconds" radius={[4, 4, 0, 0]}>
+          <Bar dataKey="seconds">
             {data.map((entry, index) => (
               <Cell
                 key={`cell-${index}`}
