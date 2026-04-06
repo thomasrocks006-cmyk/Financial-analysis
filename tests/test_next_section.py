@@ -471,9 +471,7 @@ class TestYfinanceFallback:
         fake_ticker.fast_info = fake_fast_info
 
         with patch("yfinance.Ticker", return_value=fake_ticker):
-            result = asyncio.run(
-                ingestor.fetch_yfinance_quote("FAKE")
-            )
+            result = asyncio.run(ingestor.fetch_yfinance_quote("FAKE"))
 
         assert isinstance(result, MarketSnapshot)
         assert result.ticker == "FAKE"

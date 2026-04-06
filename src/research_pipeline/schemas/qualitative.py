@@ -529,6 +529,7 @@ class QualitativePackage(BaseModel):
 
 # ── DSQ-5/6/7/8: Benzinga-sourced rating-change schemas ─────────────────────
 
+
 class AnalystRatingChange(BaseModel):
     """Analyst rating change event — primary source: Benzinga (Tier 2).
 
@@ -538,14 +539,14 @@ class AnalystRatingChange(BaseModel):
 
     ticker: str
     analyst_firm: str
-    action_type: str             # "Upgrade", "Downgrade", "Initiate", "Maintain", "Reiterate"
-    rating_current: str          # "Buy", "Overweight", "Hold", "Underweight", "Sell"
+    action_type: str  # "Upgrade", "Downgrade", "Initiate", "Maintain", "Reiterate"
+    rating_current: str  # "Buy", "Overweight", "Hold", "Underweight", "Sell"
     rating_prior: str = ""
     price_target_current: Optional[float] = None
     price_target_prior: Optional[float] = None
     published_at: Optional[datetime] = None
     headline: str = ""
-    is_adverse: bool = False     # True when action is downgrade / target cut
+    is_adverse: bool = False  # True when action is downgrade / target cut
     source: str = "benzinga"
     source_tier: int = 2
 
@@ -577,15 +578,15 @@ class AdverseSignal(BaseModel):
     """
 
     ticker: str
-    signal_type: str             # "analyst_downgrade", "price_target_cut",
-                                 # "negative_catalyst", "miss_and_lower", "cluster_downgrade"
+    signal_type: str  # "analyst_downgrade", "price_target_cut",
+    # "negative_catalyst", "miss_and_lower", "cluster_downgrade"
     analyst_firm: Optional[str] = None
-    description: str             # Human-readable description for the agent prompt
-    severity: str = "moderate"   # "low" | "moderate" | "high" | "critical"
+    description: str  # Human-readable description for the agent prompt
+    severity: str = "moderate"  # "low" | "moderate" | "high" | "critical"
     published_at: Optional[datetime] = None
     source: str = "benzinga"
     source_tier: int = 2
-    raw_action_type: Optional[str] = None   # Original Benzinga action_type string
+    raw_action_type: Optional[str] = None  # Original Benzinga action_type string
     rating_current: Optional[str] = None
     rating_prior: Optional[str] = None
     price_target_current: Optional[float] = None
@@ -605,8 +606,7 @@ class AdverseSignal(BaseModel):
         delta = rc.pt_delta
         pt_str = f" PT cut ${delta:+.0f}" if (delta is not None and delta < 0) else ""
         description = (
-            f"{rc.analyst_firm} {rc.action_type} {rc.rating_prior} → {rc.rating_current}"
-            f"{pt_str}"
+            f"{rc.analyst_firm} {rc.action_type} {rc.rating_prior} → {rc.rating_current}{pt_str}"
         )
         return cls(
             ticker=rc.ticker,

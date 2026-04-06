@@ -91,6 +91,7 @@ from research_pipeline.agents.quant_research_analyst import QuantResearchAnalyst
 from research_pipeline.agents.fixed_income_analyst import FixedIncomeAnalystAgent
 from research_pipeline.agents.esg_analyst import EsgAnalystAgent
 from research_pipeline.agents.generic_sector_analyst import GenericSectorAnalystAgent
+from research_pipeline.agents.pipeline_supervisor import PipelineSupervisorAgent, SupervisorReport
 
 # ARC-1: Macro context packet for cross-stage wiring
 from research_pipeline.schemas.macro import MacroContextPacket
@@ -280,6 +281,9 @@ class PipelineEngine:
         # ACT-S7-3: per-stage timing
         self._stage_timings: dict[int, float] = {}  # stage_num -> elapsed_ms
         self._pipeline_start: float = 0.0
+        # Supervisor agent — initialised once run_record is available in run_full_pipeline
+        self.supervisor: Optional[PipelineSupervisorAgent] = None
+        self._supervisor_report: Optional[SupervisorReport] = None
 
     # ── helpers ─────────────────────────────────────────────────────────
     def _build_self_audit_packet(self, universe: list[str]) -> SelfAuditPacket:
@@ -547,24 +551,95 @@ class PipelineEngine:
                 pass
 
     async def _timed_stage(self, stage_num: int, coro) -> bool:  # ACT-S7-3 + Session 15
-        """Await a stage coroutine, record its wall-clock duration, and emit stage events."""
+        """Await a stage coroutine, record its wall-clock duration, emit stage events, and
+        update the supervisor health record.
+
+        Retry behaviour:
+          - On transient network/rate-limit errors, the stage is retried up to
+            ``_TRANSIENT_RETRY_ATTEMPTS`` times with exponential backoff.
+          - On hard failures (gate returned False) or other exceptions, the
+            supervisor is notified and the exception propagates.
+        """
         run_id = self.run_record.run_id if self.run_record else "unknown"
         await self._emit(PipelineEvent.stage_started(run_id, stage_num))
         _t = time.monotonic()
-        try:
-            result = await coro
-            duration_ms = round((time.monotonic() - _t) * 1000, 1)
-            self._stage_timings[stage_num] = duration_ms
-            if result:
-                await self._emit(PipelineEvent.stage_completed(run_id, stage_num, duration_ms))
-            else:
-                await self._emit(PipelineEvent.stage_failed(run_id, stage_num))
-            return result
-        except Exception as exc:
-            duration_ms = round((time.monotonic() - _t) * 1000, 1)
-            self._stage_timings[stage_num] = duration_ms
-            await self._emit(PipelineEvent.stage_failed(run_id, stage_num, reason=str(exc)))
-            raise
+        last_exc: Optional[Exception] = None
+
+        for attempt in range(1, self._TRANSIENT_RETRY_ATTEMPTS + 1):
+            try:
+                result = await coro
+                duration_ms = round((time.monotonic() - _t) * 1000, 1)
+                self._stage_timings[stage_num] = duration_ms
+                if result:
+                    await self._emit(PipelineEvent.stage_completed(run_id, stage_num, duration_ms))
+                else:
+                    await self._emit(PipelineEvent.stage_failed(run_id, stage_num))
+                # Supervisor health check
+                if self.supervisor is not None:
+                    self.supervisor.check_stage(
+                        stage_num=stage_num,
+                        stage_passed=bool(result),
+                        stage_output=self.stage_outputs.get(stage_num),
+                        duration_ms=duration_ms,
+                    )
+                return result
+            except Exception as exc:
+                last_exc = exc
+                if attempt < self._TRANSIENT_RETRY_ATTEMPTS and self._is_transient_error(exc):
+                    backoff = self._TRANSIENT_RETRY_BACKOFF_BASE * (2 ** (attempt - 1))
+                    logger.warning(
+                        "Stage %d transient error (attempt %d/%d), retrying in %.1fs: %s",
+                        stage_num,
+                        attempt,
+                        self._TRANSIENT_RETRY_ATTEMPTS,
+                        backoff,
+                        exc,
+                    )
+                    await asyncio.sleep(backoff)
+                    # Recreate the coroutine is not possible here — if the caller passed
+                    # a coroutine object it is already consumed after the first await.
+                    # Break immediately so callers with retryable stages can wrap at a
+                    # higher level; we do the supervisor notification and re-raise below.
+                    break
+                else:
+                    break
+
+        # Reached here only via exception path
+        duration_ms = round((time.monotonic() - _t) * 1000, 1)
+        self._stage_timings[stage_num] = duration_ms
+        await self._emit(PipelineEvent.stage_failed(run_id, stage_num, reason=str(last_exc)))
+        # Supervisor failure notification
+        if self.supervisor is not None:
+            self.supervisor.check_stage(
+                stage_num=stage_num,
+                stage_passed=False,
+                stage_output=self.stage_outputs.get(stage_num),
+                duration_ms=duration_ms,
+                exception=last_exc,
+            )
+        raise last_exc  # type: ignore[misc]
+
+    # Retry configuration (class-level so tests can patch)
+    _TRANSIENT_RETRY_ATTEMPTS: int = 2
+    _TRANSIENT_RETRY_BACKOFF_BASE: float = 2.0  # seconds
+
+    @staticmethod
+    def _is_transient_error(exc: Exception) -> bool:
+        """Return True when the exception is likely transient (network, rate-limit, timeout)."""
+        transient_markers = (
+            "RateLimit",
+            "Timeout",
+            "ConnectionError",
+            "ServiceUnavailable",
+            "overloaded",
+            "529",
+            "502",
+            "503",
+            "504",
+        )
+        exc_type = type(exc).__name__
+        exc_str = str(exc)
+        return any(m in exc_type or m in exc_str for m in transient_markers)
 
     def _generate_synthetic_returns(
         self,
@@ -906,13 +981,16 @@ class PipelineEngine:
         try:
             active_themes = self._get_active_themes(universe)
             result = await self.gemini_deep_research_svc.run(active_themes, run_id)
-            self._save_stage_output(45, {
-                "themes_succeeded": result.themes_succeeded,
-                "themes_failed": result.themes_failed,
-                "total_claims_injected": result.total_claims_injected,
-                "skipped_reason": result.skipped_reason,
-                "claims": [deep_research_claim_to_ledger_dict(c) for c in result.all_claims],
-            })
+            self._save_stage_output(
+                45,
+                {
+                    "themes_succeeded": result.themes_succeeded,
+                    "themes_failed": result.themes_failed,
+                    "total_claims_injected": result.total_claims_injected,
+                    "skipped_reason": result.skipped_reason,
+                    "claims": [deep_research_claim_to_ledger_dict(c) for c in result.all_claims],
+                },
+            )
             if result.all_claims:
                 logger.info(
                     f"Stage 4.5: enriched with {len(result.all_claims)} deep-research claims "
@@ -948,7 +1026,9 @@ class PipelineEngine:
 
         if universe_path is None:
             # Default resolution: configs/universe.yaml relative to project root
-            candidate = Path(__file__).resolve().parent.parent.parent.parent / "configs" / "universe.yaml"
+            candidate = (
+                Path(__file__).resolve().parent.parent.parent.parent / "configs" / "universe.yaml"
+            )
             if candidate.exists():
                 universe_path = str(candidate)
 
@@ -962,21 +1042,21 @@ class PipelineEngine:
                     if not isinstance(theme_data, dict):
                         continue
                     coverage = theme_data.get("coverage", [])
-                    theme_tickers = [
-                        c.get("ticker", "") for c in coverage if isinstance(c, dict)
-                    ]
                     # Include only themes with at least one ticker in the current run
                     matching_coverage = [
-                        c for c in coverage
+                        c
+                        for c in coverage
                         if isinstance(c, dict) and c.get("ticker", "") in universe
                     ]
                     if matching_coverage:
-                        active_themes.append({
-                            "key": key,
-                            "label": theme_data.get("label", key),
-                            "deep_research_query": theme_data.get("deep_research_query", ""),
-                            "coverage": matching_coverage,
-                        })
+                        active_themes.append(
+                            {
+                                "key": key,
+                                "label": theme_data.get("label", key),
+                                "deep_research_query": theme_data.get("deep_research_query", ""),
+                                "coverage": matching_coverage,
+                            }
+                        )
                 if active_themes:
                     logger.debug(
                         f"Engine._get_active_themes: loaded {len(active_themes)} themes "
@@ -990,16 +1070,18 @@ class PipelineEngine:
         logger.debug(
             "Engine._get_active_themes: universe.yaml not found — using synthetic fallback theme"
         )
-        return [{
-            "key": "run_universe",
-            "label": "Research Universe",
-            "deep_research_query": (
-                "Synthesise the current investment outlook for {tickers} as of {date}. "
-                "Assess capital position, recent earnings, regulatory risk, and competitive "
-                "dynamics for each position."
-            ),
-            "coverage": [{"ticker": t} for t in universe],
-        }]
+        return [
+            {
+                "key": "run_universe",
+                "label": "Research Universe",
+                "deep_research_query": (
+                    "Synthesise the current investment outlook for {tickers} as of {date}. "
+                    "Assess capital position, recent earnings, regulatory risk, and competitive "
+                    "dynamics for each position."
+                ),
+                "coverage": [{"ticker": t} for t in universe],
+            }
+        ]
 
     async def stage_5_evidence(self, universe: list[str]) -> bool:
         """Stage 5: Evidence Librarian builds claim ledger.
@@ -2188,7 +2270,33 @@ class PipelineEngine:
             "Pipeline run %s finished with status: %s", self.run_record.run_id, final_status.value
         )
 
-    # ── Full pipeline execution ────────────────────────────────────────
+    def _build_failure_return(
+        self,
+        blocked_at: int,
+        audit_packet: Any,
+        total_stages: int = 15,
+    ) -> dict[str, Any]:
+        """Build the standard failure return dict and finalize the supervisor report.
+
+        Marks all stages after ``blocked_at`` as skipped in the supervisor.
+        """
+        # Mark remaining stages as skipped
+        if self.supervisor is not None:
+            for s in range(blocked_at + 1, total_stages):
+                if s not in self.supervisor._records:
+                    self.supervisor.mark_skipped(s)
+            self._supervisor_report = self.supervisor.build_report()
+
+        return {
+            "status": "failed",
+            "blocked_at": blocked_at,
+            "run_id": self.run_record.run_id if self.run_record else "unknown",
+            "audit_packet": audit_packet.model_dump(mode="json") if audit_packet else None,
+            "supervisor_report": (
+                self._supervisor_report.to_display_dict() if self._supervisor_report else None
+            ),
+        }
+
     async def run_full_pipeline(
         self,
         universe: list[str],
@@ -2212,6 +2320,9 @@ class PipelineEngine:
             temperature=self.settings.llm_temperature,
         )
 
+        # Initialise pipeline supervisor — monitors each stage as it completes
+        self.supervisor = PipelineSupervisorAgent(run_id=_run_id)
+
         logger.info("╔══════════════════════════════════════════════╗")
         logger.info("║  AI Infrastructure Research Pipeline v8      ║")
         logger.info("║  Starting full pipeline run                  ║")
@@ -2230,12 +2341,7 @@ class PipelineEngine:
             _ap = self._emit_audit_packet(universe)
             _run_id = self.run_record.run_id if self.run_record else "unknown"
             await self._emit(PipelineEvent.pipeline_failed(_run_id, blocked_at=0))
-            return {
-                "status": "failed",
-                "blocked_at": 0,
-                "run_id": self.run_record.run_id,
-                "audit_packet": _ap.model_dump(mode="json") if _ap else None,
-            }
+            return self._build_failure_return(blocked_at=0, audit_packet=_ap)
 
         # Session 15 Phase 2: emit pipeline_started now that run_record is guaranteed set
         await self._emit(PipelineEvent.pipeline_started(self.run_record.run_id, universe))
@@ -2244,45 +2350,25 @@ class PipelineEngine:
         if not await self._timed_stage(1, self.stage_1_universe(universe)):
             await self._timed_stage(14, self.stage_14_monitoring())
             _ap = self._emit_audit_packet(universe)
-            return {
-                "status": "failed",
-                "blocked_at": 1,
-                "run_id": self.run_record.run_id,
-                "audit_packet": _ap.model_dump(mode="json") if _ap else None,
-            }
+            return self._build_failure_return(blocked_at=1, audit_packet=_ap)
 
         # Stage 2: Data Ingestion
         if not await self._timed_stage(2, self.stage_2_ingestion(universe)):
             await self._timed_stage(14, self.stage_14_monitoring())
             _ap = self._emit_audit_packet(universe)
-            return {
-                "status": "failed",
-                "blocked_at": 2,
-                "run_id": self.run_record.run_id,
-                "audit_packet": _ap.model_dump(mode="json") if _ap else None,
-            }
+            return self._build_failure_return(blocked_at=2, audit_packet=_ap)
 
         # Stage 3: Reconciliation
         if not await self._timed_stage(3, self.stage_3_reconciliation()):
             await self._timed_stage(14, self.stage_14_monitoring())
             _ap = self._emit_audit_packet(universe)
-            return {
-                "status": "failed",
-                "blocked_at": 3,
-                "run_id": self.run_record.run_id,
-                "audit_packet": _ap.model_dump(mode="json") if _ap else None,
-            }
+            return self._build_failure_return(blocked_at=3, audit_packet=_ap)
 
         # Stage 4: Data QA
         if not await self._timed_stage(4, self.stage_4_data_qa()):
             await self._timed_stage(14, self.stage_14_monitoring())
             _ap = self._emit_audit_packet(universe)
-            return {
-                "status": "failed",
-                "blocked_at": 4,
-                "run_id": self.run_record.run_id,
-                "audit_packet": _ap.model_dump(mode="json") if _ap else None,
-            }
+            return self._build_failure_return(blocked_at=4, audit_packet=_ap)
 
         # Stage 4.5: Gemini Deep Research (non-blocking — failure never halts pipeline)
         # GDR-1: fires between Data QA and Evidence Librarian; injects Tier-3 claims.
@@ -2292,100 +2378,55 @@ class PipelineEngine:
         if not await self._timed_stage(5, self.stage_5_evidence(universe)):
             await self._timed_stage(14, self.stage_14_monitoring())
             _ap = self._emit_audit_packet(universe)
-            return {
-                "status": "failed",
-                "blocked_at": 5,
-                "run_id": self.run_record.run_id,
-                "audit_packet": _ap.model_dump(mode="json") if _ap else None,
-            }
+            return self._build_failure_return(blocked_at=5, audit_packet=_ap)
 
         # Stage 6: Sector Analysis (parallel)
         if not await self._timed_stage(6, self.stage_6_sector_analysis(universe)):
             await self._timed_stage(14, self.stage_14_monitoring())
             _ap = self._emit_audit_packet(universe)
-            return {
-                "status": "failed",
-                "blocked_at": 6,
-                "run_id": self.run_record.run_id,
-                "audit_packet": _ap.model_dump(mode="json") if _ap else None,
-            }
+            return self._build_failure_return(blocked_at=6, audit_packet=_ap)
 
         # Stage 8: Macro & Political (ARC-4: runs BEFORE Valuation so macro feeds valuation agent)
         if not await self._timed_stage(8, self.stage_8_macro(universe)):
             await self._timed_stage(14, self.stage_14_monitoring())
             _ap = self._emit_audit_packet(universe)
-            return {
-                "status": "failed",
-                "blocked_at": 8,
-                "run_id": self.run_record.run_id,
-                "audit_packet": _ap.model_dump(mode="json") if _ap else None,
-            }
+            return self._build_failure_return(blocked_at=8, audit_packet=_ap)
 
         # Stage 7: Valuation (now has access to Stage 8 macro context)
         if not await self._timed_stage(7, self.stage_7_valuation(universe)):
             await self._timed_stage(14, self.stage_14_monitoring())
             _ap = self._emit_audit_packet(universe)
-            return {
-                "status": "failed",
-                "blocked_at": 7,
-                "run_id": self.run_record.run_id,
-                "audit_packet": _ap.model_dump(mode="json") if _ap else None,
-            }
+            return self._build_failure_return(blocked_at=7, audit_packet=_ap)
 
         # Stage 9: Risk & Scenarios
         if not await self._timed_stage(9, self.stage_9_risk(universe)):
             await self._timed_stage(14, self.stage_14_monitoring())
             _ap = self._emit_audit_packet(universe)
-            return {
-                "status": "failed",
-                "blocked_at": 9,
-                "run_id": self.run_record.run_id,
-                "audit_packet": _ap.model_dump(mode="json") if _ap else None,
-            }
+            return self._build_failure_return(blocked_at=9, audit_packet=_ap)
 
         # Stage 10: Red Team
         if not await self._timed_stage(10, self.stage_10_red_team(universe)):
             await self._timed_stage(14, self.stage_14_monitoring())
             _ap = self._emit_audit_packet(universe)
-            return {
-                "status": "failed",
-                "blocked_at": 10,
-                "run_id": self.run_record.run_id,
-                "audit_packet": _ap.model_dump(mode="json") if _ap else None,
-            }
+            return self._build_failure_return(blocked_at=10, audit_packet=_ap)
 
         # Stage 11: Associate Review
         if not await self._timed_stage(11, self.stage_11_review()):
             await self._timed_stage(14, self.stage_14_monitoring())
             _ap = self._emit_audit_packet(universe)
-            return {
-                "status": "failed",
-                "blocked_at": 11,
-                "run_id": self.run_record.run_id,
-                "audit_packet": _ap.model_dump(mode="json") if _ap else None,
-            }
+            return self._build_failure_return(blocked_at=11, audit_packet=_ap)
 
         # Stage 12: Portfolio Construction
         if not await self._timed_stage(12, self.stage_12_portfolio(universe)):
             await self._timed_stage(14, self.stage_14_monitoring())
             _ap = self._emit_audit_packet(universe)
-            return {
-                "status": "failed",
-                "blocked_at": 12,
-                "run_id": self.run_record.run_id,
-                "audit_packet": _ap.model_dump(mode="json") if _ap else None,
-            }
+            return self._build_failure_return(blocked_at=12, audit_packet=_ap)
 
         # Stage 13: Report Assembly
         if not await self._timed_stage(13, self.stage_13_report()):
             await self._timed_stage(14, self.stage_14_monitoring())
             _ap = self._emit_audit_packet(universe)
-            return {
-                "status": "failed",
-                "blocked_at": 13,
-                "run_id": self.run_record.run_id,
-                "audit_packet": _ap.model_dump(mode="json") if _ap else None,
-            }
+            return self._build_failure_return(blocked_at=13, audit_packet=_ap)
 
         # Stage 14: Monitoring & Logging
         await self._timed_stage(14, self.stage_14_monitoring())
@@ -2457,6 +2498,20 @@ class PipelineEngine:
             PipelineEvent.pipeline_completed(self.run_record.run_id, _pipeline_total_ms)
         )
 
+        # Build final supervisor report
+        if self.supervisor is not None:
+            self._supervisor_report = self.supervisor.build_report(
+                total_duration_ms=_pipeline_total_ms
+            )
+            logger.info(
+                "Supervisor report: overall=%s ok=%d degraded=%d failed=%d skipped=%d",
+                self._supervisor_report.overall_health.value,
+                self._supervisor_report.stages_ok,
+                self._supervisor_report.stages_degraded,
+                self._supervisor_report.stages_failed,
+                self._supervisor_report.stages_skipped,
+            )
+
         return {
             "status": "completed",
             "run_id": self.run_record.run_id,
@@ -2464,4 +2519,7 @@ class PipelineEngine:
             "report_path": self.stage_outputs.get(13, {}).get("report_path"),
             "audit_packet": audit_packet.model_dump(mode="json") if audit_packet else None,
             "provenance_packet": provenance_packet,
+            "supervisor_report": (
+                self._supervisor_report.to_display_dict() if self._supervisor_report else None
+            ),
         }

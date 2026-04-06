@@ -83,6 +83,7 @@ class RunResult:
     publication_status: str = "PASS"
     token_log: list[dict] = field(default_factory=list)
     audit_packet: dict = field(default_factory=dict)
+    supervisor_report: dict = field(default_factory=dict)
 
 
 ProgressCallback = Callable[[int, str, str, dict], None]
@@ -340,6 +341,13 @@ class PipelineEngineAdapter:
                     }
                 )
 
+        # ── Supervisor report from engine ─────────────────────────────────
+        supervisor_report_dict: dict = {}
+        if engine._supervisor_report is not None:
+            supervisor_report_dict = engine._supervisor_report.to_display_dict()
+        elif "supervisor_report" in pipeline_result and pipeline_result["supervisor_report"]:
+            supervisor_report_dict = pipeline_result["supervisor_report"]
+
         return RunResult(
             run_id=run_id,
             tickers=self.tickers,
@@ -352,6 +360,7 @@ class PipelineEngineAdapter:
             publication_status=pub_status,
             token_log=token_log,
             audit_packet=audit_packet_dict,
+            supervisor_report=supervisor_report_dict,
         )
 
 

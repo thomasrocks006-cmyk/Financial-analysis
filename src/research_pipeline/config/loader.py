@@ -229,6 +229,7 @@ class DeepResearchConfig(BaseModel):
     All fields have safe defaults so the service degrades gracefully when
     no config is provided or when GEMINI_API_KEY is absent.
     """
+
     enabled: bool = True
     model: str = "gemini-2.5-pro"
     max_themes_per_run: int = 5
@@ -321,5 +322,4 @@ def load_pipeline_config(config_path: Path | str | None = None) -> PipelineConfi
             "categories", PipelineConfig.model_fields["test_categories"].default
         ),
         deep_research=DeepResearchConfig(**raw.get("deep_research", {})),
-
     )
