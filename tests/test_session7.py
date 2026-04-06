@@ -229,7 +229,7 @@ def s7_engine(s7_settings, s7_config, tmp_path):
 @pytest.fixture
 def s7_result(s7_engine):
     """Run the full pipeline once and return the result dict."""
-    return asyncio.get_event_loop().run_until_complete(
+    return asyncio.run(
         s7_engine.run_full_pipeline(S7_UNIVERSE)
     )
 

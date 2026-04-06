@@ -200,6 +200,25 @@ class StageConfig(BaseModel):
 
 
 # ── Top-level pipeline config ──────────────────────────────────────────────
+class DeepResearchConfig(BaseModel):
+    """Configuration for GeminiDeepResearchService (Stage 4.5).
+
+    Controlled by the ``deep_research`` key in pipeline.yaml.
+    All fields have safe defaults so the service degrades gracefully when
+    no config is provided or when GEMINI_API_KEY is absent.
+    """
+    enabled: bool = True
+    model: str = "gemini-2.5-pro"
+    max_themes_per_run: int = 5
+    timeout_seconds: int = 300
+    output_claim_tier: int = 3
+    confidence_floor: float = 0.55
+    api_key_env: str = "GEMINI_API_KEY"
+    cache_ttl_hours: int = 12
+    universe_config_path: Optional[str] = None  # override path to universe.yaml
+
+
+# ── Top-level pipeline config ──────────────────────────────────────────────
 class PipelineConfig(BaseModel):
     version: str = "v8"
     project_name: str = "ai_infrastructure_research_platform"
@@ -234,6 +253,8 @@ class PipelineConfig(BaseModel):
     )
     # Session 14: optional AU client profile — drives super mandate + tax + disclosures
     client_profile: Optional[Any] = Field(default=None)
+    # GDR-1: Gemini Deep Research Stage 4.5 configuration
+    deep_research: DeepResearchConfig = Field(default_factory=DeepResearchConfig)
 
 
 def load_pipeline_config(config_path: Path | str | None = None) -> PipelineConfig:
@@ -273,4 +294,5 @@ def load_pipeline_config(config_path: Path | str | None = None) -> PipelineConfi
         portfolio_variants=portfolio_raw.get("required_variants", PipelineConfig.model_fields["portfolio_variants"].default),
         report_sections=report_raw.get("required_sections", PipelineConfig.model_fields["report_sections"].default),
         test_categories=raw.get("testing", {}).get("categories", PipelineConfig.model_fields["test_categories"].default),
+        deep_research=DeepResearchConfig(**raw.get("deep_research", {})),
     )

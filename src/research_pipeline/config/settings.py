@@ -19,6 +19,8 @@ class APIKeys:
     # Session 19 / DSQ-2+3: new primary and finance-event API keys
     sec_api_key: str = ""      # sec-api.io — Tier 1 primary US filings
     benzinga_api_key: str = "" # Benzinga — Tier 2 finance-native news + ratings
+    # GDR-1: Gemini Deep Research (Stage 4.5) — separate from google_api_key
+    gemini_api_key: str = ""   # GEMINI_API_KEY — used only by GeminiDeepResearchService
 
     @classmethod
     def from_env(cls) -> "APIKeys":
@@ -30,6 +32,7 @@ class APIKeys:
             google_api_key=os.getenv("GOOGLE_API_KEY", ""),
             sec_api_key=os.getenv("SEC_API_KEY", ""),
             benzinga_api_key=os.getenv("BENZINGA_API_KEY", ""),
+            gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
         )
 
     def validate(self) -> list[str]:

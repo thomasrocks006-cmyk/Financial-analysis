@@ -1,7 +1,14 @@
 # Multi-Agent Parallel Build Plan
 *AI Infrastructure Research Platform — JPAM Emulator*
 *Generated from: IMPROVEMENTS.md (5109 lines), TRACKER.md, ARCHITECTURE.md deep-dive analysis*
-*Baseline: Sessions 1–18 complete · 1004/1004 tests passing · commit f021327*
+*Baseline: Sessions 1–19 complete · 1072/1072 tests passing · async event loop bug fixed*
+
+> **⚠️ Audit note (post-generation correction):** The original baseline claimed Sessions 1–18 with 1004 tests. 
+> A deep codebase audit revealed Session 19 (DSQ-1–8, DSQ-12/13/15) was already fully implemented 
+> in `engine.py`. `gemini_deep_research.py` (Stage 4.5) also existed but was unwired — it has since 
+> been wired in (GDR-1). `AnalystRatingChange`/`AdverseSignal` schemas have been added. 
+> Test count corrected: 1072 passing (31 previously—failing async tests now fixed). 
+> DSQ-9/10/11/14/16 remain as deferred items for Session 20.
 
 ---
 
@@ -35,6 +42,7 @@
 | `esg_service.py` | ESG scoring |
 | `etf_overlap_engine.py` | ETF overlap detection |
 | `factor_engine.py` | Fama-French / factor model |
+| `gemini_deep_research.py` | Gemini Deep Research Stage 4.5 (GDR-1) — ✅ wired |
 | `golden_tests.py` | Golden test fixtures |
 | `investment_committee.py` | IC gate logic |
 | `live_return_store.py` | Daily NAV / return storage |
@@ -95,10 +103,11 @@ Key existing schema files: `base.py`, `events.py`, `governance.py`, `macro.py`, 
 
 ## 2. What Needs To Be Built — Master Gap List
 
-### 2.1 Critical Single-Line Fix (Highest ROI in codebase)
-> **DSQ-1**: `QualitativeDataService` is fully built but **never called** inside `ResearchPipelineEngine.run_full_pipeline()`.
-> Every FastAPI / Next.js / CLI run receives zero qualitative evidence in Stage 5.
-> Fix: wire Stage 5 to call `QualitativeDataService`. One method call. Highest impact, lowest effort.
+### 2.1 Critical Single-Line Fix (✅ COMPLETE)
+> **DSQ-1** has been fixed. `QualitativeDataService` is fully wired into Stage 5.
+> SEC API (Stage 2 + Stage 5), Benzinga (Stage 2 + Stage 5 + Stage 10 adverse signals), and
+> Gemini Deep Research (Stage 4.5) are all wired.
+> Test suite: **1072/1072 passing**, 0 errors.
 
 ---
 
@@ -122,27 +131,38 @@ Key existing schema files: `base.py`, `events.py`, `governance.py`, `macro.py`, 
 
 ### 2.3 Part M — Session 19: Data Sourcing Quality (DSQ-1–16)
 
-| ID | Task | New Files | Existing Files Changed |
-|---|---|---|---|
-| DSQ-1 | Wire `QualitativeDataService` into Stage 5 | — | `engine.py` |
-| DSQ-2 | Verify/complete `SECApiService` — filings, insider, XBRL | `sec_api_service.py` (verify) | — |
-| DSQ-3 | Wire SEC into Stage 2 data ingestion | — | `engine.py` |
-| DSQ-4 | Wire SEC into Stage 5 (10-K MD&A, Form 4, XBRL) | — | `engine.py` |
-| DSQ-5 | Verify/complete `BenzingaService` — analyst ratings, price target history | `benzinga_service.py` (verify) | — |
-| DSQ-6 | Wire Benzinga into Stage 2 (primary analyst rating source) | — | `engine.py` |
-| DSQ-7 | Wire Benzinga into Stage 5 evidence | — | `engine.py` |
-| DSQ-8 | Wire Benzinga adverse signals into Stage 10 Red Team | — | `engine.py` |
-| DSQ-9 | `ArticleExtractionService` — URL → clean article body | `services/article_extraction_service.py` | — |
-| DSQ-10 | `NewsApiService` with publisher allowlist | `services/news_api_service.py` | — |
-| DSQ-11 | Wire NewsAPI into Stage 8 Macro/Political | — | `engine.py` |
-| DSQ-12 | Stage 3 XBRL vs FMP cross-check in reconciliation | — | `consensus_reconciliation.py` |
-| DSQ-13 | Wire `fetch_fmp_ratios` into `ingest_ticker()` | — | `market_data_ingestor.py` |
-| DSQ-14 | Synthetic data contamination tagging in `RiskPacket` + `SelfAuditPacket` | — | `risk_engine.py`, `governance.py` |
-| DSQ-15 | `tests/test_session19.py` — 40+ tests | `tests/test_session19.py` | — |
-| DSQ-16 | API keys wired into `PipelineConfig` + `configs/pipeline.yaml` allowlist | — | `config/loader.py`, `configs/pipeline.yaml` |
+> **✅ STATUS: Sessions 19 DSQ-1 through DSQ-8 are COMPLETE. DSQ-12/13/15 also COMPLETE.**
+> **GDR-1 (Gemini Deep Research Stage 4.5) also COMPLETE.**
+> Remaining deferred items: DSQ-9/10/11 (NewsAPI) and DSQ-14/16 — now part of Session 20.
 
-**New schemas for Session 19 (in `schemas/qualitative.py`):** `FilingMetadata`, `MaterialEvent`, `InsiderTransaction`, `FilingSection`, `AnalystRatingChange`, `AdverseSignal`
-**Schema extension:** `SelfAuditPacket.synthetic_data_fields` in `schemas/governance.py`
+| ID | Task | New Files | Existing Files Changed | Status |
+|---|---|---|---|---|
+| DSQ-1 | Wire `QualitativeDataService` into Stage 5 | — | `engine.py` | ✅ DONE |
+| DSQ-2 | Verify/complete `SECApiService` — filings, insider, XBRL | `sec_api_service.py` (verify) | — | ✅ DONE |
+| DSQ-3 | Wire SEC into Stage 2 data ingestion | — | `engine.py` | ✅ DONE |
+| DSQ-4 | Wire SEC into Stage 5 (10-K MD&A, Form 4, XBRL) | — | `engine.py` | ✅ DONE |
+| DSQ-5 | Verify/complete `BenzingaService` — analyst ratings, price target history | `benzinga_service.py` (verify) | — | ✅ DONE |
+| DSQ-6 | Wire Benzinga into Stage 2 (primary analyst rating source) | — | `engine.py` | ✅ DONE |
+| DSQ-7 | Wire Benzinga into Stage 5 evidence | — | `engine.py` | ✅ DONE |
+| DSQ-8 | Wire Benzinga adverse signals into Stage 10 Red Team | — | `engine.py` | ✅ DONE |
+| DSQ-9 | `ArticleExtractionService` — URL → clean article body | `services/article_extraction_service.py` | — | 🔲 Deferred → Session 20 |
+| DSQ-10 | `NewsApiService` with publisher allowlist | `services/news_api_service.py` | — | 🔲 Deferred → Session 20 |
+| DSQ-11 | Wire NewsAPI into Stage 8 Macro/Political | — | `engine.py` | 🔲 Deferred → Session 20 |
+| DSQ-12 | Stage 3 XBRL vs FMP cross-check in reconciliation | — | `consensus_reconciliation.py` | ✅ DONE (partial) |
+| DSQ-13 | Wire `fetch_fmp_ratios` into `ingest_ticker()` | — | `market_data_ingestor.py` | ✅ DONE |
+| DSQ-14 | Synthetic data contamination tagging in `RiskPacket` + `SelfAuditPacket` | — | `risk_engine.py`, `governance.py` | 🔲 Deferred → Session 20 |
+| DSQ-15 | `tests/test_session19.py` — 50 tests | `tests/test_session19.py` | — | ✅ DONE (50 tests pass) |
+| DSQ-16 | API keys wired into `PipelineConfig` + `configs/pipeline.yaml` allowlist | — | `config/loader.py`, `configs/pipeline.yaml` | ⚠️ PARTIAL (SEC/Benzinga keys done; `NEWS_API_KEY` deferred) |
+| GDR-1 | Gemini Deep Research Stage 4.5 — wire `GeminiDeepResearchService` into engine | — | `engine.py`, `config/loader.py`, `config/settings.py` | ✅ DONE |
+
+**Schema status for Session 19 (in `schemas/qualitative.py`):**
+- `FilingMetadata` — ✅ already existed before this session
+- `MaterialEvent` — ✅ already existed before this session
+- `InsiderTransaction` — ✅ already existed before this session
+- `FilingSection` — ✅ already existed before this session
+- `AnalystRatingChange` — ✅ added in post-generation audit fix
+- `AdverseSignal` — ✅ added in post-generation audit fix
+**Schema extension:** `SelfAuditPacket.synthetic_data_fields` in `schemas/governance.py` — 🔲 deferred to Session 20 (DSQ-14)
 
 ---
 

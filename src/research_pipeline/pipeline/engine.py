@@ -76,6 +76,13 @@ from research_pipeline.services.sec_api_service import SECApiService
 # Session 19 / DSQ-3: Benzinga service — Tier 2 finance-native news + analyst ratings
 from research_pipeline.services.benzinga_service import BenzingaService
 
+# GDR-1: Gemini Deep Research Stage 4.5 — fires between Stage 4 (Data QA) and Stage 5
+from research_pipeline.services.gemini_deep_research import (
+    GeminiDeepResearchService,
+    DeepResearchRunResult,
+    deep_research_claim_to_ledger_dict,
+)
+
 # Agents
 from research_pipeline.agents.orchestrator import OrchestratorAgent
 from research_pipeline.agents.evidence_librarian import EvidenceLibrarianAgent
@@ -255,6 +262,17 @@ class PipelineEngine:
         self.benzinga_svc = BenzingaService(
             api_key=settings.api_keys.benzinga_api_key,
         )
+
+        # GDR-1: Gemini Deep Research service — Stage 4.5 (non-blocking).
+        # Gracefully degrades when GEMINI_API_KEY is absent or google-generativeai
+        # is not installed. Never blocks Stage 5.
+        try:
+            _gdr_cfg = config.deep_research.model_dump()
+            if not isinstance(_gdr_cfg, dict):
+                _gdr_cfg = {}
+        except Exception:
+            _gdr_cfg = {}
+        self.gemini_deep_research_svc = GeminiDeepResearchService(config=_gdr_cfg)
 
         self.run_record: Optional[RunRecord] = None
         self.gate_results: dict[int, GateResult] = {}
@@ -853,6 +871,117 @@ class PipelineEngine:
         gate = self.gates.gate_4_data_qa(report)
         self._save_stage_output(4, report.model_dump())
         return self._check_gate(gate)
+
+    async def stage_4_5_deep_research(self, universe: list[str]) -> DeepResearchRunResult:
+        """Stage 4.5: Gemini Deep Research enrichment (non-blocking).
+
+        Fires between Stage 4 (Data QA) and Stage 5 (Evidence Librarian).
+        Injects Tier-3 qualitative claims from Gemini Deep Research into
+        stage_outputs[45] for Stage 5 to consume.
+
+        GDR-1: This stage NEVER raises — all failures are absorbed and logged.
+        The pipeline always proceeds to Stage 5 with or without deep-research
+        enrichment. If GEMINI_API_KEY is absent the service returns gracefully.
+        """
+        logger.info("═══ STAGE 4.5: Gemini Deep Research ═══")
+        run_id = self.run_record.run_id if self.run_record else "unknown"
+        try:
+            active_themes = self._get_active_themes(universe)
+            result = await self.gemini_deep_research_svc.run(active_themes, run_id)
+            self._save_stage_output(45, {
+                "themes_succeeded": result.themes_succeeded,
+                "themes_failed": result.themes_failed,
+                "total_claims_injected": result.total_claims_injected,
+                "skipped_reason": result.skipped_reason,
+                "claims": [deep_research_claim_to_ledger_dict(c) for c in result.all_claims],
+            })
+            if result.all_claims:
+                logger.info(
+                    f"Stage 4.5: enriched with {len(result.all_claims)} deep-research claims "
+                    f"from {len(result.themes_succeeded)} themes"
+                )
+            elif result.skipped_reason:
+                logger.info(f"Stage 4.5: skipped — {result.skipped_reason}")
+            return result
+        except Exception as exc:
+            logger.warning(f"Stage 4.5 (Gemini Deep Research) failed non-fatally: {exc}")
+            return DeepResearchRunResult(
+                run_id=run_id,
+                timestamp="",
+                themes_attempted=[],
+                themes_succeeded=[],
+                themes_failed=[],
+                all_claims=[],
+                theme_results=[],
+                skipped_reason=f"unhandled_exception: {exc}",
+            )
+
+    def _get_active_themes(self, universe: list[str]) -> list[dict]:
+        """Build the active_themes list for GeminiDeepResearchService.
+
+        Loads theme definitions from configs/universe.yaml if available.
+        Filters to themes whose coverage intersects the current universe.
+        Falls back to a single synthetic theme covering all universe tickers.
+        """
+        import yaml
+
+        deep_research_cfg = self.config.deep_research
+        universe_path = deep_research_cfg.universe_config_path
+
+        if universe_path is None:
+            # Default resolution: configs/universe.yaml relative to project root
+            candidate = Path(__file__).resolve().parent.parent.parent.parent / "configs" / "universe.yaml"
+            if candidate.exists():
+                universe_path = str(candidate)
+
+        if universe_path and Path(universe_path).exists():
+            try:
+                with open(universe_path) as f:
+                    raw = yaml.safe_load(f) or {}
+                themes_raw = raw.get("themes", {})
+                active_themes: list[dict] = []
+                for key, theme_data in themes_raw.items():
+                    if not isinstance(theme_data, dict):
+                        continue
+                    coverage = theme_data.get("coverage", [])
+                    theme_tickers = [
+                        c.get("ticker", "") for c in coverage if isinstance(c, dict)
+                    ]
+                    # Include only themes with at least one ticker in the current run
+                    matching_coverage = [
+                        c for c in coverage
+                        if isinstance(c, dict) and c.get("ticker", "") in universe
+                    ]
+                    if matching_coverage:
+                        active_themes.append({
+                            "key": key,
+                            "label": theme_data.get("label", key),
+                            "deep_research_query": theme_data.get("deep_research_query", ""),
+                            "coverage": matching_coverage,
+                        })
+                if active_themes:
+                    logger.debug(
+                        f"Engine._get_active_themes: loaded {len(active_themes)} themes "
+                        f"from {universe_path}"
+                    )
+                    return active_themes
+            except Exception as exc:
+                logger.warning(f"Engine._get_active_themes: failed to load universe.yaml: {exc}")
+
+        # Fallback: single synthetic theme covering entire universe
+        logger.debug(
+            "Engine._get_active_themes: universe.yaml not found — using synthetic fallback theme"
+        )
+        return [{
+            "key": "run_universe",
+            "label": "Research Universe",
+            "deep_research_query": (
+                "Synthesise the current investment outlook for {tickers} as of {date}. "
+                "Assess capital position, recent earnings, regulatory risk, and competitive "
+                "dynamics for each position."
+            ),
+            "coverage": [{"ticker": t} for t in universe],
+        }]
 
     async def stage_5_evidence(self, universe: list[str]) -> bool:
         """Stage 5: Evidence Librarian builds claim ledger.
@@ -1985,6 +2114,10 @@ class PipelineEngine:
             await self._timed_stage(14, self.stage_14_monitoring())
             _ap = self._emit_audit_packet(universe)
             return {"status": "failed", "blocked_at": 4, "run_id": self.run_record.run_id, "audit_packet": _ap.model_dump(mode="json") if _ap else None}
+
+        # Stage 4.5: Gemini Deep Research (non-blocking — failure never halts pipeline)
+        # GDR-1: fires between Data QA and Evidence Librarian; injects Tier-3 claims.
+        await self.stage_4_5_deep_research(universe)
 
         # Stage 5: Evidence Librarian
         if not await self._timed_stage(5, self.stage_5_evidence(universe)):

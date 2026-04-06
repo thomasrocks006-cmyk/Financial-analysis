@@ -226,7 +226,7 @@ def s8_engine(s8_settings, s8_config):
 
 @pytest.fixture
 def s8_result(s8_engine):
-    return asyncio.get_event_loop().run_until_complete(
+    return asyncio.run(
         s8_engine.run_full_pipeline(S8_UNIVERSE)
     )
 

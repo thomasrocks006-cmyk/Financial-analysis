@@ -89,7 +89,7 @@ class TestSECApiService:
     def test_fetch_universe_returns_empty_packages_without_key(self):
         from research_pipeline.services.sec_api_service import SECApiService
         svc = SECApiService(api_key="")
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             svc.fetch_universe(["NVDA", "MSFT"])
         )
         assert isinstance(result, dict)
@@ -177,7 +177,7 @@ class TestSECApiService:
             result = await svc.fetch_universe(["AAPL"])
             return result
 
-        result = asyncio.get_event_loop().run_until_complete(run())
+        result = asyncio.run(run())
         assert "AAPL" in result
         pkg = result["AAPL"]
         assert isinstance(pkg, SECFilingPackage)
@@ -207,7 +207,7 @@ class TestBenzingaService:
     def test_fetch_universe_returns_empty_packages_without_key(self):
         from research_pipeline.services.benzinga_service import BenzingaService
         svc = BenzingaService(api_key="")
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             svc.fetch_universe(["NVDA", "AMD"])
         )
         assert isinstance(result, dict)
@@ -343,7 +343,7 @@ class TestBenzingaService:
             return result
 
         with patch.object(svc, "fetch_ticker", side_effect=_failing_fetch):
-            result = asyncio.get_event_loop().run_until_complete(run())
+            result = asyncio.run(run())
 
         assert "NVDA" in result
         pkg = result["NVDA"]
@@ -426,7 +426,7 @@ class TestEngineSession19Wiring:
     def test_sec_api_svc_no_ops_without_key(self):
         from research_pipeline.services.sec_api_service import SECApiService
         svc = SECApiService(api_key="")
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             svc.fetch_universe(["NVDA", "MSFT", "AAPL"])
         )
         assert all(k in result for k in ["NVDA", "MSFT", "AAPL"])
@@ -439,7 +439,7 @@ class TestEngineSession19Wiring:
     def test_benzinga_svc_no_ops_without_key(self):
         from research_pipeline.services.benzinga_service import BenzingaService
         svc = BenzingaService(api_key="")
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             svc.fetch_universe(["NVDA", "AMD"])
         )
         assert all(k in result for k in ["NVDA", "AMD"])
@@ -491,7 +491,7 @@ class TestStage2Enrichment:
 
         engine._check_gate = check_gate
 
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             engine.stage_2_ingestion(["NVDA"])
         )
         assert result is True
@@ -513,7 +513,7 @@ class TestStage2Enrichment:
         engine._save_stage_output = save_output
         engine._check_gate = lambda gate: gate.passed
 
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             engine.stage_2_ingestion(["NVDA", "AMD"])
         )
         saved = engine.stage_outputs[2]
@@ -564,7 +564,7 @@ class TestStage5EvidenceEnrichment:
         engine._save_stage_output = save_output
         engine._check_gate = lambda gate: gate.passed
 
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             engine.stage_5_evidence(["NVDA"])
         )
         engine.evidence_agent.run.assert_called_once()
@@ -585,7 +585,7 @@ class TestStage5EvidenceEnrichment:
         engine._save_stage_output = save_output
         engine._check_gate = lambda gate: gate.passed
 
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             engine.stage_5_evidence(["NVDA"])
         )
 
@@ -609,7 +609,7 @@ class TestStage5EvidenceEnrichment:
         engine._save_stage_output = save_output
         engine._check_gate = lambda gate: gate.passed
 
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             engine.stage_5_evidence(["NVDA"])
         )
 
@@ -633,7 +633,7 @@ class TestStage5EvidenceEnrichment:
         engine._save_stage_output = save_output
         engine._check_gate = lambda gate: gate.passed
 
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             engine.stage_5_evidence(["NVDA"])
         )
 
@@ -661,7 +661,7 @@ class TestStage5EvidenceEnrichment:
         engine._check_gate = lambda gate: gate.passed
 
         # Should not raise
-        result = asyncio.get_event_loop().run_until_complete(
+        result = asyncio.run(
             engine.stage_5_evidence(["NVDA"])
         )
         assert result is True

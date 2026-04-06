@@ -470,3 +470,106 @@ class QualitativePackage(BaseModel):
             sections.append(f"\n⚠ Coverage gaps: {', '.join(self.coverage_gaps)}")
 
         return "\n".join(sections)
+
+
+# ── DSQ-5/6/7/8: Benzinga-sourced rating-change schemas ─────────────────────
+
+class AnalystRatingChange(BaseModel):
+    """Analyst rating change event — primary source: Benzinga (Tier 2).
+
+    Schema-layer representation of a BenzingaService ``RatingChange``.
+    Used in Stage 2 data-ingestion bundle and Stage 5 evidence block.
+    """
+
+    ticker: str
+    analyst_firm: str
+    action_type: str             # "Upgrade", "Downgrade", "Initiate", "Maintain", "Reiterate"
+    rating_current: str          # "Buy", "Overweight", "Hold", "Underweight", "Sell"
+    rating_prior: str = ""
+    price_target_current: Optional[float] = None
+    price_target_prior: Optional[float] = None
+    published_at: Optional[datetime] = None
+    headline: str = ""
+    is_adverse: bool = False     # True when action is downgrade / target cut
+    source: str = "benzinga"
+    source_tier: int = 2
+
+    @property
+    def pt_delta(self) -> Optional[float]:
+        """Price-target change (current − prior). None if either is absent."""
+        if self.price_target_current is not None and self.price_target_prior is not None:
+            return self.price_target_current - self.price_target_prior
+        return None
+
+    def to_prompt_line(self) -> str:
+        """Single-line summary for prompt injection."""
+        pt_str = ""
+        if self.pt_delta is not None:
+            sign = "+" if self.pt_delta >= 0 else ""
+            pt_str = f" | PT {sign}${self.pt_delta:.0f}"
+        date_str = self.published_at.strftime("%Y-%m-%d") if self.published_at else "N/A"
+        return (
+            f"{self.analyst_firm}: {self.action_type} {self.rating_prior} → {self.rating_current}"
+            f"{pt_str} ({date_str})"
+        )
+
+
+class AdverseSignal(BaseModel):
+    """Adverse signal record for Red Team (Stage 10) adversarial analysis.
+
+    Captures structured downgrade clusters, negative catalyst events, and
+    miss-and-lower patterns sourced primarily from Benzinga (Tier 2).
+    """
+
+    ticker: str
+    signal_type: str             # "analyst_downgrade", "price_target_cut",
+                                 # "negative_catalyst", "miss_and_lower", "cluster_downgrade"
+    analyst_firm: Optional[str] = None
+    description: str             # Human-readable description for the agent prompt
+    severity: str = "moderate"   # "low" | "moderate" | "high" | "critical"
+    published_at: Optional[datetime] = None
+    source: str = "benzinga"
+    source_tier: int = 2
+    raw_action_type: Optional[str] = None   # Original Benzinga action_type string
+    rating_current: Optional[str] = None
+    rating_prior: Optional[str] = None
+    price_target_current: Optional[float] = None
+    price_target_prior: Optional[float] = None
+
+    @classmethod
+    def from_rating_change(cls, rc: "AnalystRatingChange") -> "AdverseSignal":
+        """Promote an adverse AnalystRatingChange into a structured AdverseSignal."""
+        action = rc.action_type.lower()
+        if "downgrade" in action:
+            sig_type = "analyst_downgrade"
+        elif "lower" in action or "cut" in action:
+            sig_type = "price_target_cut"
+        else:
+            sig_type = "negative_catalyst"
+
+        delta = rc.pt_delta
+        pt_str = f" PT cut ${delta:+.0f}" if (delta is not None and delta < 0) else ""
+        description = (
+            f"{rc.analyst_firm} {rc.action_type} {rc.rating_prior} → {rc.rating_current}"
+            f"{pt_str}"
+        )
+        return cls(
+            ticker=rc.ticker,
+            signal_type=sig_type,
+            analyst_firm=rc.analyst_firm,
+            description=description,
+            severity="high" if "downgrade" in action else "moderate",
+            published_at=rc.published_at,
+            source=rc.source,
+            source_tier=rc.source_tier,
+            raw_action_type=rc.action_type,
+            rating_current=rc.rating_current if rc.rating_current else None,
+            rating_prior=rc.rating_prior if rc.rating_prior else None,
+            price_target_current=rc.price_target_current,
+            price_target_prior=rc.price_target_prior,
+        )
+
+    def to_prompt_line(self) -> str:
+        """Single-line summary for Red Team prompt injection."""
+        date_str = self.published_at.strftime("%Y-%m-%d") if self.published_at else "N/A"
+        return f"[{self.severity.upper()}] {self.signal_type}: {self.description} ({date_str})"

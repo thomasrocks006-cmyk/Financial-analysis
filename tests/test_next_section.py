@@ -314,7 +314,7 @@ class TestYfinanceFallback:
             return result
 
         # patch httpx to avoid real network calls; let them raise
-        result = asyncio.get_event_loop().run_until_complete(run())
+        result = asyncio.run(run())
         assert "source" in result, "'source' key is required by DataQA gate 4"
 
     # ── fallback logic ────────────────────────────────────────────────────
@@ -344,7 +344,7 @@ class TestYfinanceFallback:
                 )
                 return await ingestor.ingest_ticker("XYZ")
 
-        result = asyncio.get_event_loop().run_until_complete(run())
+        result = asyncio.run(run())
         assert "yfinance_quote" in result
         assert result["yfinance_quote"]["price"] == pytest.approx(42.0)
         assert result["source"] == "yfinance"
@@ -374,7 +374,7 @@ class TestYfinanceFallback:
                 )
                 return await ingestor.ingest_ticker("AAPL")
 
-        asyncio.get_event_loop().run_until_complete(run())
+        asyncio.run(run())
         mock_yf.assert_not_called()
 
     def test_yfinance_not_called_when_finnhub_has_price(self, ingestor):
@@ -402,7 +402,7 @@ class TestYfinanceFallback:
                 )
                 return await ingestor.ingest_ticker("MSFT")
 
-        asyncio.get_event_loop().run_until_complete(run())
+        asyncio.run(run())
         mock_yf.assert_not_called()
 
     def test_yfinance_failure_stored_in_errors_and_doesnt_raise(self, ingestor):
@@ -433,7 +433,7 @@ class TestYfinanceFallback:
                 )
                 return await ingestor.ingest_ticker("ZZZ")
 
-        result = asyncio.get_event_loop().run_until_complete(run())
+        result = asyncio.run(run())
         assert "yfinance_quote" not in result
         assert "yfinance_quote" in result.get("errors", {})
         # ingest still returned a dict → no exception propagated
@@ -455,7 +455,7 @@ class TestYfinanceFallback:
         fake_ticker.fast_info = fake_fast_info
 
         with patch("yfinance.Ticker", return_value=fake_ticker):
-            result = asyncio.get_event_loop().run_until_complete(
+            result = asyncio.run(
                 ingestor.fetch_yfinance_quote("FAKE")
             )
 

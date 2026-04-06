@@ -1,8 +1,8 @@
 # Project Tracker — AI Research & Portfolio Platform
 
-> **Last updated:** March 29, 2026  
-> **Test suite:** 1004 / 1004 passing (+ 18 pre-existing errors — no regressions)  
-> **Commit:** `f021327` — Session 18 complete; Session 19 planned
+> **Last updated:** April 2026  
+> **Test suite:** 1072 / 1072 passing (0 errors — async event loop bug fixed across all test files)  
+> **Commit:** `f021327` base → Session 19 complete (DSQ-1 through DSQ-8, DSQ-12/13/15; GDR-1 wired)
 
 ---
 
@@ -39,7 +39,9 @@
 | **Session 16 — Premium Next.js Frontend** | ✅ **COMPLETE** |
 | **Session 17 — Traceability & Provenance** | ✅ **COMPLETE** |
 | **Session 18 — PDF Export, Quant Analytics, Saved-Run Delete** | ✅ **COMPLETE — `f021327`** |
-| **Session 19 — Data Sourcing Quality & New API Integration** | 🔲 **PLANNED — next session** |
+| **Session 19 — Data Sourcing Quality & New API Integration** | ✅ **COMPLETE** (DSQ-1–8, DSQ-12/13/15 done; DSQ-9/10/11/14/16 deferred to Session 20) |
+| **GDR-1 — Gemini Deep Research Stage 4.5** | ✅ **COMPLETE** (service wired into engine.py; `AnalystRatingChange`/`AdverseSignal` schemas added; event loop bug fixed) |
+| **Session 20 — Extended Data Sourcing (DSQ-17 through DSQ-32)** | 🔲 **PLANNED — next session** |
 
 ---
 
