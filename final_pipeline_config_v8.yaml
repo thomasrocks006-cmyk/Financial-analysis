@@ -1,5 +1,13 @@
-version: v8
-project_name: ai_infrastructure_research_platform
+version: v9
+project_name: institutional_research_platform
+
+# ── Focus selector — set active themes per run ─────────────────────────────
+focus:
+  preset: ai_infrastructure_full      # default run
+  active_themes: []                    # override: list explicit theme keys
+  custom_tickers: []                   # ad-hoc additions
+  # Available presets: ai_infrastructure_full | jpam_core_equities | jpam_full
+  #                   asx_focus | fixed_income_suite | thematic_future | us_diversified
 
 architecture:
   philosophy:
@@ -54,6 +62,14 @@ services:
   - name: golden_test_harness
     type: deterministic
     stages: [0]
+  - name: gemini_deep_research
+    type: external_api
+    stages: [4]
+    description: >-
+      Fires Gemini Deep Research per active theme between Stage 4 and Stage 5.
+      Injects Tier-3 qualitative claims into ClaimLedger before sector analysts run.
+    blocking: false
+    config_ref: pipeline.yaml#deep_research
 
 agents:
   - name: research_pipeline_orchestrator
@@ -106,6 +122,13 @@ stages:
   4:
     name: data_qa_and_lineage
     owners: [data_qa_lineage_service]
+  4_deep_research:
+    name: deep_research_enrichment
+    owners: [gemini_deep_research]
+    blocking: false
+    description: >-
+      One Gemini Deep Research call per active theme. Outputs injected as
+      Tier-3 qualitative claims — non-blocking, pipeline continues on failure.
   5:
     name: evidence_librarian_and_claim_register
     owners: [evidence_librarian]

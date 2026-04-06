@@ -1,0 +1,21 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Theme Preset: AI Infrastructure Full
+# ══════════════════════════════════════════════════════════════════════════════
+# Usage: research-pipeline run --preset ai_infrastructure_full
+#        research-pipeline run --themes ai_infrastructure,ai_power_energy,ai_build_infrastructure
+# ══════════════════════════════════════════════════════════════════════════════
+
+preset_id: ai_infrastructure_full
+label: "AI Infrastructure — Full Thematic"
+description: >
+  The full AI infrastructure investment thesis: compute silicon, power/energy
+  infrastructure, and physical build-out (electrical, materials, data centres).
+  The original research mandate of this platform.
+
+themes:
+  - ai_infrastructure
+  - ai_power_energy
+  - ai_build_infrastructure
+
+macro_overlay: true           # always run global_macro alongside
+political_risk_overlay: true  # always run political_risk_analyst

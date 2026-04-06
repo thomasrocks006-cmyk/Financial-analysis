@@ -1,0 +1,28 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Theme Preset: Fixed Income Suite
+# ══════════════════════════════════════════════════════════════════════════════
+# Usage: research-pipeline run --preset fixed_income_suite
+# ══════════════════════════════════════════════════════════════════════════════
+
+preset_id: fixed_income_suite
+label: "Fixed Income Suite — Rates, Credit & EM"
+description: >
+  Full fixed income research cycle: sovereign rates (G10), investment grade
+  credit, high yield, and emerging market debt. Includes global macro regime
+  overlay for rates path and duration positioning.
+
+themes:
+  - sovereign_rates
+  - ig_credit
+  - hy_credit
+  - em_debt
+  - global_macro
+
+macro_overlay: true
+political_risk_overlay: true
+
+portfolio_constraints:
+  asset_class: fixed_income
+  duration_range: [1.0, 15.0]    # years — min/max modified duration
+  max_hy_pct: 25.0
+  max_em_pct: 20.0

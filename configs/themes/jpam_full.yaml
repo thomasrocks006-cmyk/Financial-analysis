@@ -1,0 +1,46 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Theme Preset: JPAM Full — All Asset Classes
+# ══════════════════════════════════════════════════════════════════════════════
+# Usage: research-pipeline run --preset jpam_full
+# NOTE:  Full run takes significant time and token budget. Recommended for
+#        weekly/monthly research cycles, not daily monitoring.
+# ══════════════════════════════════════════════════════════════════════════════
+
+preset_id: jpam_full
+label: "JPAM Full — All Asset Classes, All Regions"
+description: >
+  The complete platform: all equity sector desks (US, ASX), fixed income
+  (sovereign, IG, HY, EM), global macro/FX, and all thematic overlays.
+  Emulates a full JPMorgan AM research cycle output.
+
+themes:
+  # Thematic
+  - ai_infrastructure
+  - ai_power_energy
+  - ai_build_infrastructure
+  - energy_transition
+  - defense_security
+  # US Equities
+  - us_mega_tech
+  - us_financials
+  - us_healthcare
+  - us_consumer
+  - us_industrials
+  - us_reits
+  - us_energy_traditional
+  # Regional
+  - asx_core
+  # Fixed Income
+  - sovereign_rates
+  - ig_credit
+  - hy_credit
+  - em_debt
+  # Macro
+  - global_macro
+
+macro_overlay: true
+political_risk_overlay: true
+esg_screen: true
+
+deep_research_override:
+  max_themes_per_run: 10     # override global cap for full runs

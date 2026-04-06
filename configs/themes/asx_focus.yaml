@@ -1,0 +1,26 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Theme Preset: ASX Focus
+# ══════════════════════════════════════════════════════════════════════════════
+# Usage: research-pipeline run --preset asx_focus
+# ══════════════════════════════════════════════════════════════════════════════
+
+preset_id: asx_focus
+label: "ASX Focus — Australian Equities with Macro Overlay"
+description: >
+  Australian equity market focus: ASX200 blue chips with RBA policy, commodity
+  cycle, and China demand overlays. Designed for JPAM Australia mandates and
+  superannuation fund portfolio construction.
+
+themes:
+  - asx_core
+  - global_macro
+  - sovereign_rates
+
+macro_overlay: true
+political_risk_overlay: true
+
+portfolio_constraints:
+  currency: AUD
+  benchmark: ASX200
+  superannuation_compliant: true     # applies SIS Act constraints
+  franking_credit_preference: true

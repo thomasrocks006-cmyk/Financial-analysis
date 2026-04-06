@@ -1,0 +1,32 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Theme Preset: JPAM Core Equities
+# ══════════════════════════════════════════════════════════════════════════════
+# Usage: research-pipeline run --preset jpam_core_equities
+# ══════════════════════════════════════════════════════════════════════════════
+
+preset_id: jpam_core_equities
+label: "JPAM Core — Diversified Multi-Sector US Equities"
+description: >
+  Core diversified US equity portfolio mirroring the JPMorgan AM CIO desk
+  structure. Covers all major GICS sectors with AI infrastructure as an
+  overweight thematic layer. Suitable for all-weather portfolio mandates.
+
+themes:
+  - us_mega_tech
+  - us_financials
+  - us_healthcare
+  - us_consumer
+  - us_industrials
+  - us_reits
+  - us_energy_traditional
+  - ai_infrastructure        # AI as overweight thematic overlay
+
+macro_overlay: true
+political_risk_overlay: true
+
+portfolio_constraints:
+  max_single_stock_pct: 8.0
+  max_sector_pct: 25.0
+  min_positions: 15
+  max_positions: 40
+  require_all_themes: false

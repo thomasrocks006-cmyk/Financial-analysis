@@ -1,124 +1,415 @@
-# ── Research Universe ───────────────────────────────────────────────────
-# JPAM-Australia platform — multi-asset research coverage.
-# The platform supports any universe: equities (AU/US/global), fixed income,
-# alternatives, REITs, infrastructure, and thematic / sector mandates.
+# ══════════════════════════════════════════════════════════════════════════════
+# Master Research Universe — JPMorgan-Style Institutional Coverage
+# ══════════════════════════════════════════════════════════════════════════════
 #
-# This file defines the DEFAULT example universe for the AI Infrastructure
-# thematic portfolio. Switch the universe per run via RunRequest.universe
-# or by loading a different universe YAML at startup.
+# VERSION: v9
+# SCOPE:   Multi-asset, multi-region, cross-sector research platform
 #
-# Organised by sector analyst assignment. Add sectors freely — the
-# GenericSectorAnalystAgent handles any industry group not explicitly
-# covered by a named specialist agent.
+# This file is the MASTER registry of all coverage. Users select focus areas
+# via `active_themes` in pipeline.yaml or at the CLI/UI. The pipeline only
+# instantiates agents and data ingestion for selected themes.
 #
-# Organised by sector analyst assignment from v8 spec + skill files.
+# COVERAGE PHILOSOPHY (mirrors JPAM desk structure):
+#   ▸ Global Equities  — sector desks: Tech, Financials, Healthcare, Consumer,
+#                        Energy, Industrials, Materials, REITs, Utilities
+#   ▸ Fixed Income     — sovereign, IG credit, HY credit, EM debt
+#   ▸ Macro & FX       — G10 rates, currency, commodities, central bank watch
+#   ▸ Thematic         — AI Infrastructure, Energy Transition, Defense/Security,
+#                        Biotech/Genomics, Fintech, Robotics/Automation
+#   ▸ Regional Desks   — US large-cap, ASX/Australia, European majors
+#
+# HOW THEMES MAP TO AGENTS:
+#   Each theme key corresponds to a sector_analyst_* agent or generic_sector_analyst.
+#   Fixed income themes route to fixed_income_analyst.
+#   Macro themes route to macro_regime_strategist + political_risk_analyst.
+#   Themes without a named specialist fall to generic_sector_analyst.
+# ══════════════════════════════════════════════════════════════════════════════
 
-version: v8
+version: v9
 
-# ── Compute & Silicon (Sector Analyst — Compute) ──────────────────────
-compute:
-  analyst: sector_analyst_compute
-  coverage:
-    - ticker: NVDA
-      name: "NVIDIA Corporation"
-      subtheme: compute
-      market_cap_tier: mega
-      description: "GPU monopoly, data-centre revenue engine"
-    - ticker: AVGO
-      name: "Broadcom Inc"
-      subtheme: compute
-      market_cap_tier: mega
-      description: "Custom ASIC / networking / VMware"
-    - ticker: TSM
-      name: "Taiwan Semiconductor Manufacturing"
-      subtheme: compute
-      market_cap_tier: mega
-      description: "Foundry capex proxy for AI chip demand"
+themes:
 
-# ── Power & Energy (Sector Analyst — Power & Energy) ───────────────────
-power_energy:
-  analyst: sector_analyst_power_energy
-  coverage:
-    - ticker: CEG
-      name: "Constellation Energy"
-      subtheme: power
-      market_cap_tier: large
-      description: "Nuclear fleet, behind-the-meter PPA play"
-    - ticker: VST
-      name: "Vistra Corp"
-      subtheme: power
-      market_cap_tier: large
-      description: "Gas + nuclear, ERCOT exposure"
-    - ticker: GEV
-      name: "GE Vernova"
-      subtheme: power
-      market_cap_tier: large
-      description: "Gas turbine + grid equipment OEM"
-    - ticker: NLR
-      name: "VanEck Uranium+Nuclear Energy ETF"
-      subtheme: etf
-      market_cap_tier: n_a
-      description: "Basket for nuclear/uranium thematic exposure"
+  # ── THEMATIC ────────────────────────────────────────────────────────────────
 
-# ── Infrastructure, Materials & Build-Out (Sector Analyst — Infra) ─────
-infrastructure:
-  analyst: sector_analyst_infrastructure
-  coverage:
-    - ticker: PWR
-      name: "Quanta Services"
-      subtheme: infrastructure
-      market_cap_tier: large
-      description: "EPC for transmission & data-centre power"
-    - ticker: ETN
-      name: "Eaton Corporation"
-      subtheme: infrastructure
-      market_cap_tier: large
-      description: "Electrical components, power management"
-    - ticker: HUBB
-      name: "Hubbell Incorporated"
-      subtheme: infrastructure
-      market_cap_tier: mid
-      description: "Utility T&D hardware"
-    - ticker: APH
-      name: "Amphenol Corporation"
-      subtheme: infrastructure
-      market_cap_tier: large
-      description: "High-speed connectors, data-centre interconnects"
-    - ticker: FIX
-      name: "Comfort Systems USA"
-      subtheme: infrastructure
-      market_cap_tier: mid
-      description: "MEP contractor, data-centre fit-out"
-    - ticker: FCX
-      name: "Freeport-McMoRan"
-      subtheme: materials
-      market_cap_tier: large
-      description: "Copper producer — electrification proxy"
-    - ticker: BHP
-      name: "BHP Group"
-      subtheme: materials
-      market_cap_tier: mega
-      description: "Diversified miner — copper + iron ore"
-    - ticker: NXT
-      name: "Nextdc Ltd"
-      subtheme: data_centres
-      market_cap_tier: mid
-      description: "Australian data-centre REIT / developer"
+  ai_infrastructure:
+    label: "AI Infrastructure & Compute"
+    analyst: sector_analyst_compute
+    asset_class: equities
+    region: global
+    deep_research_query: >
+      Synthesise the competitive landscape, capex spending trends, supply chain risks,
+      and regulatory environment for AI compute silicon and infrastructure as of {date}.
+      Cover GPU/ASIC dynamics, hyperscaler capex, data-centre power constraints,
+      and semiconductor supply chains. Focus on: {tickers}.
+    coverage:
+      - { ticker: NVDA,  name: "NVIDIA Corporation",                  subtheme: compute,       market_cap_tier: mega,  region: us }
+      - { ticker: AVGO,  name: "Broadcom Inc",                        subtheme: compute,       market_cap_tier: mega,  region: us }
+      - { ticker: TSM,   name: "Taiwan Semiconductor Manufacturing",  subtheme: compute,       market_cap_tier: mega,  region: global }
+      - { ticker: AMD,   name: "Advanced Micro Devices",              subtheme: compute,       market_cap_tier: large, region: us }
+      - { ticker: INTC,  name: "Intel Corporation",                   subtheme: compute,       market_cap_tier: large, region: us }
+      - { ticker: ARM,   name: "Arm Holdings",                        subtheme: compute,       market_cap_tier: large, region: global }
 
-# ── Flat ticker list (convenience) ─────────────────────────────────────
-all_tickers:
-  - NVDA
-  - AVGO
-  - TSM
-  - CEG
-  - VST
-  - GEV
-  - NLR
-  - PWR
-  - ETN
-  - HUBB
-  - APH
-  - FIX
-  - FCX
-  - BHP
-  - NXT
+  ai_power_energy:
+    label: "AI Power & Energy Infrastructure"
+    analyst: sector_analyst_power_energy
+    asset_class: equities
+    region: us
+    deep_research_query: >
+      Synthesise power generation capacity constraints, nuclear relicensing outlook,
+      renewable build rates, and grid infrastructure demand driven by AI data centres
+      as of {date}. Assess power purchase agreement markets and utility earnings
+      implications. Focus on: {tickers}.
+    coverage:
+      - { ticker: CEG,   name: "Constellation Energy",               subtheme: nuclear_power,  market_cap_tier: large, region: us }
+      - { ticker: VST,   name: "Vistra Corp",                        subtheme: power_gen,      market_cap_tier: large, region: us }
+      - { ticker: GEV,   name: "GE Vernova",                         subtheme: grid_equipment, market_cap_tier: large, region: us }
+      - { ticker: NLR,   name: "VanEck Uranium+Nuclear Energy ETF",  subtheme: etf,            market_cap_tier: n_a,   region: us }
+      - { ticker: NEE,   name: "NextEra Energy",                     subtheme: renewables,     market_cap_tier: mega,  region: us }
+      - { ticker: AES,   name: "AES Corporation",                    subtheme: renewables,     market_cap_tier: large, region: us }
+
+  ai_build_infrastructure:
+    label: "AI Build-Out Infrastructure & Materials"
+    analyst: sector_analyst_infrastructure
+    asset_class: equities
+    region: global
+    deep_research_query: >
+      Synthesise electrical infrastructure buildout demand, supply chain risks,
+      contractor backlog trends, and raw material constraints for AI/data-centre
+      construction as of {date}. Focus on: {tickers}.
+    coverage:
+      - { ticker: PWR,   name: "Quanta Services",                    subtheme: epc,            market_cap_tier: large, region: us }
+      - { ticker: ETN,   name: "Eaton Corporation",                  subtheme: power_mgmt,     market_cap_tier: large, region: us }
+      - { ticker: HUBB,  name: "Hubbell Incorporated",               subtheme: t_and_d,        market_cap_tier: mid,   region: us }
+      - { ticker: APH,   name: "Amphenol Corporation",               subtheme: connectors,     market_cap_tier: large, region: us }
+      - { ticker: FIX,   name: "Comfort Systems USA",                subtheme: mep_contractor, market_cap_tier: mid,   region: us }
+      - { ticker: FCX,   name: "Freeport-McMoRan",                   subtheme: copper,         market_cap_tier: large, region: us }
+      - { ticker: BHP,   name: "BHP Group",                          subtheme: diversified_mining, market_cap_tier: mega, region: asx }
+      - { ticker: NXT,   name: "Nextdc Ltd",                         subtheme: data_centres,   market_cap_tier: mid,   region: asx }
+
+  energy_transition:
+    label: "Energy Transition & Cleantech"
+    analyst: generic_sector_analyst
+    asset_class: equities
+    region: global
+    deep_research_query: >
+      Synthesise the energy transition investment landscape as of {date}: IRA/CHIPS
+      incentive flow, offshore wind, solar manufacturing, battery storage, hydrogen,
+      and EV charging infrastructure. Policy risks and subsidy dependencies. Focus on: {tickers}.
+    coverage:
+      - { ticker: ENPH,  name: "Enphase Energy",                     subtheme: solar_inverters, market_cap_tier: mid,  region: us }
+      - { ticker: FSLR,  name: "First Solar",                        subtheme: solar_panels,   market_cap_tier: large, region: us }
+      - { ticker: PLUG,  name: "Plug Power",                         subtheme: hydrogen,       market_cap_tier: small, region: us }
+      - { ticker: BE,    name: "Bloom Energy",                       subtheme: fuel_cells,     market_cap_tier: small, region: us }
+      - { ticker: TSLA,  name: "Tesla Inc",                          subtheme: ev_energy,      market_cap_tier: mega,  region: us }
+
+  defense_security:
+    label: "Defense, Aerospace & Security"
+    analyst: generic_sector_analyst
+    asset_class: equities
+    region: global
+    deep_research_query: >
+      Synthesise global defense spending trends, procurement cycles, AI/autonomous
+      systems investment, cybersecurity budgets, and geopolitical threat landscape
+      as of {date}. NATO spending commitments, US and allied budgets, space programs. Focus on: {tickers}.
+    coverage:
+      - { ticker: LMT,   name: "Lockheed Martin",                    subtheme: defense_prime,  market_cap_tier: mega,  region: us }
+      - { ticker: RTX,   name: "RTX Corporation",                    subtheme: defense_prime,  market_cap_tier: mega,  region: us }
+      - { ticker: NOC,   name: "Northrop Grumman",                   subtheme: defense_prime,  market_cap_tier: large, region: us }
+      - { ticker: GD,    name: "General Dynamics",                   subtheme: defense_prime,  market_cap_tier: large, region: us }
+      - { ticker: BAH,   name: "Booz Allen Hamilton",                subtheme: defense_tech,   market_cap_tier: large, region: us }
+      - { ticker: PLTR,  name: "Palantir Technologies",              subtheme: defense_ai,     market_cap_tier: large, region: us }
+      - { ticker: CRWD,  name: "CrowdStrike Holdings",               subtheme: cybersecurity,  market_cap_tier: large, region: us }
+
+  # ── US EQUITIES — SECTOR DESKS ───────────────────────────────────────────────
+
+  us_mega_tech:
+    label: "US Mega-Cap Technology"
+    analyst: generic_sector_analyst
+    asset_class: equities
+    region: us
+    deep_research_query: >
+      Synthesise the competitive moats, cloud growth trajectory, AI product monetisation,
+      regulatory and antitrust exposure of US mega-cap technology platforms as of {date}.
+      Assess advertising cycles, enterprise software penetration, and capex discipline. Focus on: {tickers}.
+    coverage:
+      - { ticker: MSFT,  name: "Microsoft Corporation",              subtheme: cloud_software,  market_cap_tier: mega, region: us }
+      - { ticker: AAPL,  name: "Apple Inc",                          subtheme: consumer_tech,   market_cap_tier: mega, region: us }
+      - { ticker: GOOGL, name: "Alphabet Inc",                       subtheme: cloud_ad,        market_cap_tier: mega, region: us }
+      - { ticker: META,  name: "Meta Platforms",                     subtheme: social_ad,       market_cap_tier: mega, region: us }
+      - { ticker: AMZN,  name: "Amazon.com Inc",                     subtheme: cloud_ecommerce, market_cap_tier: mega, region: us }
+      - { ticker: ORCL,  name: "Oracle Corporation",                 subtheme: enterprise_db,   market_cap_tier: mega, region: us }
+      - { ticker: CRM,   name: "Salesforce Inc",                     subtheme: crm_saas,        market_cap_tier: large, region: us }
+      - { ticker: NOW,   name: "ServiceNow",                         subtheme: enterprise_saas, market_cap_tier: large, region: us }
+
+  us_financials:
+    label: "US Financials & Banking"
+    analyst: generic_sector_analyst
+    asset_class: equities
+    region: us
+    deep_research_query: >
+      Synthesise the US banking sector outlook as of {date}: interest rate sensitivity,
+      net interest margin trajectory, credit quality, capital markets activity (IB fees,
+      trading revenues), asset management trends, consumer credit, and regulatory capital
+      requirements. Focus on: {tickers}.
+    coverage:
+      - { ticker: JPM,   name: "JPMorgan Chase",                     subtheme: universal_bank,  market_cap_tier: mega,  region: us }
+      - { ticker: BAC,   name: "Bank of America",                    subtheme: universal_bank,  market_cap_tier: mega,  region: us }
+      - { ticker: GS,    name: "Goldman Sachs",                      subtheme: investment_bank, market_cap_tier: large, region: us }
+      - { ticker: MS,    name: "Morgan Stanley",                     subtheme: investment_bank, market_cap_tier: large, region: us }
+      - { ticker: BLK,   name: "BlackRock Inc",                      subtheme: asset_mgmt,      market_cap_tier: mega,  region: us }
+      - { ticker: V,     name: "Visa Inc",                           subtheme: payments,        market_cap_tier: mega,  region: us }
+      - { ticker: MA,    name: "Mastercard Inc",                     subtheme: payments,        market_cap_tier: mega,  region: us }
+      - { ticker: AXP,   name: "American Express",                   subtheme: payments_credit, market_cap_tier: large, region: us }
+      - { ticker: WFC,   name: "Wells Fargo",                        subtheme: retail_bank,     market_cap_tier: large, region: us }
+      - { ticker: C,     name: "Citigroup",                          subtheme: universal_bank,  market_cap_tier: large, region: us }
+
+  us_healthcare:
+    label: "US Healthcare & Biotech"
+    analyst: generic_sector_analyst
+    asset_class: equities
+    region: us
+    deep_research_query: >
+      Synthesise the US healthcare sector as of {date}: GLP-1/obesity drug market dynamics,
+      oncology pipeline, Medicare/Medicaid reimbursement policy, managed care MLR trends,
+      biosimilar pressure on established biologics, and FDA approval calendar. Focus on: {tickers}.
+    coverage:
+      - { ticker: UNH,   name: "UnitedHealth Group",                 subtheme: managed_care,    market_cap_tier: mega,  region: us }
+      - { ticker: LLY,   name: "Eli Lilly",                          subtheme: pharma_glp1,     market_cap_tier: mega,  region: us }
+      - { ticker: JNJ,   name: "Johnson & Johnson",                  subtheme: diversified_hc,  market_cap_tier: mega,  region: us }
+      - { ticker: ABT,   name: "Abbott Laboratories",                subtheme: med_devices,     market_cap_tier: large, region: us }
+      - { ticker: ABBV,  name: "AbbVie Inc",                         subtheme: immunology,      market_cap_tier: mega,  region: us }
+      - { ticker: MRK,   name: "Merck & Co",                         subtheme: pharma_oncology, market_cap_tier: mega,  region: us }
+      - { ticker: ISRG,  name: "Intuitive Surgical",                 subtheme: robotic_surgery, market_cap_tier: large, region: us }
+      - { ticker: AMGN,  name: "Amgen Inc",                          subtheme: biotech,         market_cap_tier: large, region: us }
+
+  us_consumer:
+    label: "US Consumer (Discretionary & Staples)"
+    analyst: generic_sector_analyst
+    asset_class: equities
+    region: us
+    deep_research_query: >
+      Synthesise US consumer health as of {date}: discretionary spending trends,
+      retail traffic, e-commerce penetration, input cost dynamics, consumer credit stress,
+      brand premium resilience, and restaurant/foodservice traffic. Focus on: {tickers}.
+    coverage:
+      - { ticker: WMT,   name: "Walmart Inc",                        subtheme: mass_retail,     market_cap_tier: mega,  region: us }
+      - { ticker: COST,  name: "Costco Wholesale",                   subtheme: club_retail,     market_cap_tier: mega,  region: us }
+      - { ticker: HD,    name: "Home Depot",                         subtheme: home_improvement, market_cap_tier: mega, region: us }
+      - { ticker: MCD,   name: "McDonald's Corp",                    subtheme: qsr,             market_cap_tier: mega,  region: us }
+      - { ticker: SBUX,  name: "Starbucks Corp",                     subtheme: coffee_retail,   market_cap_tier: large, region: us }
+      - { ticker: NKE,   name: "Nike Inc",                           subtheme: athletic_apparel, market_cap_tier: large, region: us }
+      - { ticker: PG,    name: "Procter & Gamble",                   subtheme: consumer_staples, market_cap_tier: mega, region: us }
+      - { ticker: KO,    name: "Coca-Cola Company",                  subtheme: beverages,       market_cap_tier: mega,  region: us }
+      - { ticker: PEP,   name: "PepsiCo Inc",                        subtheme: beverages_snacks, market_cap_tier: mega, region: us }
+
+  us_industrials:
+    label: "US Industrials & Aerospace"
+    analyst: generic_sector_analyst
+    asset_class: equities
+    region: us
+    deep_research_query: >
+      Synthesise US industrial sector dynamics as of {date}: aerospace cycle recovery,
+      defence procurement, industrial automation spend, reshoring capex, infrastructure
+      bill spending, supply chain normalisation, and margin expansion trajectory. Focus on: {tickers}.
+    coverage:
+      - { ticker: HON,   name: "Honeywell International",            subtheme: diversified_ind,  market_cap_tier: mega, region: us }
+      - { ticker: CAT,   name: "Caterpillar Inc",                    subtheme: construction_eq, market_cap_tier: mega,  region: us }
+      - { ticker: DE,    name: "Deere & Company",                    subtheme: ag_equipment,    market_cap_tier: large, region: us }
+      - { ticker: BA,    name: "Boeing Company",                     subtheme: aerospace,       market_cap_tier: large, region: us }
+      - { ticker: GE,    name: "GE Aerospace",                       subtheme: jet_engines,     market_cap_tier: mega,  region: us }
+      - { ticker: MMM,   name: "3M Company",                         subtheme: diversified_ind, market_cap_tier: large, region: us }
+      - { ticker: UPS,   name: "United Parcel Service",              subtheme: logistics,       market_cap_tier: large, region: us }
+
+  us_reits:
+    label: "US REITs & Real Estate"
+    analyst: generic_sector_analyst
+    asset_class: equities
+    region: us
+    deep_research_query: >
+      Synthesise US REIT sector dynamics as of {date}: cap rate movements, interest rate
+      sensitivity, data centre REIT supply/demand, industrial/logistics vacancy, office
+      distress, and residential supply pipeline. Focus on: {tickers}.
+    coverage:
+      - { ticker: PLD,   name: "Prologis Inc",                       subtheme: industrial_reit,  market_cap_tier: mega, region: us }
+      - { ticker: EQIX,  name: "Equinix Inc",                        subtheme: data_centre_reit, market_cap_tier: mega, region: us }
+      - { ticker: AMT,   name: "American Tower",                     subtheme: cell_tower_reit,  market_cap_tier: mega, region: us }
+      - { ticker: CCI,   name: "Crown Castle",                       subtheme: cell_tower_reit,  market_cap_tier: large, region: us }
+      - { ticker: SPG,   name: "Simon Property Group",               subtheme: retail_reit,     market_cap_tier: large, region: us }
+      - { ticker: O,     name: "Realty Income Corp",                 subtheme: net_lease_reit,  market_cap_tier: large, region: us }
+      - { ticker: DLR,   name: "Digital Realty Trust",               subtheme: data_centre_reit, market_cap_tier: large, region: us }
+
+  us_energy_traditional:
+    label: "US Energy (Oil, Gas & Integrated)"
+    analyst: generic_sector_analyst
+    asset_class: equities
+    region: us
+    deep_research_query: >
+      Synthesise oil and gas sector dynamics as of {date}: OPEC+ production discipline,
+      US shale activity and rig count, LNG export project timelines, refining margins,
+      and energy transition capital allocation. Focus on: {tickers}.
+    coverage:
+      - { ticker: XOM,   name: "Exxon Mobil",                        subtheme: integrated_oil,  market_cap_tier: mega,  region: us }
+      - { ticker: CVX,   name: "Chevron Corporation",                subtheme: integrated_oil,  market_cap_tier: mega,  region: us }
+      - { ticker: COP,   name: "ConocoPhillips",                     subtheme: upstream_ep,     market_cap_tier: large, region: us }
+      - { ticker: EOG,   name: "EOG Resources",                      subtheme: upstream_ep,     market_cap_tier: large, region: us }
+      - { ticker: SLB,   name: "SLB (Schlumberger)",                 subtheme: oilfield_svcs,   market_cap_tier: large, region: global }
+
+  # ── ASX / AUSTRALIA ─────────────────────────────────────────────────────────
+
+  asx_core:
+    label: "ASX Core — Australian Blue Chips"
+    analyst: sector_analyst_asx
+    asset_class: equities
+    region: asx
+    deep_research_query: >
+      Synthesise the Australian equity market outlook as of {date}: RBA policy trajectory,
+      housing market dynamics, commodity price sensitivity, Chinese demand for Australian
+      exports, banking sector credit quality, and superannuation fund flows. Focus on: {tickers}.
+    coverage:
+      - { ticker: "CBA.AX",  name: "Commonwealth Bank of Australia",   subtheme: aus_banking,     market_cap_tier: mega,  region: asx }
+      - { ticker: "BHP.AX",  name: "BHP Group Ltd",                    subtheme: diversified_mining, market_cap_tier: mega, region: asx }
+      - { ticker: "CSL.AX",  name: "CSL Limited",                      subtheme: plasma_biotech,  market_cap_tier: mega,  region: asx }
+      - { ticker: "ANZ.AX",  name: "ANZ Group Holdings",               subtheme: aus_banking,     market_cap_tier: large, region: asx }
+      - { ticker: "WBC.AX",  name: "Westpac Banking Corp",             subtheme: aus_banking,     market_cap_tier: large, region: asx }
+      - { ticker: "NAB.AX",  name: "National Australia Bank",          subtheme: aus_banking,     market_cap_tier: large, region: asx }
+      - { ticker: "MQG.AX",  name: "Macquarie Group",                  subtheme: investment_bank, market_cap_tier: large, region: asx }
+      - { ticker: "WES.AX",  name: "Wesfarmers Ltd",                   subtheme: retail_conglomerate, market_cap_tier: large, region: asx }
+      - { ticker: "WOW.AX",  name: "Woolworths Group",                 subtheme: grocery_retail,  market_cap_tier: large, region: asx }
+      - { ticker: "RIO.AX",  name: "Rio Tinto Ltd",                    subtheme: iron_ore_mining, market_cap_tier: mega,  region: asx }
+      - { ticker: "TLS.AX",  name: "Telstra Group",                    subtheme: telecom,         market_cap_tier: large, region: asx }
+      - { ticker: "QBE.AX",  name: "QBE Insurance Group",              subtheme: general_insurance, market_cap_tier: large, region: asx }
+      - { ticker: "NXT.AX",  name: "Nextdc Ltd",                       subtheme: data_centres,    market_cap_tier: mid,   region: asx }
+      - { ticker: "FMG.AX",  name: "Fortescue Ltd",                    subtheme: iron_ore_mining, market_cap_tier: large, region: asx }
+      - { ticker: "TCL.AX",  name: "Transurban Group",                 subtheme: toll_roads,      market_cap_tier: large, region: asx }
+
+  # ── FIXED INCOME ─────────────────────────────────────────────────────────────
+
+  sovereign_rates:
+    label: "Sovereign Rates & Government Bonds"
+    analyst: fixed_income_analyst
+    asset_class: fixed_income
+    region: global
+    deep_research_query: >
+      Synthesise global sovereign rates outlook as of {date}: Fed dot plot trajectory,
+      ECB easing pace, BoJ yield curve control exit, RBA rate path, UK gilt market
+      dynamics, and fiscal deficit sustainability across G10. Real yields and TIPS
+      breakevens. Focus on: {instruments}.
+    coverage:
+      - { ticker: "UST 2Y",   name: "US Treasury 2-Year",            subtheme: us_rates,         market_cap_tier: n_a, region: us }
+      - { ticker: "UST 10Y",  name: "US Treasury 10-Year",           subtheme: us_rates,         market_cap_tier: n_a, region: us }
+      - { ticker: "UST 30Y",  name: "US Treasury 30-Year",           subtheme: us_rates,         market_cap_tier: n_a, region: us }
+      - { ticker: "TIPS 10Y", name: "US 10Y TIPS",                   subtheme: inflation_linked, market_cap_tier: n_a, region: us }
+      - { ticker: "BUND 10Y", name: "German Bund 10-Year",           subtheme: eurobund,         market_cap_tier: n_a, region: europe }
+      - { ticker: "JGB 10Y",  name: "Japan JGB 10-Year",             subtheme: jgb,              market_cap_tier: n_a, region: global }
+      - { ticker: "AU 10Y",   name: "Australia Commonwealth 10-Year", subtheme: aus_rates,       market_cap_tier: n_a, region: asx }
+      - { ticker: TLT,        name: "iShares 20+ Year Treasury ETF", subtheme: long_duration,    market_cap_tier: n_a, region: us }
+      - { ticker: TIP,        name: "iShares TIPS Bond ETF",         subtheme: inflation_linked, market_cap_tier: n_a, region: us }
+
+  ig_credit:
+    label: "Investment Grade Credit"
+    analyst: fixed_income_analyst
+    asset_class: fixed_income
+    region: global
+    deep_research_query: >
+      Synthesise IG corporate credit spread dynamics as of {date}: spread levels vs
+      historical, refinancing wall calendar, sector spread dispersion, and rating
+      migration trends. Focus on: {instruments}.
+    coverage:
+      - { ticker: LQD,   name: "iShares iBoxx IG Corporate Bond ETF", subtheme: ig_credit, market_cap_tier: n_a, region: us }
+      - { ticker: VCIT,  name: "Vanguard Intermediate-Term Corp ETF",  subtheme: ig_credit, market_cap_tier: n_a, region: us }
+      - { ticker: VCLT,  name: "Vanguard Long-Term Corp Bond ETF",     subtheme: ig_credit, market_cap_tier: n_a, region: us }
+
+  hy_credit:
+    label: "High Yield Credit"
+    analyst: fixed_income_analyst
+    asset_class: fixed_income
+    region: us
+    deep_research_query: >
+      Synthesise high yield credit market conditions as of {date}: HY spread levels,
+      default rate trajectory, distressed ratio, and leveraged buyout pipeline. Focus on: {instruments}.
+    coverage:
+      - { ticker: HYG,   name: "iShares iBoxx HY Corporate Bond ETF",  subtheme: hy_credit, market_cap_tier: n_a, region: us }
+      - { ticker: JNK,   name: "SPDR Bloomberg HY Bond ETF",            subtheme: hy_credit, market_cap_tier: n_a, region: us }
+
+  em_debt:
+    label: "Emerging Market Debt"
+    analyst: fixed_income_analyst
+    asset_class: fixed_income
+    region: em
+    deep_research_query: >
+      Synthesise emerging market debt conditions as of {date}: EM external debt spreads,
+      local currency volatility, key sovereign credit risks, and USD strength impact
+      on EM carry trades. Focus on: {instruments}.
+    coverage:
+      - { ticker: EMB,   name: "iShares JP Morgan EM Bond ETF",        subtheme: em_sovereign, market_cap_tier: n_a, region: em }
+      - { ticker: EMLC,  name: "VanEck EM Local Currency Bond ETF",    subtheme: em_local_ccy, market_cap_tier: n_a, region: em }
+
+  # ── MACRO & FX ────────────────────────────────────────────────────────────────
+
+  global_macro:
+    label: "Global Macro, FX & Commodities"
+    analyst: macro_regime_strategist
+    asset_class: macro
+    region: global
+    deep_research_query: >
+      Synthesise the global macro regime as of {date}: G10 central bank policy divergence,
+      USD DXY trajectory, EUR/USD, USD/JPY, AUD/USD drivers, inflation vs growth tradeoffs,
+      China macro recovery/stimulus, geopolitical risk premia, and commodity price
+      implications for global growth. Focus on: {instruments}.
+    coverage:
+      - { ticker: DXY,   name: "US Dollar Index",                       subtheme: fx_usd,            market_cap_tier: n_a, region: global }
+      - { ticker: GLD,   name: "SPDR Gold Shares ETF",                  subtheme: gold,              market_cap_tier: n_a, region: global }
+      - { ticker: USO,   name: "United States Oil Fund ETF",            subtheme: crude_oil,         market_cap_tier: n_a, region: global }
+      - { ticker: CPER,  name: "United States Copper Index Fund",       subtheme: copper,            market_cap_tier: n_a, region: global }
+      - { ticker: PDBC,  name: "Invesco Optimum Yield Commodities ETF", subtheme: commodities_broad, market_cap_tier: n_a, region: global }
+
+# ──────────────────────────────────────────────────────────────────────────────
+# RUN PRESETS — shorthand theme bundles
+# ──────────────────────────────────────────────────────────────────────────────
+presets:
+  ai_infrastructure_full:
+    description: "Full AI infrastructure thematic — compute, power, build-out"
+    themes: [ai_infrastructure, ai_power_energy, ai_build_infrastructure]
+
+  jpam_core_equities:
+    description: "Core multi-sector US equity portfolio — mirrors JPM CIO desk"
+    themes: [us_mega_tech, us_financials, us_healthcare, us_consumer, us_industrials, us_reits, us_energy_traditional]
+
+  jpam_full:
+    description: "Full platform — all asset classes, all regions"
+    themes:
+      - ai_infrastructure
+      - ai_power_energy
+      - ai_build_infrastructure
+      - energy_transition
+      - defense_security
+      - us_mega_tech
+      - us_financials
+      - us_healthcare
+      - us_consumer
+      - us_industrials
+      - us_reits
+      - us_energy_traditional
+      - asx_core
+      - sovereign_rates
+      - ig_credit
+      - hy_credit
+      - em_debt
+      - global_macro
+
+  asx_focus:
+    description: "Australian equity focus with macro overlay"
+    themes: [asx_core, global_macro, sovereign_rates]
+
+  fixed_income_suite:
+    description: "Full fixed income coverage — sovereign, IG, HY, EM"
+    themes: [sovereign_rates, ig_credit, hy_credit, em_debt, global_macro]
+
+  thematic_future:
+    description: "Forward-looking thematic baskets — AI, Energy Transition, Defense"
+    themes: [ai_infrastructure, ai_power_energy, energy_transition, defense_security]
+
+  us_diversified:
+    description: "Diversified US equities across all GICS sectors"
+    themes: [us_mega_tech, us_financials, us_healthcare, us_consumer, us_industrials,
+             us_reits, us_energy_traditional, ai_infrastructure]

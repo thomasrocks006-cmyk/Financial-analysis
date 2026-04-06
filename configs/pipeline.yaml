@@ -1,29 +1,38 @@
-version: v8
-project_name: ai_infrastructure_research_platform
+version: v9
+project_name: institutional_research_platform
 
-# ── Universe: AI-infrastructure investment research coverage ───────────
+# ══════════════════════════════════════════════════════════════════════════════
+# FOCUS SELECTOR — choose which themes to run
+# ══════════════════════════════════════════════════════════════════════════════
+# Set active_themes to any combination of theme keys defined in universe.yaml,
+# OR set preset to a named preset (overridden by active_themes if both set).
+#
+# Available presets (see configs/universe.yaml):
+#   ai_infrastructure_full  — default AI theme run
+#   jpam_core_equities      — diversified US multi-sector
+#   jpam_full               — all asset classes + regions
+#   asx_focus               — Australian equities + macro
+#   fixed_income_suite      — sovereign, IG, HY, EM debt
+#   thematic_future         — AI + Energy Transition + Defense
+#   us_diversified          — cross-sector US equities
+#
+# Individual theme keys (mix and match freely):
+#   Thematic:   ai_infrastructure, ai_power_energy, ai_build_infrastructure,
+#               energy_transition, defense_security
+#   US Equities: us_mega_tech, us_financials, us_healthcare, us_consumer,
+#               us_industrials, us_reits, us_energy_traditional
+#   Regional:   asx_core
+#   Fixed Income: sovereign_rates, ig_credit, hy_credit, em_debt
+#   Macro:      global_macro
+# ══════════════════════════════════════════════════════════════════════════════
+focus:
+  preset: ai_infrastructure_full          # use a named preset ...
+  active_themes: []                        # ... OR list explicit themes here (takes priority)
+  custom_tickers: []                       # ad-hoc tickers appended to active universe
+
+# Universe source — resolved at runtime from configs/universe.yaml
 universe:
-  tickers:
-    compute:
-      - { ticker: NVDA, name: "NVIDIA Corp", subtheme: compute }
-      - { ticker: AVGO, name: "Broadcom Inc", subtheme: compute }
-      - { ticker: TSM,  name: "Taiwan Semiconductor", subtheme: compute }
-
-    power_energy:
-      - { ticker: CEG,  name: "Constellation Energy", subtheme: power }
-      - { ticker: VST,  name: "Vistra Corp", subtheme: power }
-      - { ticker: GEV,  name: "GE Vernova", subtheme: power }
-      - { ticker: NLR,  name: "VanEck Uranium+Nuclear ETF", subtheme: etf }
-
-    infrastructure:
-      - { ticker: PWR,  name: "Quanta Services", subtheme: infrastructure }
-      - { ticker: ETN,  name: "Eaton Corporation", subtheme: infrastructure }
-      - { ticker: HUBB, name: "Hubbell Inc", subtheme: infrastructure }
-      - { ticker: APH,  name: "Amphenol Corp", subtheme: infrastructure }
-      - { ticker: FIX,  name: "Comfort Systems USA", subtheme: infrastructure }
-      - { ticker: FCX,  name: "Freeport-McMoRan", subtheme: materials }
-      - { ticker: BHP,  name: "BHP Group", subtheme: materials }
-      - { ticker: NXT,  name: "Nextdc Ltd", subtheme: data_centres }
+  source: configs/universe.yaml
 
 # ── Source hierarchy (from v6) ─────────────────────────────────────────
 source_hierarchy:
@@ -60,6 +69,23 @@ llm:
   max_output_tokens: 4096
   max_retries: 3
   retry_delay_seconds: 2
+
+# ── Gemini Deep Research — Stage 4.5 (pre-Evidence Librarian) ─────────
+# Fires one Gemini Deep Research call per active theme between Stage 4
+# (Data QA) and Stage 5 (Evidence Librarian). Results are injected as
+# Tier-3 qualitative claims into the ClaimLedger before sector analysts run.
+deep_research:
+  enabled: true                      # set false to skip (saves ~5-30 min per theme)
+  provider: gemini
+  model: gemini-2.5-pro              # supports deep/agentic research mode
+  trigger: pre_evidence_librarian    # stage insertion point
+  max_themes_per_run: 5              # cap to limit cost; prioritises active themes
+  timeout_seconds: 300               # per-theme timeout
+  output_claim_tier: 3               # injects as Tier-3 qualitative claims
+  output_claim_class: qualitative    # EvidenceClass for injected claims
+  confidence_floor: 0.55             # matches Tier-3 minimum
+  cache_ttl_hours: 12                # reuse cached results within same trading day
+  api_key_env: GEMINI_API_KEY        # environment variable name
 
 # ── Thresholds ─────────────────────────────────────────────────────────
 thresholds:
@@ -125,6 +151,15 @@ stages:
   4:
     name: data_qa_and_lineage
     owners: [data_qa_lineage]
+  4_deep_research:
+    name: deep_research_enrichment
+    owners: [gemini_deep_research]
+    description: >
+      Fires Gemini Deep Research queries (one per active theme) and injects
+      results as Tier-3 qualitative claims into the ClaimLedger. Runs only
+      when deep_research.enabled = true. Non-blocking on failure — pipeline
+      proceeds to Stage 5 with a warning if Gemini is unavailable.
+    blocking: false                 # does NOT halt pipeline on failure
   5:
     name: evidence_and_claim_register
     owners: [evidence_librarian]
