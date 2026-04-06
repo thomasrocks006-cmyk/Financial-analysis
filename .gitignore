@@ -40,5 +40,14 @@ coverage.xml
 outputs/
 runs/
 *.pyc
+
+# Runtime storage — generated at execution time, not source
+storage/artifacts/
+storage/audits/
+storage/cache/
+storage/performance/
+storage/processed/
+storage/raw/
+storage/registry/
 frontend/node_modules/
 frontend/.next/
