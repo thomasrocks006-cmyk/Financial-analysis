@@ -1,0 +1,212 @@
+{
+  "orchestrator": [
+    {
+      "prompt_id": "orchestrator",
+      "version": 1,
+      "prompt_hash": "9c44bd20b10811de",
+      "prompt_text": "__HASH__c4dd1ef2ad9cca92",
+      "created_at": "2026-03-29T09:06:56.761931Z",
+      "metadata": {
+        "agent_class": "OrchestratorAgent",
+        "version_tag": ""
+      },
+      "regression_status": "untested",
+      "regression_run_id": ""
+    }
+  ],
+  "evidence_librarian": [
+    {
+      "prompt_id": "evidence_librarian",
+      "version": 1,
+      "prompt_hash": "f8c70687e719a02c",
+      "prompt_text": "__HASH__50f6d39112e0e379",
+      "created_at": "2026-03-29T09:06:56.762141Z",
+      "metadata": {
+        "agent_class": "EvidenceLibrarianAgent",
+        "version_tag": ""
+      },
+      "regression_status": "untested",
+      "regression_run_id": ""
+    }
+  ],
+  "sector_analyst_compute": [
+    {
+      "prompt_id": "sector_analyst_compute",
+      "version": 1,
+      "prompt_hash": "58c79381deaad2fe",
+      "prompt_text": "__HASH__8e620a70a54e2558",
+      "created_at": "2026-03-29T09:06:56.762391Z",
+      "metadata": {
+        "agent_class": "SectorAnalystCompute",
+        "version_tag": ""
+      },
+      "regression_status": "untested",
+      "regression_run_id": ""
+    }
+  ],
+  "sector_analyst_power_energy": [
+    {
+      "prompt_id": "sector_analyst_power_energy",
+      "version": 1,
+      "prompt_hash": "c9f63cd5e4ac6362",
+      "prompt_text": "__HASH__5404f2aa5972768e",
+      "created_at": "2026-03-29T09:06:56.762648Z",
+      "metadata": {
+        "agent_class": "SectorAnalystPowerEnergy",
+        "version_tag": ""
+      },
+      "regression_status": "untested",
+      "regression_run_id": ""
+    }
+  ],
+  "sector_analyst_infrastructure": [
+    {
+      "prompt_id": "sector_analyst_infrastructure",
+      "version": 1,
+      "prompt_hash": "0bd3677dc7720705",
+      "prompt_text": "__HASH__a2dda8f727428151",
+      "created_at": "2026-03-29T09:06:56.762908Z",
+      "metadata": {
+        "agent_class": "SectorAnalystInfrastructure",
+        "version_tag": ""
+      },
+      "regression_status": "untested",
+      "regression_run_id": ""
+    }
+  ],
+  "valuation_analyst": [
+    {
+      "prompt_id": "valuation_analyst",
+      "version": 1,
+      "prompt_hash": "dacbcf52ceb0d2d3",
+      "prompt_text": "__HASH__7924ea4002b020fc",
+      "created_at": "2026-03-29T09:06:56.763185Z",
+      "metadata": {
+        "agent_class": "ValuationAnalystAgent",
+        "version_tag": ""
+      },
+      "regression_status": "untested",
+      "regression_run_id": ""
+    }
+  ],
+  "macro_strategist": [
+    {
+      "prompt_id": "macro_strategist",
+      "version": 1,
+      "prompt_hash": "f0c29e296dab223b",
+      "prompt_text": "__HASH__8c1bbdb8603608fc",
+      "created_at": "2026-03-29T09:06:56.763463Z",
+      "metadata": {
+        "agent_class": "MacroStrategistAgent",
+        "version_tag": ""
+      },
+      "regression_status": "untested",
+      "regression_run_id": ""
+    }
+  ],
+  "political_risk_analyst": [
+    {
+      "prompt_id": "political_risk_analyst",
+      "version": 1,
+      "prompt_hash": "137f2e2f5524db53",
+      "prompt_text": "__HASH__38a19428f9a47304",
+      "created_at": "2026-03-29T09:06:56.763751Z",
+      "metadata": {
+        "agent_class": "PoliticalRiskAnalystAgent",
+        "version_tag": ""
+      },
+      "regression_status": "untested",
+      "regression_run_id": ""
+    }
+  ],
+  "red_team_analyst": [
+    {
+      "prompt_id": "red_team_analyst",
+      "version": 1,
+      "prompt_hash": "227d926afb93d795",
+      "prompt_text": "__HASH__b70a08123cc5f648",
+      "created_at": "2026-03-29T09:06:56.764062Z",
+      "metadata": {
+        "agent_class": "RedTeamAnalystAgent",
+        "version_tag": ""
+      },
+      "regression_status": "untested",
+      "regression_run_id": ""
+    }
+  ],
+  "associate_reviewer": [
+    {
+      "prompt_id": "associate_reviewer",
+      "version": 1,
+      "prompt_hash": "0058bcb311816554",
+      "prompt_text": "__HASH__8e8562dae24da088",
+      "created_at": "2026-03-29T09:06:56.764499Z",
+      "metadata": {
+        "agent_class": "AssociateReviewerAgent",
+        "version_tag": ""
+      },
+      "regression_status": "untested",
+      "regression_run_id": ""
+    }
+  ],
+  "portfolio_manager": [
+    {
+      "prompt_id": "portfolio_manager",
+      "version": 1,
+      "prompt_hash": "20b59cef98693cc3",
+      "prompt_text": "__HASH__f5e353fa4f230fb3",
+      "created_at": "2026-03-29T09:06:56.764819Z",
+      "metadata": {
+        "agent_class": "PortfolioManagerAgent",
+        "version_tag": ""
+      },
+      "regression_status": "untested",
+      "regression_run_id": ""
+    }
+  ],
+  "quant_research_analyst": [
+    {
+      "prompt_id": "quant_research_analyst",
+      "version": 1,
+      "prompt_hash": "a78770bcd7fa0a9a",
+      "prompt_text": "__HASH__e3642bb628809701",
+      "created_at": "2026-03-29T09:06:56.765186Z",
+      "metadata": {
+        "agent_class": "QuantResearchAnalystAgent",
+        "version_tag": ""
+      },
+      "regression_status": "untested",
+      "regression_run_id": ""
+    }
+  ],
+  "fixed_income_analyst": [
+    {
+      "prompt_id": "fixed_income_analyst",
+      "version": 1,
+      "prompt_hash": "ecf325d64f6df822",
+      "prompt_text": "__HASH__c3362d6eaed3009d",
+      "created_at": "2026-03-29T09:06:56.765540Z",
+      "metadata": {
+        "agent_class": "FixedIncomeAnalystAgent",
+        "version_tag": ""
+      },
+      "regression_status": "untested",
+      "regression_run_id": ""
+    }
+  ],
+  "esg_analyst": [
+    {
+      "prompt_id": "esg_analyst",
+      "version": 1,
+      "prompt_hash": "01a2911fcc772fd9",
+      "prompt_text": "__HASH__f3e7393b452feebe",
+      "created_at": "2026-03-29T09:06:56.765883Z",
+      "metadata": {
+        "agent_class": "EsgAnalystAgent",
+        "version_tag": ""
+      },
+      "regression_status": "untested",
+      "regression_run_id": ""
+    }
+  ]
+}
