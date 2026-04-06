@@ -456,6 +456,8 @@ test("portfolio screen shows run staging and overlay data", async ({ page }) => 
   await expect(page.getByRole("button", { name: /run_demo_001/i })).toBeVisible();
   await expect(page.getByText("Selected run overlay")).toBeVisible();
   await expect(page.getByText(/Desk overlap:/)).toBeVisible();
+  await expect(page.getByText("Construction overlay")).toBeVisible();
+  await expect(page.getByText(/42 bps/)).toBeVisible();
 });
 
 test("audit screen loads gate and committee data", async ({ page }) => {

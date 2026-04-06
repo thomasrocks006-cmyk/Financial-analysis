@@ -42,6 +42,10 @@ export default function PortfolioPage() {
   });
 
   const backendWeights = quantData?.quant?.baseline_weights || {};
+  const optimisationResults = quantData?.quant?.optimisation_results || {};
+  const rebalanceProposal = (quantData?.quant?.rebalance_proposal || {}) as Record<string, unknown>;
+  const attribution = (quantData?.quant?.attribution || {}) as Record<string, unknown>;
+  const etfDifferentiationScore = quantData?.quant?.etf_differentiation_score;
 
   const blotterRows = useMemo(
     () =>
@@ -77,6 +81,11 @@ export default function PortfolioPage() {
   const selectedUniverse = selectedRun?.universe || [];
   const overlapCount = selectedUniverse.filter((ticker) => store.universe.includes(ticker)).length;
   const backendWeightCount = Object.keys(backendWeights).length;
+  const rebalanceTrades = Array.isArray(rebalanceProposal.trades) ? rebalanceProposal.trades.length : 0;
+  const optimisationObjective = String(optimisationResults.objective || "baseline_equal_weight").replaceAll("_", " ").toUpperCase();
+  const improvementBps = Number(optimisationResults.improvement_bps ?? 0);
+  const allocationEffect = Number(attribution.allocation_effect ?? 0);
+  const selectionEffect = Number(attribution.selection_effect ?? 0);
   const selectedCompletionState =
     selectedRun?.status === "completed"
       ? "COMPLETE"
@@ -178,6 +187,38 @@ export default function PortfolioPage() {
               ) : (
                 <div className="mt-2 text-[10px] text-[var(--text-muted)]">Select a run to compare it against the current portfolio watchlist.</div>
               )}
+            </div>
+
+            <div className="border border-[var(--border)] p-3">
+              <div className="text-[10px] uppercase tracking-[.08em] text-[var(--accent)]">Construction overlay</div>
+              <div className="mt-2 grid grid-cols-2 gap-2 text-[10px]">
+                <div className="border border-[var(--border-2)] px-2 py-2">
+                  <div className="text-[var(--text-muted)] uppercase tracking-[.06em]">Objective</div>
+                  <div className="mt-1 text-[var(--text-primary)]">{optimisationObjective}</div>
+                </div>
+                <div className="border border-[var(--border-2)] px-2 py-2">
+                  <div className="text-[var(--text-muted)] uppercase tracking-[.06em]">Improvement</div>
+                  <div className="mt-1 text-[var(--text-primary)] tabular-nums">{improvementBps.toFixed(0)} bps</div>
+                </div>
+                <div className="border border-[var(--border-2)] px-2 py-2">
+                  <div className="text-[var(--text-muted)] uppercase tracking-[.06em]">Rebalance trades</div>
+                  <div className="mt-1 text-[var(--text-primary)] tabular-nums">{rebalanceTrades}</div>
+                </div>
+                <div className="border border-[var(--border-2)] px-2 py-2">
+                  <div className="text-[var(--text-muted)] uppercase tracking-[.06em]">ETF differentiation</div>
+                  <div className="mt-1 text-[var(--text-primary)] tabular-nums">
+                    {etfDifferentiationScore != null ? `${etfDifferentiationScore.toFixed(1)} / 100` : "—"}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-2 border border-[var(--border-2)] px-2 py-2 text-[10px]">
+                <div className="text-[var(--text-muted)] uppercase tracking-[.06em]">Attribution read-through</div>
+                <div className="mt-1 text-[var(--text-secondary)]">
+                  Allocation <span className="tabular-nums text-[var(--text-primary)]">{allocationEffect.toFixed(1)}</span>
+                  {" · "}
+                  Selection <span className="tabular-nums text-[var(--text-primary)]">{selectionEffect.toFixed(1)}</span>
+                </div>
+              </div>
             </div>
 
             <div className="border border-[var(--border)] p-3">
