@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { BriefcaseBusiness, FolderOpen, Radar, Target } from "lucide-react";
-import { listRuns, listSavedRuns } from "@/lib/api";
+import { getRunStatus, listRuns, listSavedRuns } from "@/lib/api";
 import { usePipelineStore } from "@/lib/store";
 import { formatTimestamp } from "@/lib/utils";
 import { getApiTargetLabel } from "@/lib/runtime-settings";
@@ -17,8 +17,23 @@ function convictionBand(index: number) {
 
 export default function PortfolioPage() {
   const store = usePipelineStore();
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const { data: activeRuns } = useQuery({ queryKey: ["runs"], queryFn: listRuns, refetchInterval: 5000 });
   const { data: savedRuns } = useQuery({ queryKey: ["saved-runs"], queryFn: listSavedRuns });
+
+  const candidateRunId = selectedRunId || activeRuns?.runs[0]?.run_id || null;
+
+  useEffect(() => {
+    if (!selectedRunId && activeRuns?.runs?.[0]?.run_id) {
+      setSelectedRunId(activeRuns.runs[0].run_id);
+    }
+  }, [activeRuns?.runs, selectedRunId]);
+
+  const { data: selectedRun } = useQuery({
+    queryKey: ["run-status", candidateRunId],
+    queryFn: () => getRunStatus(candidateRunId as string),
+    enabled: !!candidateRunId,
+  });
 
   const blotterRows = useMemo(
     () =>
@@ -37,6 +52,16 @@ export default function PortfolioPage() {
   const runningCount = activeRuns?.runs.filter((run) => run.status === "running").length || 0;
   const completedCount = activeRuns?.runs.filter((run) => run.status === "completed").length || 0;
   const packetQueue = savedRuns?.runs.slice(0, 5) || [];
+  const selectedUniverse = selectedRun?.universe || [];
+  const overlapCount = selectedUniverse.filter((ticker) => store.universe.includes(ticker)).length;
+  const selectedCompletionState =
+    selectedRun?.status === "completed"
+      ? "COMPLETE"
+      : selectedRun?.status === "running"
+      ? "LIVE"
+      : selectedRun?.status === "failed"
+      ? "FAILED"
+      : "QUEUED";
 
   return (
     <div className="space-y-0 divide-y divide-[var(--border)]">
@@ -96,6 +121,41 @@ export default function PortfolioPage() {
         <div className="bg-[var(--surface)]">
           <div className="bg-[var(--surface-2)] px-4 py-1.5 text-[9px] uppercase tracking-[.1em] text-[var(--text-label)]">Desk Notes</div>
           <div className="space-y-3 px-4 py-3 text-[11px] text-[var(--text-secondary)]">
+            <div className="border border-[var(--border)] p-3">
+              <div className="text-[10px] uppercase tracking-[.08em] text-[var(--accent)]">Run staging board</div>
+              <div className="mt-2 space-y-2">
+                {(activeRuns?.runs || []).length > 0 ? (
+                  activeRuns?.runs.map((run) => (
+                    <button
+                      key={run.run_id}
+                      onClick={() => setSelectedRunId(run.run_id)}
+                      className={`block w-full border px-3 py-2 text-left hover:bg-[var(--surface-2)] ${candidateRunId === run.run_id ? "border-[var(--accent)] text-[var(--accent)]" : "border-[var(--border)] text-[var(--text-secondary)]"}`}
+                    >
+                      <div className="text-[10px] font-mono">{run.run_id}</div>
+                      <div className="mt-1 text-[10px] text-[var(--text-muted)]">{run.status.toUpperCase()} · {run.universe.slice(0, 3).join(" · ")}</div>
+                    </button>
+                  ))
+                ) : (
+                  <div className="text-[10px] text-[var(--text-muted)]">No runs available yet.</div>
+                )}
+              </div>
+            </div>
+
+            <div className="border border-[var(--border)] p-3">
+              <div className="text-[10px] uppercase tracking-[.08em] text-[var(--accent)]">Selected run overlay</div>
+              {selectedRun ? (
+                <div className="mt-2 space-y-1.5 text-[10px]">
+                  <div>Run: <span className="text-[var(--text-primary)]">{selectedRun.run_id}</span></div>
+                  <div>Status: <span className="text-[var(--text-primary)]">{selectedCompletionState}</span></div>
+                  <div>Universe size: <span className="text-[var(--text-primary)]">{selectedUniverse.length}</span></div>
+                  <div>Desk overlap: <span className="text-[var(--text-primary)]">{overlapCount} / {selectedUniverse.length || 0}</span></div>
+                  <div>Started: <span className="text-[var(--text-primary)]">{selectedRun.started_at ? formatTimestamp(selectedRun.started_at) : "Pending"}</span></div>
+                </div>
+              ) : (
+                <div className="mt-2 text-[10px] text-[var(--text-muted)]">Select a run to compare it against the current portfolio watchlist.</div>
+              )}
+            </div>
+
             <div className="border border-[var(--border)] p-3">
               <div className="text-[10px] uppercase tracking-[.08em] text-[var(--accent)]">Portfolio directives</div>
               <div className="mt-2 space-y-1.5">

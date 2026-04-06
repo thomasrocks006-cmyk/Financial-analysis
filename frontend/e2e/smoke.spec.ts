@@ -44,6 +44,68 @@ async function mockApi(page: Page): Promise<void> {
     count: 1,
   };
 
+  const auditPacket = {
+    run_id: "run_demo_001",
+    quality_score: 8.6,
+    gates_passed: [1, 2, 3, 4, 5, 6, 7],
+    gates_failed: [8],
+    blockers: ["Macro sensitivity requires CIO review"],
+    agents_succeeded: ["sector", "valuation"],
+    agents_failed: [],
+    total_claims: 24,
+    pass_claims: 18,
+    caveat_claims: 5,
+    fail_claims: 1,
+    tier1_claims: 6,
+    tier2_claims: 8,
+    tier3_claims: 7,
+    tier4_claims: 3,
+    ic_approved: true,
+    ic_vote_breakdown: {
+      pm: "approve",
+      risk: "approve",
+      compliance: "conditional",
+    },
+    mandate_compliant: true,
+    esg_exclusions: ["Thermal coal"],
+    stage_latencies_ms: { stage_1: 1200, stage_2: 2200 },
+    total_pipeline_duration_s: 182,
+    rebalancing_summary: { turnover_pct: 8.4 },
+  };
+
+  const quantPacket = {
+    run_id: "run_demo_001",
+    quant: {
+      run_id: "run_demo_001",
+      var_analysis: { var_pct: 2.31, cvar_pct: 3.42 },
+      drawdown_analysis: { max_drawdown_pct: 9.8 },
+      portfolio_volatility: 0.184,
+      var_method: "historical",
+      confidence_level: 0.95,
+      etf_overlap: { overlaps: { XLK: 42.1, SOXX: 35.4 } },
+      etf_differentiation_score: 72.5,
+      factor_exposures: [
+        {
+          ticker: "NVDA",
+          market_beta: 1.22,
+          size_loading: -0.12,
+          value_loading: -0.34,
+          momentum_loading: 0.58,
+          quality_loading: 0.41,
+        },
+      ],
+      portfolio_factor_exposure: { market_beta: 1.1, size_loading: -0.1, momentum_loading: 0.33 },
+      fixed_income_context: {},
+      ic_record: { is_approved: true, votes: { pm: "approve", risk: "approve" } },
+      mandate_compliance: { compliant: true, breaches: [] },
+      baseline_weights: { NVDA: 0.12, AVGO: 0.11, TSM: 0.09 },
+      optimisation_results: { objective: "max_sharpe", improvement_bps: 42 },
+      rebalance_proposal: { trades: [{ ticker: "NVDA", action: "trim", delta_pct: -1.2 }] },
+      attribution: { allocation_effect: 0.8, selection_effect: 1.2 },
+      esg_scores: [{ ticker: "NVDA", score: 71 }],
+    },
+  };
+
   const fulfillJson = async (route: Route, payload: JsonValue) => {
     await route.fulfill({
       status: 200,
@@ -52,12 +114,18 @@ async function mockApi(page: Page): Promise<void> {
     });
   };
 
-  await page.route("**/api/v1/runs*", async (route) => {
-    if (route.request().method() === "GET") {
+  await page.route("**/api/v1/runs**", async (route) => {
+    const method = route.request().method();
+    const url = new URL(route.request().url());
+    const path = url.pathname;
+    const runIdMatch = path.match(/\/api\/v1\/runs\/([^/]+)$/);
+
+    if (method === "GET" && path.endsWith("/api/v1/runs")) {
       await fulfillJson(route, activeRuns);
       return;
     }
-    if (route.request().method() === "POST") {
+
+    if (method === "POST" && path.endsWith("/api/v1/runs")) {
       await fulfillJson(route, {
         run_id: "run_started_123",
         status: "queued",
@@ -65,6 +133,34 @@ async function mockApi(page: Page): Promise<void> {
       });
       return;
     }
+
+    if (method === "GET" && path.endsWith("/audit")) {
+      await fulfillJson(route, { audit_packet: auditPacket });
+      return;
+    }
+
+    if (method === "GET" && path.endsWith("/quant")) {
+      await fulfillJson(route, quantPacket);
+      return;
+    }
+
+    if (method === "GET" && path.endsWith("/report")) {
+      await fulfillJson(route, {
+        run_id: "run_demo_001",
+        report_markdown: "# Demo Report",
+        word_count: 1234,
+        estimated_pages: 4,
+      });
+      return;
+    }
+
+    if (method === "GET" && runIdMatch) {
+      const runId = runIdMatch[1];
+      const run = activeRuns.runs.find((item) => item.run_id === runId) || activeRuns.runs[0];
+      await fulfillJson(route, run);
+      return;
+    }
+
     await route.fallback();
   });
 
@@ -141,7 +237,7 @@ test("dashboard renders active and saved run summaries", async ({ page }) => {
   await expect(page.getByText("Meridian Research Terminal")).toBeVisible();
   await expect(page.getByText("Recent Runs")).toBeVisible();
   await expect(page.getByRole("link", { name: /run_demo_001/i })).toBeVisible();
-  await expect(page.getByRole("link", { name: /run_saved_001/i })).toBeVisible();
+  await expect(page.getByRole("link", { name: /run_saved_001/i }).first()).toBeVisible();
   await expect(page.getByRole("link", { name: /saved reports f4/i })).toBeVisible();
 });
 
@@ -182,4 +278,33 @@ test("command bar navigation routes to settings", async ({ page }) => {
   await expect(page).toHaveURL(/\/settings$/);
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
   await expect(page.getByText("API Connection")).toBeVisible();
+});
+
+test("portfolio screen shows run staging and overlay data", async ({ page }) => {
+  await page.goto("/portfolio");
+
+  await expect(page.getByText("Portfolio Workbench")).toBeVisible();
+  await expect(page.getByText("Run staging board")).toBeVisible();
+  await expect(page.getByRole("button", { name: /run_demo_001/i })).toBeVisible();
+  await expect(page.getByText("Selected run overlay")).toBeVisible();
+  await expect(page.getByText(/Desk overlap:/)).toBeVisible();
+});
+
+test("audit screen loads gate and committee data", async ({ page }) => {
+  await page.goto("/audit");
+
+  await expect(page.getByText("Audit Console")).toBeVisible();
+  await expect(page.getByText("Gate Console")).toBeVisible();
+  await expect(page.getByText("Investment Committee", { exact: true })).toBeVisible();
+  await expect(page.getByText("Macro sensitivity requires CIO review")).toBeVisible();
+  await expect(page.getByText("APPROVED")).toBeVisible();
+});
+
+test("quant screen loads analytics for selected run", async ({ page }) => {
+  await page.goto("/quant");
+
+  await expect(page.getByText("Quant Lab")).toBeVisible();
+  await expect(page.getByText("Market Risk Metrics")).toBeVisible();
+  await expect(page.getByText("ETF Overlap & Differentiation")).toBeVisible();
+  await expect(page.getByText("72.5 / 100")).toBeVisible();
 });
