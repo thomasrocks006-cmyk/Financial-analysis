@@ -17,15 +17,34 @@ from pydantic import BaseModel, Field, field_validator
 # ── Default universes ────────────────────────────────────────────────────────
 
 _DEFAULT_US_UNIVERSE = [
-    "NVDA", "AMD", "AVGO", "MRVL", "ARM", "TSM",
-    "MSFT", "AMZN", "GOOGL", "META",
-    "EQIX", "DLR", "VRT", "DELL", "SMCI",
+    "NVDA",
+    "AMD",
+    "AVGO",
+    "MRVL",
+    "ARM",
+    "TSM",
+    "MSFT",
+    "AMZN",
+    "GOOGL",
+    "META",
+    "EQIX",
+    "DLR",
+    "VRT",
+    "DELL",
+    "SMCI",
 ]
 
 _DEFAULT_AU_UNIVERSE = [
-    "CBA.AX", "WBC.AX", "NAB.AX", "ANZ.AX",
-    "BHP.AX", "RIO.AX", "FMG.AX",
-    "TLS.AX", "WES.AX", "WOW.AX",
+    "CBA.AX",
+    "WBC.AX",
+    "NAB.AX",
+    "ANZ.AX",
+    "BHP.AX",
+    "RIO.AX",
+    "FMG.AX",
+    "TLS.AX",
+    "WES.AX",
+    "WOW.AX",
 ]
 
 

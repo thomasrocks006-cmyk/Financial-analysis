@@ -12,9 +12,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
-import pytest
 
 from research_pipeline.services.prompt_registry import PromptDriftReport, PromptRegistry
 
@@ -154,7 +152,9 @@ class TestDriftDetection:
         reg = _make_registry()
         reg.register_prompt("changing_agent", "Original prompt v1")
         # Check drift with different text WITHOUT re-registering — this detects drift
-        report = reg.check_drift("changing_agent", "Modified prompt v2 — materially different content")
+        report = reg.check_drift(
+            "changing_agent", "Modified prompt v2 — materially different content"
+        )
         assert report.changed is True
 
     def test_no_drift_second_call_same_text(self):
@@ -282,7 +282,6 @@ class TestCIGate:
     def test_engine_agents_have_prompt_hash_attribute(self):
         """All 14 engine agents expose a 'prompt_hash' attribute for CI tracking."""
         import importlib
-        from pathlib import Path as _Path
 
         agent_module_map = {
             "ResearchPipelineOrchestrator": "research_pipeline.agents.orchestrator",

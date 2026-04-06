@@ -8,9 +8,7 @@ Tests are self-contained; they mock heavy dependencies to avoid network/GPU call
 
 from __future__ import annotations
 
-import json
 import sys
-import types
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -24,6 +22,7 @@ sys.path.insert(0, str(ROOT / "src"))
 # =============================================================================
 # PDF SERVICE
 # =============================================================================
+
 
 class TestPdfService:
     """Tests for src/api/services/pdf_service.py."""
@@ -45,7 +44,6 @@ class TestPdfService:
 
     def test_returns_empty_bytes_gracefully_without_fpdf2(self):
         """If fpdf2 is not installed, function must return b'' (not raise)."""
-        from api.services import pdf_service
 
         with patch.dict("sys.modules", {"fpdf": None}):
             # Force the ImportError path
@@ -86,6 +84,7 @@ class TestPdfService:
 # RUN MANAGER — get_quant()
 # =============================================================================
 
+
 class TestRunManagerGetQuant:
     """Tests for RunManager.get_quant()."""
 
@@ -108,7 +107,6 @@ class TestRunManagerGetQuant:
         return manager, run
 
     def test_get_quant_returns_dict(self):
-        from api.services.run_manager import RunManager
 
         manager, _ = self._make_manager_with_result({})
         result = manager.get_quant("quant-test-run")
@@ -127,7 +125,6 @@ class TestRunManagerGetQuant:
         assert result == {}
 
     def test_get_quant_extracts_stage9_risk_fields(self):
-        from api.services.run_manager import RunManager
 
         stage9 = {
             "var_analysis": {"var_pct": 2.5, "cvar_pct": 3.1},
@@ -149,7 +146,6 @@ class TestRunManagerGetQuant:
         assert result["factor_exposures"][0]["ticker"] == "NVDA"
 
     def test_get_quant_extracts_stage12_portfolio_fields(self):
-        from api.services.run_manager import RunManager
 
         stage12 = {
             "ic_record": {"is_approved": True, "votes": {"PM": "approve"}},
@@ -166,7 +162,6 @@ class TestRunManagerGetQuant:
         assert result["rebalance_proposal"]["trades"][0]["ticker"] == "NVDA"
 
     def test_get_quant_extracts_stage14_attribution(self):
-        from api.services.run_manager import RunManager
 
         stage14 = {
             "attribution": {
@@ -182,14 +177,11 @@ class TestRunManagerGetQuant:
         assert result["attribution"]["excess_return_pct"] == 4.2
 
     def test_get_quant_extracts_esg_from_stage6(self):
-        from api.services.run_manager import RunManager
 
         stage6 = {
             "esg_output": {
                 "parsed_output": {
-                    "esg_scores": [
-                        {"ticker": "NVDA", "esg_score": 72, "exclusion_trigger": False}
-                    ]
+                    "esg_scores": [{"ticker": "NVDA", "esg_score": 72, "exclusion_trigger": False}]
                 }
             }
         }
@@ -200,7 +192,6 @@ class TestRunManagerGetQuant:
         assert result["esg_scores"][0]["ticker"] == "NVDA"
 
     def test_get_quant_returns_empty_dicts_for_missing_stages(self):
-        from api.services.run_manager import RunManager
 
         manager, _ = self._make_manager_with_result({})
         result = manager.get_quant("quant-test-run")
@@ -212,7 +203,6 @@ class TestRunManagerGetQuant:
         assert result["rebalance_proposal"] is None
 
     def test_get_quant_run_id_in_result(self):
-        from api.services.run_manager import RunManager
 
         manager, _ = self._make_manager_with_result({})
         result = manager.get_quant("quant-test-run")
@@ -222,6 +212,7 @@ class TestRunManagerGetQuant:
 # =============================================================================
 # API ROUTES — new endpoints
 # =============================================================================
+
 
 class TestNewApiEndpoints:
     """Test that the 3 new endpoint functions are registered on the correct paths."""
@@ -249,7 +240,8 @@ class TestNewApiEndpoints:
         from api.routes.runs import saved_router
 
         delete_routes = [
-            r for r in saved_router.routes  # type: ignore[attr-defined]
+            r
+            for r in saved_router.routes  # type: ignore[attr-defined]
             if hasattr(r, "methods") and "DELETE" in (r.methods or set())
         ]
         assert len(delete_routes) >= 1
@@ -258,7 +250,8 @@ class TestNewApiEndpoints:
         from api.routes.runs import router
 
         pdf_routes = [
-            r for r in router.routes  # type: ignore[attr-defined]
+            r
+            for r in router.routes  # type: ignore[attr-defined]
             if hasattr(r, "path") and "report/pdf" in r.path
         ]
         assert len(pdf_routes) == 1
@@ -268,7 +261,8 @@ class TestNewApiEndpoints:
         from api.routes.runs import router
 
         quant_routes = [
-            r for r in router.routes  # type: ignore[attr-defined]
+            r
+            for r in router.routes  # type: ignore[attr-defined]
             if hasattr(r, "path") and r.path.endswith("/quant")
         ]
         assert len(quant_routes) == 1
@@ -278,6 +272,7 @@ class TestNewApiEndpoints:
 # =============================================================================
 # FRONTEND — new files exist
 # =============================================================================
+
 
 class TestSession18FrontendStructure:
     """Verify new frontend files were created."""
@@ -344,14 +339,17 @@ class TestSession18FrontendStructure:
 # STORAGE — delete_run integration
 # =============================================================================
 
+
 class TestStorageDeleteRun:
     """Test that delete_run in storage.py cascades properly."""
 
     def test_delete_run_callable(self):
         from frontend.storage import delete_run
+
         assert callable(delete_run)
 
     def test_delete_run_returns_false_for_unknown_id(self):
         from frontend.storage import delete_run
+
         result = delete_run("nonexistent-run-id-xyz-999")
         assert result is False or result == 0 or result is None  # graceful

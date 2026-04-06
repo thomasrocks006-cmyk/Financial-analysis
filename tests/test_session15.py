@@ -14,7 +14,6 @@ Covers:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import sys
 import os
@@ -29,9 +28,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 # 1. PipelineEvent — schema
 # ---------------------------------------------------------------------------
 
+
 class TestPipelineEventSchema:
     def test_stage_started_convenience(self):
         from research_pipeline.schemas.events import PipelineEvent
+
         e = PipelineEvent.stage_started("r-001", 5)
         assert e.event_type == "stage_started"
         assert e.stage == 5
@@ -40,6 +41,7 @@ class TestPipelineEventSchema:
 
     def test_stage_completed_has_duration(self):
         from research_pipeline.schemas.events import PipelineEvent
+
         e = PipelineEvent.stage_completed("r-001", 3, 1234.5)
         assert e.event_type == "stage_completed"
         assert e.duration_ms == pytest.approx(1234.5)
@@ -47,12 +49,14 @@ class TestPipelineEventSchema:
 
     def test_stage_failed_has_stage(self):
         from research_pipeline.schemas.events import PipelineEvent
+
         e = PipelineEvent.stage_failed("r-001", 7, reason="LLM error")
         assert e.event_type == "stage_failed"
         assert e.data["reason"] == "LLM error"
 
     def test_agent_started(self):
         from research_pipeline.schemas.events import PipelineEvent
+
         e = PipelineEvent.agent_started("r-001", "ValuationAnalyst", stage=7)
         assert e.event_type == "agent_started"
         assert e.agent_name == "ValuationAnalyst"
@@ -60,44 +64,53 @@ class TestPipelineEventSchema:
 
     def test_agent_completed_has_tokens(self):
         from research_pipeline.schemas.events import PipelineEvent
+
         e = PipelineEvent.agent_completed("r-001", "ValuationAnalyst", 820.0, tokens_used=512)
         assert e.data["tokens_used"] == 512
         assert e.duration_ms == pytest.approx(820.0)
 
     def test_llm_call_events(self):
         from research_pipeline.schemas.events import PipelineEvent
+
         s = PipelineEvent.llm_call_started("r-001", "PM", "claude-sonnet-4-6")
-        c = PipelineEvent.llm_call_completed("r-001", "PM", "claude-sonnet-4-6", 600.0, tokens_used=400)
+        c = PipelineEvent.llm_call_completed(
+            "r-001", "PM", "claude-sonnet-4-6", 600.0, tokens_used=400
+        )
         assert s.event_type == "llm_call_started"
         assert c.event_type == "llm_call_completed"
         assert c.data["tokens_used"] == 400
 
     def test_pipeline_started(self):
         from research_pipeline.schemas.events import PipelineEvent
+
         e = PipelineEvent.pipeline_started("r-001", ["NVDA", "AMD", "AVGO"])
         assert e.event_type == "pipeline_started"
         assert e.data["ticker_count"] == 3
 
     def test_pipeline_completed(self):
         from research_pipeline.schemas.events import PipelineEvent
+
         e = PipelineEvent.pipeline_completed("r-001", 45_000.0)
         assert e.event_type == "pipeline_completed"
         assert e.duration_ms == pytest.approx(45_000.0)
 
     def test_pipeline_failed_blocked_at(self):
         from research_pipeline.schemas.events import PipelineEvent
+
         e = PipelineEvent.pipeline_failed("r-001", blocked_at=2)
         assert e.event_type == "pipeline_failed"
         assert e.data["blocked_at"] == 2
 
     def test_artifact_written(self):
         from research_pipeline.schemas.events import PipelineEvent
+
         e = PipelineEvent.artifact_written("r-001", "/storage/report.md", "report")
         assert e.event_type == "artifact_written"
         assert "/storage/report.md" in e.data["path"]
 
     def test_to_sse_data_is_valid_json(self):
         from research_pipeline.schemas.events import PipelineEvent
+
         e = PipelineEvent.stage_started("r-001", 0)
         raw = e.to_sse_data()
         parsed = json.loads(raw)
@@ -105,13 +118,14 @@ class TestPipelineEventSchema:
         assert parsed["run_id"] == "r-001"
 
     def test_timestamp_is_utc(self):
-        from datetime import timezone
         from research_pipeline.schemas.events import PipelineEvent
+
         e = PipelineEvent.pipeline_completed("r-001", 1.0)
         assert e.timestamp.tzinfo is not None
 
     def test_unknown_stage_label(self):
-        from research_pipeline.schemas.events import PipelineEvent, STAGE_LABELS
+        from research_pipeline.schemas.events import PipelineEvent
+
         # Stage 99 doesn't exist in labels
         e = PipelineEvent.stage_started("r-001", 99)
         assert "99" in e.stage_label  # fallback includes the number
@@ -121,15 +135,18 @@ class TestPipelineEventSchema:
 # 2. RunRequest schema
 # ---------------------------------------------------------------------------
 
+
 class TestRunRequestSchema:
     def test_default_universe_is_non_empty(self):
         from research_pipeline.schemas.run_request import RunRequest
+
         r = RunRequest()
         assert len(r.universe) > 0
         assert "NVDA" in r.universe
 
     def test_custom_universe_normalised_to_upper(self):
         from research_pipeline.schemas.run_request import RunRequest
+
         r = RunRequest(universe=["nvda", "amd ", "avgo"])
         assert "NVDA" in r.universe
         assert "AMD" in r.universe
@@ -137,11 +154,13 @@ class TestRunRequestSchema:
 
     def test_empty_universe_raises(self):
         from research_pipeline.schemas.run_request import RunRequest
+
         with pytest.raises(Exception):
             RunRequest(universe=[])
 
     def test_whitespace_only_tickers_stripped(self):
         from research_pipeline.schemas.run_request import RunRequest
+
         r = RunRequest(universe=["NVDA", "  "])
         # "  " should be filtered out
         assert all(t.strip() for t in r.universe)
@@ -149,23 +168,27 @@ class TestRunRequestSchema:
 
     def test_run_label_stripped(self):
         from research_pipeline.schemas.run_request import RunRequest
+
         r = RunRequest(universe=["NVDA"], run_label="  My Run  ")
         assert r.run_label == "My Run"
 
     def test_temperature_bounds(self):
         from research_pipeline.schemas.run_request import RunRequest
         import pydantic
+
         with pytest.raises(pydantic.ValidationError):
             RunRequest(universe=["NVDA"], llm_temperature=3.0)
 
     def test_max_positions_bounds(self):
         from research_pipeline.schemas.run_request import RunRequest
         import pydantic
+
         with pytest.raises(pydantic.ValidationError):
             RunRequest(universe=["NVDA"], max_positions=0)
 
     def test_to_settings_overrides(self):
         from research_pipeline.schemas.run_request import RunRequest
+
         r = RunRequest(universe=["NVDA"], llm_model="gemini-1.5-flash", llm_temperature=0.5)
         overrides = r.to_settings_overrides()
         assert overrides["llm_model"] == "gemini-1.5-flash"
@@ -173,6 +196,7 @@ class TestRunRequestSchema:
 
     def test_market_field_defaults_to_us(self):
         from research_pipeline.schemas.run_request import RunRequest
+
         r = RunRequest(universe=["NVDA"])
         assert r.market == "us"
 
@@ -181,18 +205,21 @@ class TestRunRequestSchema:
 # 3. RunManager — lifecycle (no real pipeline execution)
 # ---------------------------------------------------------------------------
 
+
 class TestRunManagerLifecycle:
     @pytest.fixture
     def manager(self, tmp_path):
         from research_pipeline.config.loader import load_pipeline_config
         from research_pipeline.config.settings import Settings
         from api.services.run_manager import RunManager
+
         s = Settings(storage_dir=tmp_path, prompts_dir=tmp_path / "prompts")
         return RunManager(settings=s, config=load_pipeline_config())
 
     @pytest.mark.asyncio
     async def test_start_run_returns_run_id(self, manager):
         from research_pipeline.schemas.run_request import RunRequest
+
         req = RunRequest(universe=["NVDA", "AMD"])
         run_id = await manager.start_run(req)
         assert isinstance(run_id, str)
@@ -202,6 +229,7 @@ class TestRunManagerLifecycle:
     async def test_get_run_returns_managed_run(self, manager):
         from research_pipeline.schemas.run_request import RunRequest
         from api.services.run_manager import ManagedRun
+
         req = RunRequest(universe=["NVDA"])
         run_id = await manager.start_run(req)
         run = manager.get_run(run_id)
@@ -212,6 +240,7 @@ class TestRunManagerLifecycle:
     @pytest.mark.asyncio
     async def test_list_runs_includes_started_run(self, manager):
         from research_pipeline.schemas.run_request import RunRequest
+
         run_id = await manager.start_run(RunRequest(universe=["NVDA"]))
         summaries = manager.list_runs()
         assert any(s["run_id"] == run_id for s in summaries)
@@ -220,6 +249,7 @@ class TestRunManagerLifecycle:
     async def test_cancel_run(self, manager):
         from research_pipeline.schemas.run_request import RunRequest
         from api.services.run_manager import ApiRunStatus
+
         run_id = await manager.start_run(RunRequest(universe=["NVDA"]))
         cancelled = manager.cancel_run(run_id)
         assert cancelled is True
@@ -229,6 +259,7 @@ class TestRunManagerLifecycle:
     @pytest.mark.asyncio
     async def test_delete_run_removes_from_list(self, manager):
         from research_pipeline.schemas.run_request import RunRequest
+
         run_id = await manager.start_run(RunRequest(universe=["NVDA"]))
         manager.delete_run(run_id)
         assert manager.get_run(run_id) is None
@@ -236,6 +267,7 @@ class TestRunManagerLifecycle:
     @pytest.mark.asyncio
     async def test_get_result_none_while_running(self, manager):
         from research_pipeline.schemas.run_request import RunRequest
+
         run_id = await manager.start_run(RunRequest(universe=["NVDA"]))
         # Immediately after start, result should be None (run not complete yet)
         result = manager.get_result(run_id)
@@ -252,11 +284,13 @@ class TestRunManagerLifecycle:
 # 4. FastAPI app — health / root / openapi
 # ---------------------------------------------------------------------------
 
+
 class TestFastAPIApp:
     @pytest.fixture
     def client(self):
         from fastapi.testclient import TestClient
         from api.main import app
+
         with TestClient(app, raise_server_exceptions=False) as c:
             yield c
 
@@ -286,11 +320,13 @@ class TestFastAPIApp:
 # 5. FastAPI /api/v1/runs — CRUD routes
 # ---------------------------------------------------------------------------
 
+
 class TestRunsRoutes:
     @pytest.fixture
     def client(self):
         from fastapi.testclient import TestClient
         from api.main import app
+
         with TestClient(app, raise_server_exceptions=False) as c:
             yield c
 
@@ -354,12 +390,14 @@ class TestRunsRoutes:
 # 6. PipelineEngine — event callback attribute
 # ---------------------------------------------------------------------------
 
+
 class TestEngineEventCallbackWiring:
     @pytest.fixture(scope="class")
     def engine(self, tmp_path_factory):
         from research_pipeline.pipeline.engine import PipelineEngine
         from research_pipeline.config.settings import Settings
         from research_pipeline.config.loader import load_pipeline_config
+
         tmp = tmp_path_factory.mktemp("engine_s15")
         (tmp / "prompts").mkdir()
         s = Settings(
@@ -379,6 +417,7 @@ class TestEngineEventCallbackWiring:
     @pytest.mark.asyncio
     async def test_emit_does_nothing_with_no_callback(self, engine):
         from research_pipeline.schemas.events import PipelineEvent
+
         # Should complete without error even when callback is None
         e = PipelineEvent.stage_started("test", 0)
         await engine._emit(e)  # must not raise
@@ -386,6 +425,7 @@ class TestEngineEventCallbackWiring:
     @pytest.mark.asyncio
     async def test_emit_calls_callback(self, engine):
         from research_pipeline.schemas.events import PipelineEvent
+
         received: list[PipelineEvent] = []
 
         async def cb(event: PipelineEvent) -> None:

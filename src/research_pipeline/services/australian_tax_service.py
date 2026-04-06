@@ -32,18 +32,19 @@ if TYPE_CHECKING:
 
 # ── Tax settings model (lightweight dataclass — no Pydantic overhead) ──────
 
+
 @dataclass
 class TaxSettings:
     """Effective tax parameters for a client category."""
 
     client_type: str
-    income_tax_rate: float          # marginal rate for income & short-term CGT
-    cgt_discount_rate: float        # fraction of gain exempt after 12 months
+    income_tax_rate: float  # marginal rate for income & short-term CGT
+    cgt_discount_rate: float  # fraction of gain exempt after 12 months
     smsf_pension_phase: bool = False
 
     # Withholding
-    au_dividend_withholding_pct: float = 0.0     # domestic — none for AU entities
-    us_dividend_withholding_pct: float = 15.0    # AU/US treaty rate
+    au_dividend_withholding_pct: float = 0.0  # domestic — none for AU entities
+    us_dividend_withholding_pct: float = 15.0  # AU/US treaty rate
 
     # AU corporate tax (for franking gross-up)
     au_corporate_tax_rate: float = 0.30
@@ -64,7 +65,7 @@ class TaxSettings:
 TAX_SUPER_FUND = TaxSettings(
     client_type="super_fund",
     income_tax_rate=0.15,
-    cgt_discount_rate=0.333,         # 1/3 discount → 10% effective CGT
+    cgt_discount_rate=0.333,  # 1/3 discount → 10% effective CGT
 )
 
 TAX_SMSF_ACCUMULATION = TaxSettings(
@@ -76,31 +77,32 @@ TAX_SMSF_ACCUMULATION = TaxSettings(
 TAX_SMSF_PENSION = TaxSettings(
     client_type="smsf_pension",
     income_tax_rate=0.0,
-    cgt_discount_rate=1.0,           # fully exempt
+    cgt_discount_rate=1.0,  # fully exempt
     smsf_pension_phase=True,
     us_dividend_withholding_pct=15.0,
 )
 
 TAX_HNW = TaxSettings(
     client_type="hnw",
-    income_tax_rate=0.47,            # highest marginal rate + 2% Medicare levy
-    cgt_discount_rate=0.50,          # 50% discount → 23.5% effective CGT
+    income_tax_rate=0.47,  # highest marginal rate + 2% Medicare levy
+    cgt_discount_rate=0.50,  # 50% discount → 23.5% effective CGT
 )
 
 TAX_RETAIL = TaxSettings(
     client_type="retail",
-    income_tax_rate=0.325,           # 32.5% middle bracket (approximation)
+    income_tax_rate=0.325,  # 32.5% middle bracket (approximation)
     cgt_discount_rate=0.50,
 )
 
 TAX_INSTITUTIONAL = TaxSettings(
     client_type="institutional",
-    income_tax_rate=0.30,            # corporate tax rate
-    cgt_discount_rate=0.0,           # corporates do not get CGT discount
+    income_tax_rate=0.30,  # corporate tax rate
+    cgt_discount_rate=0.0,  # corporates do not get CGT discount
 )
 
 
 # ── Service ────────────────────────────────────────────────────────────────
+
 
 class AustralianTaxService:
     """Deterministic AU tax calculations for portfolio income and capital gains.
@@ -189,9 +191,7 @@ class AustralianTaxService:
         if corporate_tax_rate >= 1.0:
             return 0.0
         franked_amount = cash_dividend * franking_pct
-        return round(
-            franked_amount * corporate_tax_rate / (1.0 - corporate_tax_rate), 6
-        )
+        return round(franked_amount * corporate_tax_rate / (1.0 - corporate_tax_rate), 6)
 
     def grossed_up_dividend(
         self,
@@ -219,9 +219,7 @@ class AustralianTaxService:
         Returns:
             Net franking benefit (positive = benefit, negative = cost).
         """
-        credit = self.compute_franking_credit(
-            cash_dividend, franking_pct, corporate_tax_rate
-        )
+        credit = self.compute_franking_credit(cash_dividend, franking_pct, corporate_tax_rate)
         grossed_up = cash_dividend + credit
         # Tax on grossed-up dividend at investor's marginal rate
         investor_tax = grossed_up * tax_settings.income_tax_rate
@@ -268,7 +266,7 @@ class AustralianTaxService:
         Returns:
             Annual tax drag in basis points (1 bp = 0.01%).
         """
-        gross_income_bps = income_yield_pct * 100.0   # e.g. 3% → 300 bps
+        gross_income_bps = income_yield_pct * 100.0  # e.g. 3% → 300 bps
         drag_bps = gross_income_bps * tax_settings.income_tax_rate
         return round(drag_bps, 1)
 
@@ -278,9 +276,7 @@ class AustralianTaxService:
         tax_settings: TaxSettings,
     ) -> float:
         """Return after-tax income yield as a percentage."""
-        return round(
-            gross_yield_pct * (1.0 - tax_settings.income_tax_rate), 4
-        )
+        return round(gross_yield_pct * (1.0 - tax_settings.income_tax_rate), 4)
 
     # ── Portfolio-level summary ──────────────────────────────────────────
 

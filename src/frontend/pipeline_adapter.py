@@ -38,16 +38,16 @@ logger = logging.getLogger(__name__)
 # ── Stage registry (kept in sync with PipelineEngine) ────────────────────
 
 STAGES: list[tuple[int, str]] = [
-    (0,  "Bootstrap & Configuration"),
-    (1,  "Universe Definition"),
-    (2,  "Data Ingestion"),
-    (3,  "Reconciliation"),
-    (4,  "Data QA & Lineage"),
-    (5,  "Evidence Librarian / Claim Ledger"),
-    (6,  "Sector Analysis"),
-    (7,  "Valuation & Modelling"),
-    (8,  "Macro & Political Overlay"),
-    (9,  "Quant Risk & Scenario Testing"),
+    (0, "Bootstrap & Configuration"),
+    (1, "Universe Definition"),
+    (2, "Data Ingestion"),
+    (3, "Reconciliation"),
+    (4, "Data QA & Lineage"),
+    (5, "Evidence Librarian / Claim Ledger"),
+    (6, "Sector Analysis"),
+    (7, "Valuation & Modelling"),
+    (8, "Macro & Political Overlay"),
+    (9, "Quant Risk & Scenario Testing"),
     (10, "Red Team Analysis"),
     (11, "Associate Review / Publish Gate"),
     (12, "Portfolio Construction"),
@@ -58,11 +58,12 @@ STAGES: list[tuple[int, str]] = [
 
 # ── Data contracts (mirror pipeline_runner.py for drop-in compatibility) ─
 
+
 @dataclass
 class StageResult:
     stage_num: int
     stage_name: str
-    status: str = "pending"        # pending | running | done | failed
+    status: str = "pending"  # pending | running | done | failed
     output: dict[str, Any] = field(default_factory=dict)
     raw_text: str = ""
     elapsed_secs: float = 0.0
@@ -89,6 +90,7 @@ ActivityCallback = Callable[[str], None]
 
 
 # ── Adapter ───────────────────────────────────────────────────────────────
+
 
 class PipelineEngineAdapter:
     """Drop-in replacement for ``PipelineRunner`` backed by ``PipelineEngine``.
@@ -134,7 +136,9 @@ class PipelineEngineAdapter:
             api_keys=APIKeys(
                 fmp_api_key=provider_keys.get("fmp", os.environ.get("FMP_API_KEY", "")),
                 finnhub_api_key=provider_keys.get("finnhub", os.environ.get("FINNHUB_API_KEY", "")),
-                anthropic_api_key=provider_keys.get("anthropic", os.environ.get("ANTHROPIC_API_KEY", "")),
+                anthropic_api_key=provider_keys.get(
+                    "anthropic", os.environ.get("ANTHROPIC_API_KEY", "")
+                ),
                 openai_api_key=provider_keys.get("openai", os.environ.get("OPENAI_API_KEY", "")),
                 google_api_key=provider_keys.get("google", os.environ.get("GOOGLE_API_KEY", "")),
             ),
@@ -195,7 +199,9 @@ class PipelineEngineAdapter:
                 stage_name = _stage_names.get(stage_num, f"Stage {stage_num}")
                 if progress_callback:
                     progress_callback(
-                        stage_num, stage_name, "done",
+                        stage_num,
+                        stage_name,
+                        "done",
                         output if isinstance(output, dict) else {},
                     )
                 if activity_callback:
@@ -237,15 +243,17 @@ class PipelineEngineAdapter:
                 if isinstance(raw_text, dict):
                     raw_text = json.dumps(raw_text, indent=2)
 
-            stage_results.append(StageResult(
-                stage_num=num,
-                stage_name=name,
-                status=status,
-                output=output if isinstance(output, dict) else {"data": output},
-                raw_text=str(raw_text),
-                elapsed_secs=elapsed_secs,
-                error=gate.reason if gate and not gate.passed else None,
-            ))
+            stage_results.append(
+                StageResult(
+                    stage_num=num,
+                    stage_name=name,
+                    status=status,
+                    output=output if isinstance(output, dict) else {"data": output},
+                    raw_text=str(raw_text),
+                    elapsed_secs=elapsed_secs,
+                    error=gate.reason if gate and not gate.passed else None,
+                )
+            )
 
         # ── Report markdown: cascade through possible keys + file path ───
         report_md: str = ""
@@ -308,25 +316,29 @@ class PipelineEngineAdapter:
             if num == 6 and "sector_outputs" in output:
                 for so in output["sector_outputs"]:
                     if isinstance(so, dict):
-                        token_log.append({
-                            "stage": num,
-                            "agent": so.get("agent_name", f"sector_analyst_{num}"),
-                            "model": so.get("model", model_used),
-                            "tokens_in": int(so.get("tokens_in", so.get("input_tokens", 0))),
-                            "tokens_out": int(so.get("tokens_out", so.get("output_tokens", 0))),
-                            "cost_usd": float(so.get("cost_usd", 0.0)),
-                        })
+                        token_log.append(
+                            {
+                                "stage": num,
+                                "agent": so.get("agent_name", f"sector_analyst_{num}"),
+                                "model": so.get("model", model_used),
+                                "tokens_in": int(so.get("tokens_in", so.get("input_tokens", 0))),
+                                "tokens_out": int(so.get("tokens_out", so.get("output_tokens", 0))),
+                                "cost_usd": float(so.get("cost_usd", 0.0)),
+                            }
+                        )
                 continue
 
             if agent_name or num in self._LLM_STAGES:
-                token_log.append({
-                    "stage": num,
-                    "agent": agent_name or f"stage_{num}_agent",
-                    "model": model_used,
-                    "tokens_in": tokens_in,
-                    "tokens_out": tokens_out,
-                    "cost_usd": cost,
-                })
+                token_log.append(
+                    {
+                        "stage": num,
+                        "agent": agent_name or f"stage_{num}_agent",
+                        "model": model_used,
+                        "tokens_in": tokens_in,
+                        "tokens_out": tokens_out,
+                        "cost_usd": cost,
+                    }
+                )
 
         return RunResult(
             run_id=run_id,

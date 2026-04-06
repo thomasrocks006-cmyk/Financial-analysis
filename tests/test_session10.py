@@ -14,13 +14,12 @@ import logging
 import tempfile
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from research_pipeline.services.esg_service import ESGService
-from research_pipeline.schemas.governance import ESGRating
-from research_pipeline.agents.base_agent import BaseAgent, StructuredOutputError
+from research_pipeline.agents.base_agent import BaseAgent
 from research_pipeline.config.settings import APIKeys, Settings
 from research_pipeline.config.loader import PipelineConfig
 from research_pipeline.pipeline.engine import PipelineEngine
@@ -141,7 +140,14 @@ class TestESGExport:
             svc.to_csv(path)
             with open(path, newline="") as fh:
                 headers = next(csv.reader(fh))
-            expected = {"ticker", "overall_rating", "e_score", "s_score", "g_score", "controversy_flag"}
+            expected = {
+                "ticker",
+                "overall_rating",
+                "e_score",
+                "s_score",
+                "g_score",
+                "controversy_flag",
+            }
             assert expected <= set(headers), f"Missing columns: {expected - set(headers)}"
 
     def test_to_csv_contains_known_ticker(self):
@@ -242,12 +248,14 @@ class TestAgentQualityGate:
 
     def test_valuation_analyst_has_required_keys(self):
         from research_pipeline.agents.valuation_analyst import ValuationAnalystAgent
+
         # ISS-9 (Session 11): Keys updated to match actual top-level output structure
         assert "valuations" in ValuationAnalystAgent._REQUIRED_OUTPUT_KEYS
         assert len(ValuationAnalystAgent._REQUIRED_OUTPUT_KEYS) >= 1
 
     def test_esg_analyst_has_required_keys(self):
         from research_pipeline.agents.esg_analyst import EsgAnalystAgent
+
         assert "esg_scores" in EsgAnalystAgent._REQUIRED_OUTPUT_KEYS
 
 
@@ -265,18 +273,20 @@ class TestFactorLiveData:
     def _build_returns(self, tickers: list[str], n: int = _N) -> dict[str, list[float]]:
         """Build deterministic synthetic return series for *n* days."""
         import numpy as np
+
         rng = np.random.default_rng(seed=999)
         return {t: rng.normal(0.0004, 0.01, n).tolist() for t in tickers}
 
     def _build_factor_returns(self, n: int = _N) -> dict[str, list[float]]:
         import numpy as np
+
         rng = np.random.default_rng(seed=42)
         return {
-            "market":   rng.normal(0.04 / 252, 0.01, n).tolist(),
-            "size":     rng.normal(0.02 / 252, 0.008, n).tolist(),
-            "value":    rng.normal(0.01 / 252, 0.007, n).tolist(),
+            "market": rng.normal(0.04 / 252, 0.01, n).tolist(),
+            "size": rng.normal(0.02 / 252, 0.008, n).tolist(),
+            "value": rng.normal(0.01 / 252, 0.007, n).tolist(),
             "momentum": rng.normal(0.03 / 252, 0.009, n).tolist(),
-            "quality":  rng.normal(0.02 / 252, 0.006, n).tolist(),
+            "quality": rng.normal(0.02 / 252, 0.006, n).tolist(),
         }
 
     def test_factor_engine_accepts_returns_and_factor_returns(self):
@@ -338,6 +348,7 @@ class TestFactorLiveData:
     def test_engine_stage9_passes_returns_to_factor_engine(self):
         """Stage 9 of the pipeline passes live return data to FactorExposureEngine."""
         import asyncio
+
         eng = _make_engine()
         captured: dict = {}
 

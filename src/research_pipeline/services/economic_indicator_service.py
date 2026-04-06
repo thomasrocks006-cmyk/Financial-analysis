@@ -17,7 +17,7 @@ import logging
 import re
 import time
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Optional
 
 from research_pipeline.schemas.macro_economy import (
     AustralianIndicators,
@@ -73,7 +73,7 @@ _SYNTHETIC_AU = AustralianIndicators(
 )
 
 _SYNTHETIC_US = USIndicators(
-    fed_funds_rate_pct=5.375,       # midpoint of 5.25-5.50
+    fed_funds_rate_pct=5.375,  # midpoint of 5.25-5.50
     fed_funds_futures_1y=4.75,
     us_cpi_yoy_pct=3.1,
     us_pce_yoy_pct=2.7,
@@ -93,6 +93,7 @@ _SYNTHETIC_US = USIndicators(
 
 # ── FRED helpers ──────────────────────────────────────────────────────────
 
+
 def _fred_url(series_id: str, api_key: str, limit: int = 1) -> str:
     return (
         f"https://api.stlouisfed.org/fred/series/observations"
@@ -105,6 +106,7 @@ async def _fetch_fred_series(series_id: str, api_key: str) -> Optional[float]:
     """Fetch the most-recent observation for a FRED series."""
     try:
         import httpx  # optional dep — graceful degradation
+
         url = _fred_url(series_id, api_key)
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(url)
@@ -124,6 +126,7 @@ async def _fetch_rba_cash_rate() -> Optional[float]:
     """Fetch RBA cash rate target from RBA website (structured text scrape)."""
     try:
         import httpx
+
         url = "https://www.rba.gov.au/statistics/cash-rate/"
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(url)
@@ -139,6 +142,7 @@ async def _fetch_rba_cash_rate() -> Optional[float]:
 
 # ── Live fetch ────────────────────────────────────────────────────────────
 
+
 async def _fetch_us_indicators(fred_api_key: str) -> tuple[USIndicators, list[str], list[str]]:
     """Fetch US indicators from FRED. Returns (indicators, sources_used, errors)."""
     sources: list[str] = []
@@ -147,13 +151,13 @@ async def _fetch_us_indicators(fred_api_key: str) -> tuple[USIndicators, list[st
     # Concurrent FRED fetches
     series_map = {
         "fed_funds_rate_pct": "FEDFUNDS",
-        "us_cpi_yoy_pct": "CPIAUCSL",          # All Urban Consumers
+        "us_cpi_yoy_pct": "CPIAUCSL",  # All Urban Consumers
         "us_pce_yoy_pct": "PCEPI",
         "us_core_pce_yoy_pct": "PCEPILFE",
         "us_unemployment_rate_pct": "UNRATE",
         "us_10y_treasury_yield_pct": "DGS10",
         "us_2y_treasury_yield_pct": "DGS2",
-        "us_isy_manufacturing": "MANEMP",       # proxy
+        "us_isy_manufacturing": "MANEMP",  # proxy
     }
 
     tasks = {k: _fetch_fred_series(v, fred_api_key) for k, v in series_map.items()}
@@ -175,9 +179,12 @@ async def _fetch_us_indicators(fred_api_key: str) -> tuple[USIndicators, list[st
         us_cpi_yoy_pct=fetched.get("us_cpi_yoy_pct") or base.us_cpi_yoy_pct,
         us_pce_yoy_pct=fetched.get("us_pce_yoy_pct") or base.us_pce_yoy_pct,
         us_core_pce_yoy_pct=fetched.get("us_core_pce_yoy_pct") or base.us_core_pce_yoy_pct,
-        us_unemployment_rate_pct=fetched.get("us_unemployment_rate_pct") or base.us_unemployment_rate_pct,
-        us_10y_treasury_yield_pct=fetched.get("us_10y_treasury_yield_pct") or base.us_10y_treasury_yield_pct,
-        us_2y_treasury_yield_pct=fetched.get("us_2y_treasury_yield_pct") or base.us_2y_treasury_yield_pct,
+        us_unemployment_rate_pct=fetched.get("us_unemployment_rate_pct")
+        or base.us_unemployment_rate_pct,
+        us_10y_treasury_yield_pct=fetched.get("us_10y_treasury_yield_pct")
+        or base.us_10y_treasury_yield_pct,
+        us_2y_treasury_yield_pct=fetched.get("us_2y_treasury_yield_pct")
+        or base.us_2y_treasury_yield_pct,
         us_gdp_growth_qoq_annualised_pct=base.us_gdp_growth_qoq_annualised_pct,
         us_ism_manufacturing=base.us_ism_manufacturing,
         us_ism_services=base.us_ism_services,
@@ -223,6 +230,7 @@ async def _fetch_au_indicators() -> tuple[AustralianIndicators, list[str], list[
 
 
 # ── Public API ────────────────────────────────────────────────────────────
+
 
 class EconomicIndicatorService:
     """Fetches and caches AU + US economic indicators.
@@ -295,9 +303,10 @@ class EconomicIndicatorService:
     def get_indicators_sync(self, run_id: str) -> EconomicIndicators:
         """Synchronous wrapper — runs the async fetch in a new event loop if needed."""
         try:
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()  # raises RuntimeError if no loop is running
             # Already in an event loop — create a task (caller must await)
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor() as pool:
                 future = pool.submit(asyncio.run, self.get_indicators(run_id))
                 return future.result()

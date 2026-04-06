@@ -8,6 +8,7 @@ in a single LLM call, returning a structured dict keyed by section name.
 Output is used by ReportAssemblyService.assemble_report() to populate the
 Jinja2 template.
 """
+
 from __future__ import annotations
 
 import json
@@ -39,7 +40,7 @@ class ReportNarrativeAgent(BaseAgent):
     """
 
     _REQUIRED_OUTPUT_KEYS: list[str] = ["executive_summary", "methodology"]
-    _VALIDATION_FATAL: bool = False   # Narrative failure is non-blocking
+    _VALIDATION_FATAL: bool = False  # Narrative failure is non-blocking
 
     def __init__(self, **kwargs):
         super().__init__(name="report_narrative", **kwargs)
@@ -100,7 +101,10 @@ Do not add any keys outside those five."""
         if "portfolios" in inputs:
             portfolios = inputs["portfolios"]
             if isinstance(portfolios, list) and portfolios:
-                bal = next((p for p in portfolios if "balanced" in str(p.get("variant", ""))), portfolios[0])
+                bal = next(
+                    (p for p in portfolios if "balanced" in str(p.get("variant", ""))),
+                    portfolios[0],
+                )
                 summary["balanced_portfolio_top5"] = (bal.get("positions") or [])[:5]
         elif "portfolio_weights" in inputs:
             summary["portfolio_weights"] = inputs["portfolio_weights"]
@@ -114,7 +118,8 @@ Do not add any keys outside those five."""
                         "entry_quality": v.get("entry_quality"),
                         "scenarios": (v.get("section_5_scenarios") or [])[:2],
                     }
-                    for v in vals[:5] if isinstance(v, dict)
+                    for v in vals[:5]
+                    if isinstance(v, dict)
                 ]
         # Risk
         for k in ("var_95", "cvar_95", "max_drawdown", "overall_risk_level", "portfolio_var_95"):
@@ -168,7 +173,9 @@ Do not add any keys outside those five."""
         try:
             result = await self.run(run_id, pipeline_outputs)
             if result.success and isinstance(result.parsed_output, dict):
-                return {k: str(v) for k, v in result.parsed_output.items() if k in NARRATIVE_SECTIONS}
+                return {
+                    k: str(v) for k, v in result.parsed_output.items() if k in NARRATIVE_SECTIONS
+                }
         except Exception as exc:
             logger.warning("ReportNarrativeAgent: failed for run %s: %s", run_id, exc)
 

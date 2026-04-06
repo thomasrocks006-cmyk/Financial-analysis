@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 
 # ── Enums ─────────────────────────────────────────────────────────────────
 
+
 class ScenarioType(str, Enum):
     BASE = "base"
     BULL = "bull"
@@ -61,30 +62,33 @@ class InflationTrend(str, Enum):
 
 # ── EconomicIndicators — raw data from FRED / RBA / ABS ───────────────────
 
+
 class AustralianIndicators(BaseModel):
     """Key economic indicators for Australia."""
-    rba_cash_rate_pct: Optional[float] = None          # e.g. 4.35
-    rba_cash_rate_outlook: Optional[str] = None        # "on-hold into 2025"
-    au_cpi_yoy_pct: Optional[float] = None             # trimmed mean CPI y/y
-    au_cpi_trimmed_mean_pct: Optional[float] = None    # trimmed mean (RBA target measure)
+
+    rba_cash_rate_pct: Optional[float] = None  # e.g. 4.35
+    rba_cash_rate_outlook: Optional[str] = None  # "on-hold into 2025"
+    au_cpi_yoy_pct: Optional[float] = None  # trimmed mean CPI y/y
+    au_cpi_trimmed_mean_pct: Optional[float] = None  # trimmed mean (RBA target measure)
     au_unemployment_rate_pct: Optional[float] = None
-    au_wpi_yoy_pct: Optional[float] = None             # Wage Price Index y/y
+    au_wpi_yoy_pct: Optional[float] = None  # Wage Price Index y/y
     au_gdp_growth_qoq_pct: Optional[float] = None
     au_housing_price_index_change_pct: Optional[float] = None
     au_auction_clearance_rate_pct: Optional[float] = None
     au_credit_growth_yoy_pct: Optional[float] = None
     au_10y_government_yield_pct: Optional[float] = None
     au_3y_government_yield_pct: Optional[float] = None
-    aud_usd: Optional[float] = None                    # spot rate
+    aud_usd: Optional[float] = None  # spot rate
     data_freshness: str = "synthetic_fallback"
 
 
 class USIndicators(BaseModel):
     """Key economic indicators for the United States."""
-    fed_funds_rate_pct: Optional[float] = None         # upper bound target
-    fed_funds_futures_1y: Optional[float] = None       # market-implied 1Y forward
+
+    fed_funds_rate_pct: Optional[float] = None  # upper bound target
+    fed_funds_futures_1y: Optional[float] = None  # market-implied 1Y forward
     us_cpi_yoy_pct: Optional[float] = None
-    us_pce_yoy_pct: Optional[float] = None             # Fed preferred measure
+    us_pce_yoy_pct: Optional[float] = None  # Fed preferred measure
     us_core_pce_yoy_pct: Optional[float] = None
     us_unemployment_rate_pct: Optional[float] = None
     us_nonfarm_payrolls_change_k: Optional[float] = None  # thousands
@@ -94,8 +98,8 @@ class USIndicators(BaseModel):
     us_10y_treasury_yield_pct: Optional[float] = None
     us_2y_treasury_yield_pct: Optional[float] = None
     us_yield_curve_spread_10y_2y: Optional[float] = None
-    us_hy_spread_bps: Optional[float] = None           # high yield credit spread
-    us_ig_spread_bps: Optional[float] = None           # investment grade spread
+    us_hy_spread_bps: Optional[float] = None  # high yield credit spread
+    us_ig_spread_bps: Optional[float] = None  # investment grade spread
     data_freshness: str = "synthetic_fallback"
 
 
@@ -105,6 +109,7 @@ class EconomicIndicators(BaseModel):
     This is the primary input to MacroScenarioService and EconomyAnalystAgent.
     Data sourced from: FRED API (US), RBA Statistical Tables (AU), ABS (AU).
     """
+
     run_id: str
     fetch_timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     au: AustralianIndicators = Field(default_factory=AustralianIndicators)
@@ -120,9 +125,11 @@ class EconomicIndicators(BaseModel):
 
 # ── MacroScenario — 3-scenario matrix output ──────────────────────────────
 
+
 class AxisScenario(BaseModel):
     """A single axis in the macro scenario matrix."""
-    axis: str           # e.g. "au_rates", "us_rates", "au_inflation", "au_housing", "aud_usd"
+
+    axis: str  # e.g. "au_rates", "us_rates", "au_inflation", "au_housing", "aud_usd"
     base: str
     bull: str
     bear: str
@@ -136,41 +143,52 @@ class MacroScenario(BaseModel):
 
     Output of MacroScenarioService; input to EconomyAnalystAgent.
     """
+
     run_id: str
     scenario_timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     based_on_indicators: Optional[str] = None  # fetch_timestamp ISO string
 
     # Per-axis scenarios
-    au_rates: AxisScenario = Field(default_factory=lambda: AxisScenario(
-        axis="au_rates",
-        base="RBA on-hold at 4.35% through 2025",
-        bull="RBA cuts 2x by mid-2025 (easing cycle begins)",
-        bear="RBA hikes 1x more on persistent inflation",
-    ))
-    us_rates: AxisScenario = Field(default_factory=lambda: AxisScenario(
-        axis="us_rates",
-        base="Fed funds at 5.25-5.50%; 2 cuts priced in 2025",
-        bull="Fed cuts 4x (125bp easing cycle)",
-        bear="Fed holds higher-for-longer; re-hike risk",
-    ))
-    au_inflation: AxisScenario = Field(default_factory=lambda: AxisScenario(
-        axis="au_inflation",
-        base="Trimmed mean CPI gradually returns to 2-3% band by late 2025",
-        bull="CPI falls quickly — no more hikes needed; real wages recover",
-        bear="CPI re-accelerates above 4%; wages-price spiral risk",
-    ))
-    au_housing: AxisScenario = Field(default_factory=lambda: AxisScenario(
-        axis="au_housing",
-        base="Prices flat to +3% nationally; supply constraints persist",
-        bull="Rate cuts spark new rally; +8-12% nationally",
-        bear="Prices fall 10-15%; mortgage stress rises sharply",
-    ))
-    aud_usd: AxisScenario = Field(default_factory=lambda: AxisScenario(
-        axis="aud_usd",
-        base="AUD/USD 0.63-0.67; driven by commodity prices and Fed diff",
-        bull="AUD strengthens to 0.70+ on rate diff narrowing and iron ore rally",
-        bear="AUD weakens to 0.60 on China slowdown and widening rate diff",
-    ))
+    au_rates: AxisScenario = Field(
+        default_factory=lambda: AxisScenario(
+            axis="au_rates",
+            base="RBA on-hold at 4.35% through 2025",
+            bull="RBA cuts 2x by mid-2025 (easing cycle begins)",
+            bear="RBA hikes 1x more on persistent inflation",
+        )
+    )
+    us_rates: AxisScenario = Field(
+        default_factory=lambda: AxisScenario(
+            axis="us_rates",
+            base="Fed funds at 5.25-5.50%; 2 cuts priced in 2025",
+            bull="Fed cuts 4x (125bp easing cycle)",
+            bear="Fed holds higher-for-longer; re-hike risk",
+        )
+    )
+    au_inflation: AxisScenario = Field(
+        default_factory=lambda: AxisScenario(
+            axis="au_inflation",
+            base="Trimmed mean CPI gradually returns to 2-3% band by late 2025",
+            bull="CPI falls quickly — no more hikes needed; real wages recover",
+            bear="CPI re-accelerates above 4%; wages-price spiral risk",
+        )
+    )
+    au_housing: AxisScenario = Field(
+        default_factory=lambda: AxisScenario(
+            axis="au_housing",
+            base="Prices flat to +3% nationally; supply constraints persist",
+            bull="Rate cuts spark new rally; +8-12% nationally",
+            bear="Prices fall 10-15%; mortgage stress rises sharply",
+        )
+    )
+    aud_usd: AxisScenario = Field(
+        default_factory=lambda: AxisScenario(
+            axis="aud_usd",
+            base="AUD/USD 0.63-0.67; driven by commodity prices and Fed diff",
+            bull="AUD strengthens to 0.70+ on rate diff narrowing and iron ore rally",
+            bear="AUD weakens to 0.60 on China slowdown and widening rate diff",
+        )
+    )
 
     # Composite scenario assessment
     composite_scenario: ScenarioType = ScenarioType.BASE
@@ -185,12 +203,14 @@ class MacroScenario(BaseModel):
 
 # ── EconomyAnalysis — 12-field LLM output ─────────────────────────────────
 
+
 class EconomyAnalysis(BaseModel):
     """Structured output from EconomyAnalystAgent — 12 AU/US macro fields.
 
     This is the primary macro intelligence packet that feeds into
     MacroStrategistAgent's GlobalMacroRegime classification.
     """
+
     run_id: str
     analysis_timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     confidence: Literal["HIGH", "MEDIUM", "LOW"] = "MEDIUM"
@@ -249,12 +269,14 @@ class EconomyAnalysis(BaseModel):
 
 # ── GlobalMacroRegime — extended MacroStrategistAgent output ──────────────
 
+
 class GlobalMacroRegime(BaseModel):
     """Extended macro regime output from MacroStrategistAgent (Session 12).
 
     Wraps the existing AI infrastructure regime classification with
     AU-specific and US-specific regime flags from EconomyAnalystAgent.
     """
+
     run_id: str
     regime_timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

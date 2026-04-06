@@ -11,10 +11,8 @@ Covers:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import tempfile
-from datetime import date, datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -22,11 +20,13 @@ import pytest
 
 # ── ETF Overlap Engine ────────────────────────────────────────────────────────
 
+
 class TestETFOverlapEngine:
     """ETF overlap engine differentiates portfolio from common tech ETFs."""
 
     def setup_method(self):
         from research_pipeline.services.etf_overlap_engine import ETFOverlapEngine
+
         self.engine = ETFOverlapEngine()
 
     def test_analyse_portfolio_returns_report(self):
@@ -75,10 +75,11 @@ class TestETFOverlapEngine:
 
     def test_empty_portfolio(self):
         report = self.engine.analyse_portfolio("RUN-006", {})
-        assert report.differentiation_score == 100.0   # empty = maximally distinct
+        assert report.differentiation_score == 100.0  # empty = maximally distinct
 
     def test_default_etfs_analysed(self):
         from research_pipeline.services.etf_overlap_engine import ETFOverlapEngine
+
         engine = ETFOverlapEngine()
         weights = {"NVDA": 1.0}
         report = engine.analyse_portfolio("RUN-007", weights)
@@ -88,16 +89,17 @@ class TestETFOverlapEngine:
 
 # ── Observability Service ─────────────────────────────────────────────────────
 
+
 class TestObservabilityService:
     """Observability service tracks stage metrics and cost per run."""
 
     def setup_method(self):
         from research_pipeline.services.observability import ObservabilityService
+
         self.tmp = tempfile.mkdtemp()
         self.obs = ObservabilityService(output_dir=Path(self.tmp))
 
     def test_start_and_end_run(self):
-        from research_pipeline.services.observability import RunObservability
         run = self.obs.start_run("RUN-001")
         assert run.run_id == "RUN-001"
         assert run.started_at is not None
@@ -113,8 +115,11 @@ class TestObservabilityService:
         assert stage.stage_name == "Evidence Librarian"
 
         completed = self.obs.end_stage(
-            "RUN-002", 5, success=True,
-            llm_input_tokens=1000, llm_output_tokens=500,
+            "RUN-002",
+            5,
+            success=True,
+            llm_input_tokens=1000,
+            llm_output_tokens=500,
             llm_model="claude-opus-4-6",
         )
         assert completed.success is True
@@ -124,8 +129,11 @@ class TestObservabilityService:
         self.obs.start_run("RUN-003")
         self.obs.start_stage("RUN-003", 5, "Evidence")
         stage = self.obs.end_stage(
-            "RUN-003", 5, success=True,
-            llm_input_tokens=10_000, llm_output_tokens=2_000,
+            "RUN-003",
+            5,
+            success=True,
+            llm_input_tokens=10_000,
+            llm_output_tokens=2_000,
             llm_model="claude-opus-4-6",
         )
         assert stage.llm_cost_usd > 0, "Cost should be non-zero for claude-opus-4-6"
@@ -167,11 +175,13 @@ class TestObservabilityService:
 
 # ── Universe Config ────────────────────────────────────────────────────────────
 
+
 class TestUniverseConfig:
     """Universe config provides correct ticker lists."""
 
     def test_ai_infrastructure_universe_returns_list(self):
         from research_pipeline.config.universe_config import get_universe
+
         tickers = get_universe("ai_infrastructure")
         assert isinstance(tickers, list)
         assert len(tickers) >= 14
@@ -179,17 +189,20 @@ class TestUniverseConfig:
 
     def test_global_tech_universe_larger_than_ai_infra(self):
         from research_pipeline.config.universe_config import get_universe
+
         ai = get_universe("ai_infrastructure")
         gt = get_universe("global_tech")
         assert len(gt) > len(ai)
 
     def test_unknown_universe_raises_key_error(self):
         from research_pipeline.config.universe_config import get_universe
+
         with pytest.raises(KeyError, match="Unknown universe"):
             get_universe("nonexistent_universe")
 
     def test_list_universes_returns_all_registered(self):
         from research_pipeline.config.universe_config import list_universes
+
         universes = list_universes()
         assert "ai_infrastructure" in universes
         assert "global_tech" in universes
@@ -197,33 +210,39 @@ class TestUniverseConfig:
 
     def test_get_subtheme_map_returns_dict(self):
         from research_pipeline.config.universe_config import get_subtheme_map
+
         themes = get_subtheme_map("ai_infrastructure")
         assert "ai_chips" in themes
         assert "NVDA" in themes["ai_chips"]
 
     def test_get_subtheme_specific(self):
         from research_pipeline.config.universe_config import get_subtheme
+
         chips = get_subtheme("ai_infrastructure", "ai_chips")
         assert "NVDA" in chips
 
     def test_unknown_subtheme_raises_key_error(self):
         from research_pipeline.config.universe_config import get_subtheme
+
         with pytest.raises(KeyError, match="Unknown subtheme"):
             get_subtheme("ai_infrastructure", "nonexistent")
 
     def test_ticker_to_subtheme(self):
         from research_pipeline.config.universe_config import ticker_to_subtheme
+
         theme = ticker_to_subtheme("NVDA", "ai_infrastructure")
         assert theme == "ai_chips"
 
     def test_ticker_not_in_universe_returns_none(self):
         from research_pipeline.config.universe_config import ticker_to_subtheme
+
         theme = ticker_to_subtheme("XYZ", "ai_infrastructure")
         assert theme is None
 
     def test_get_universe_returns_copy(self):
         """Mutating the returned list should not affect the registry."""
         from research_pipeline.config.universe_config import get_universe
+
         tickers = get_universe("ai_infrastructure")
         original_len = len(tickers)
         tickers.append("FAKE")
@@ -233,11 +252,13 @@ class TestUniverseConfig:
 
 # ── Report Formats ─────────────────────────────────────────────────────────────
 
+
 class TestReportFormatService:
     """Report format service renders three output formats."""
 
     def setup_method(self):
         from research_pipeline.services.report_formats import ReportFormatService, ReportFormat
+
         self.tmp = tempfile.mkdtemp()
         self.service = ReportFormatService(output_dir=Path(self.tmp))
         self.ReportFormat = ReportFormat
@@ -253,7 +274,12 @@ class TestReportFormatService:
             "portfolio": {
                 "variant": "CONCENTRATED",
                 "positions": [
-                    {"ticker": "NVDA", "weight": 0.25, "sector": "semis", "thesis_sentence": "AI chip leader"},
+                    {
+                        "ticker": "NVDA",
+                        "weight": 0.25,
+                        "sector": "semis",
+                        "thesis_sentence": "AI chip leader",
+                    },
                     {"ticker": "MSFT", "weight": 0.20, "sector": "cloud"},
                 ],
                 "cash_weight": 0.05,
@@ -307,11 +333,13 @@ class TestReportFormatService:
 
 # ── SelfAuditPacket ────────────────────────────────────────────────────────────
 
+
 class TestSelfAuditPacket:
     """SelfAuditPacket schema collects audit evidence and scores quality."""
 
     def setup_method(self):
         from research_pipeline.schemas.governance import SelfAuditPacket
+
         self.SelfAuditPacket = SelfAuditPacket
 
     def _make_packet(self, **overrides):
@@ -349,8 +377,11 @@ class TestSelfAuditPacket:
 
     def test_tier1_2_pct_calculation(self):
         pkt = self._make_packet(
-            total_claims=100, tier1_claims=60, tier2_claims=20,
-            tier3_claims=15, tier4_claims=5,
+            total_claims=100,
+            tier1_claims=60,
+            tier2_claims=20,
+            tier3_claims=15,
+            tier4_claims=5,
         )
         # 80% should be tier 1/2
         assert pkt.tier1_2_pct == pytest.approx(80.0)
@@ -366,9 +397,14 @@ class TestSelfAuditPacket:
 
     def test_high_quality_packet_scores_above_7(self):
         pkt = self._make_packet(
-            total_claims=100, tier1_claims=70, tier2_claims=20,
-            tier3_claims=8, tier4_claims=2,
-            pass_claims=100, fail_claims=0, caveat_claims=0,
+            total_claims=100,
+            tier1_claims=70,
+            tier2_claims=20,
+            tier3_claims=8,
+            tier4_claims=2,
+            pass_claims=100,
+            fail_claims=0,
+            caveat_claims=0,
             agents_failed=[],
             total_retries=0,
             gates_failed=[],
@@ -383,9 +419,14 @@ class TestSelfAuditPacket:
 
     def test_poor_quality_packet_scores_below_5(self):
         pkt = self._make_packet(
-            total_claims=100, tier1_claims=10, tier2_claims=10,
-            tier3_claims=50, tier4_claims=30,
-            pass_claims=40, fail_claims=40, caveat_claims=20,
+            total_claims=100,
+            tier1_claims=10,
+            tier2_claims=10,
+            tier3_claims=50,
+            tier4_claims=30,
+            pass_claims=40,
+            fail_claims=40,
+            caveat_claims=20,
             agents_failed=["agent_a", "agent_b", "agent_c"],
             total_retries=15,
             gates_failed=[5, 9, 11],
@@ -398,11 +439,13 @@ class TestSelfAuditPacket:
 
 # ── Scheduler Hardening ───────────────────────────────────────────────────────
 
+
 class TestSchedulerHardening:
     """Phase 7.10 scheduler hardening tests."""
 
     def setup_method(self):
         from research_pipeline.services.scheduler import SchedulerMonitoringService
+
         self.tmp_dir = Path(tempfile.mkdtemp())
         self.state_path = self.tmp_dir / "state.json"
         self.scheduler = SchedulerMonitoringService(state_path=self.state_path)
@@ -447,8 +490,10 @@ class TestSchedulerHardening:
 
         with pytest.raises(RuntimeError, match="pipeline failure"):
             await self.scheduler.run_with_alert(
-                fake_pipeline, "RUN-SCH-005",
-                alert_fn=fake_alert, skip_if_already_ran=False,
+                fake_pipeline,
+                "RUN-SCH-005",
+                alert_fn=fake_alert,
+                skip_if_already_ran=False,
             )
 
         assert len(alerts_fired) == 1
@@ -472,9 +517,24 @@ class TestSchedulerHardening:
 
     def test_watchlist_trigger_price_move(self):
         from research_pipeline.schemas.reports import DiffSummary
+
         diffs = [
-            DiffSummary(ticker="NVDA", field="price", previous_value=100, current_value=108, change_pct=8.0, flagged=True),
-            DiffSummary(ticker="MSFT", field="price", previous_value=300, current_value=301, change_pct=0.3, flagged=False),
+            DiffSummary(
+                ticker="NVDA",
+                field="price",
+                previous_value=100,
+                current_value=108,
+                change_pct=8.0,
+                flagged=True,
+            ),
+            DiffSummary(
+                ticker="MSFT",
+                field="price",
+                previous_value=300,
+                current_value=301,
+                change_pct=0.3,
+                flagged=False,
+            ),
         ]
         triggered = self.scheduler.check_watchlist_triggers(
             diffs, watchlist=["NVDA", "MSFT"], trigger_pct=5.0
@@ -484,9 +544,17 @@ class TestSchedulerHardening:
 
     def test_watchlist_trigger_no_price_diff_ignored(self):
         from research_pipeline.schemas.reports import DiffSummary
+
         # Field is 'trailing_pe', not 'price' — should not trigger
         diffs = [
-            DiffSummary(ticker="NVDA", field="trailing_pe", previous_value=50, current_value=60, change_pct=20.0, flagged=True),
+            DiffSummary(
+                ticker="NVDA",
+                field="trailing_pe",
+                previous_value=50,
+                current_value=60,
+                change_pct=20.0,
+                flagged=True,
+            ),
         ]
         triggered = self.scheduler.check_watchlist_triggers(diffs, watchlist=["NVDA"])
         assert "NVDA" not in triggered

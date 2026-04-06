@@ -10,8 +10,6 @@ from __future__ import annotations
 import json
 import unittest
 
-import pytest
-
 
 # ── ACT-S5-2: BaseAgent parse_output multi-strategy extraction ───────────────
 
@@ -20,6 +18,7 @@ class _ConcreteAgent:
     """Minimal replication of BaseAgent.parse_output (no LLM needed)."""
 
     import re as _re  # class-level, avoids repeated import in method
+
     name = "test_agent"
 
     # Copy of the new parse_output logic so we can test it in isolation
@@ -152,12 +151,14 @@ class TestBaseAgentParseOutputStrategies(unittest.TestCase):
     def test_all_strategies_fail_raises_structured_output_error(self):
         """Plain text with no JSON raises StructuredOutputError."""
         from research_pipeline.agents.base_agent import StructuredOutputError
+
         with self.assertRaises(StructuredOutputError):
             self.agent.parse_output("Sorry, I cannot provide a JSON response.")
 
     def test_malformed_fence_raises_structured_output_error(self):
         """Fence present but content is not valid JSON."""
         from research_pipeline.agents.base_agent import StructuredOutputError
+
         raw = "```json\nThis is not JSON at all\n```"
         with self.assertRaises(StructuredOutputError):
             self.agent.parse_output(raw)
@@ -166,12 +167,13 @@ class TestBaseAgentParseOutputStrategies(unittest.TestCase):
 
     def test_real_base_agent_strategy1_preamble_fence(self):
         """Confirm the actual BaseAgent.parse_output handles preamble + fence."""
-        from research_pipeline.agents.base_agent import BaseAgent, StructuredOutputError
+        from research_pipeline.agents.base_agent import BaseAgent
 
         class _Stub(BaseAgent):
             @property
             def default_system_prompt(self) -> str:
                 return "stub"
+
             def parse_output(self, raw: str) -> dict:
                 return super().parse_output(raw)
 
@@ -191,6 +193,7 @@ class TestBaseAgentParseOutputStrategies(unittest.TestCase):
             @property
             def default_system_prompt(self) -> str:
                 return "stub"
+
             def parse_output(self, raw: str) -> dict:
                 return super().parse_output(raw)
 
@@ -211,6 +214,7 @@ class TestGate9RiskPacketPresentFix(unittest.TestCase):
 
     def _gate(self, present: bool, scenario_count: int = 3):
         from research_pipeline.pipeline.gates import PipelineGates
+
         return PipelineGates.gate_9_risk(
             risk_packet_present=present,
             scenario_results_count=scenario_count,
@@ -233,6 +237,7 @@ class TestGate9RiskPacketPresentFix(unittest.TestCase):
     def test_concentration_breach_does_not_block(self):
         """Concentration warnings are advisory flags — gate should still pass."""
         from research_pipeline.pipeline.gates import PipelineGates
+
         result = PipelineGates.gate_9_risk(
             risk_packet_present=True,
             scenario_results_count=2,
@@ -252,6 +257,7 @@ class TestGate12ICVoteReallyGated(unittest.TestCase):
 
     def _gate(self, review_passed: bool, variants: int = 3, violations=None):
         from research_pipeline.pipeline.gates import PipelineGates
+
         return PipelineGates.gate_12_portfolio(
             variants_count=variants,
             review_passed=review_passed,
@@ -286,14 +292,17 @@ class TestGate12ICVoteReallyGated(unittest.TestCase):
         """Regression: before the fix, IC rejection was silently ignored."""
         # Confirm that the OLD behaviour (always True) would return passed=True
         from research_pipeline.pipeline.gates import PipelineGates
+
         old_behaviour = PipelineGates.gate_12_portfolio(
-            variants_count=3, review_passed=True,  # this is what was hardcoded
+            variants_count=3,
+            review_passed=True,  # this is what was hardcoded
         )
         # That should pass — confirming the vector exists
         self.assertTrue(old_behaviour.passed)
         # Now confirm the fixed call fails on rejection
         fixed_behaviour = PipelineGates.gate_12_portfolio(
-            variants_count=3, review_passed=False,  # real IC vote = rejected
+            variants_count=3,
+            review_passed=False,  # real IC vote = rejected
         )
         self.assertFalse(fixed_behaviour.passed)
 
@@ -306,6 +315,7 @@ class TestGate13SectionsApprovedFix(unittest.TestCase):
 
     def _gate(self, generated: bool = True, approved: bool = True):
         from research_pipeline.pipeline.gates import PipelineGates
+
         return PipelineGates.gate_13_report(
             report_generated=generated,
             all_sections_approved=approved,

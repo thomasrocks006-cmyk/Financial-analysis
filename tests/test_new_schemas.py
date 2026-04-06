@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-import pytest
 
 from research_pipeline.schemas.governance import (
     AuditEntry,
@@ -62,8 +61,7 @@ class TestCommitteeSchemas:
 
     def test_committee_record_approve_count(self):
         members = [
-            CommitteeMember(member_id=f"IC-{i}", role="analyst", name=f"A{i}")
-            for i in range(3)
+            CommitteeMember(member_id=f"IC-{i}", role="analyst", name=f"A{i}") for i in range(3)
         ]
         votes = [
             CommitteeVoteRecord(member=members[0], vote=CommitteeVote.APPROVE),
@@ -130,9 +128,7 @@ class TestMandateSchemas:
         assert violation.actual_value == 18.5
 
     def test_mandate_check_result_compliant(self):
-        result = MandateCheckResult(
-            run_id="RUN-001", mandate_id="M-001", is_compliant=True
-        )
+        result = MandateCheckResult(run_id="RUN-001", mandate_id="M-001", is_compliant=True)
         assert result.is_compliant is True
         assert len(result.violations) == 0
 

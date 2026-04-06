@@ -74,9 +74,7 @@ class PipelineEvent(BaseModel):
 
     run_id: str
     event_type: PipelineEventType
-    timestamp: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc)
-    )
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     stage: Optional[int] = None
     stage_label: Optional[str] = None
     agent_name: Optional[str] = None
@@ -128,7 +126,9 @@ class PipelineEvent(BaseModel):
         )
 
     @classmethod
-    def agent_started(cls, run_id: str, agent_name: str, stage: Optional[int] = None) -> "PipelineEvent":
+    def agent_started(
+        cls, run_id: str, agent_name: str, stage: Optional[int] = None
+    ) -> "PipelineEvent":
         return cls(
             run_id=run_id,
             event_type="agent_started",
@@ -187,11 +187,18 @@ class PipelineEvent(BaseModel):
             stage=stage,
             agent_name=agent_name,
             duration_ms=duration_ms,
-            data={"agent": agent_name, "model": model, "duration_ms": duration_ms, "tokens_used": tokens_used},
+            data={
+                "agent": agent_name,
+                "model": model,
+                "duration_ms": duration_ms,
+                "tokens_used": tokens_used,
+            },
         )
 
     @classmethod
-    def artifact_written(cls, run_id: str, artifact_path: str, artifact_type: str = "") -> "PipelineEvent":
+    def artifact_written(
+        cls, run_id: str, artifact_path: str, artifact_type: str = ""
+    ) -> "PipelineEvent":
         return cls(
             run_id=run_id,
             event_type="artifact_written",
@@ -208,7 +215,9 @@ class PipelineEvent(BaseModel):
         )
 
     @classmethod
-    def pipeline_failed(cls, run_id: str, blocked_at: Optional[int] = None, reason: str = "") -> "PipelineEvent":
+    def pipeline_failed(
+        cls, run_id: str, blocked_at: Optional[int] = None, reason: str = ""
+    ) -> "PipelineEvent":
         return cls(
             run_id=run_id,
             event_type="pipeline_failed",

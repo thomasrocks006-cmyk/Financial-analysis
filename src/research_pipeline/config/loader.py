@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 # Use Optional[Any] for the field type — validated at runtime.
 try:
     from research_pipeline.schemas.client_profile import ClientProfile as _ClientProfile  # noqa: F401
+
     _CLIENT_PROFILE_TYPE = Optional[_ClientProfile]
 except ImportError:  # pragma: no cover
     _CLIENT_PROFILE_TYPE = Optional[Any]
@@ -20,39 +21,41 @@ except ImportError:  # pragma: no cover
 # ARC-5: externalised from engine.py hardcoded sets — edit here, engine picks up.
 # Tickers not in any list are handled by GenericSectorAnalystAgent as a fallback.
 SECTOR_ROUTING: dict[str, list[str]] = {
-    "compute":         ["NVDA", "AVGO", "TSM", "AMD", "ANET"],
-    "power_energy":    ["CEG", "VST", "GEV", "NLR"],
-    "infrastructure":  ["PWR", "ETN", "HUBB", "APH", "FIX", "FCX", "BHP", "NXT"],
+    "compute": ["NVDA", "AVGO", "TSM", "AMD", "ANET"],
+    "power_energy": ["CEG", "VST", "GEV", "NLR"],
+    "infrastructure": ["PWR", "ETN", "HUBB", "APH", "FIX", "FCX", "BHP", "NXT"],
 }
 
 # ── ASX universe — Session 12 ─────────────────────────────────────────────
 # P0 ASX tickers for the AU market support expansion.
 # Suffixed with .AX for yfinance compatibility; benchmark ^AXJO (ASX 200).
 ASX_UNIVERSE: list[str] = [
-    "CBA.AX",   # Commonwealth Bank of Australia — largest AU bank
-    "BHP.AX",   # BHP Group — global mining, already in US universe
-    "CSL.AX",   # CSL Limited — AU biotech, major super fund holding
-    "NAB.AX",   # National Australia Bank
-    "WBC.AX",   # Westpac
-    "ANZ.AX",   # ANZ Group
-    "MQG.AX",   # Macquarie Group
-    "WES.AX",   # Wesfarmers — diversified AU conglomerate
-    "GMG.AX",   # Goodman Group — industrial REIT (data centre exposure)
-    "WOW.AX",   # Woolworths Group — AU consumer staples
+    "CBA.AX",  # Commonwealth Bank of Australia — largest AU bank
+    "BHP.AX",  # BHP Group — global mining, already in US universe
+    "CSL.AX",  # CSL Limited — AU biotech, major super fund holding
+    "NAB.AX",  # National Australia Bank
+    "WBC.AX",  # Westpac
+    "ANZ.AX",  # ANZ Group
+    "MQG.AX",  # Macquarie Group
+    "WES.AX",  # Wesfarmers — diversified AU conglomerate
+    "GMG.AX",  # Goodman Group — industrial REIT (data centre exposure)
+    "WOW.AX",  # Woolworths Group — AU consumer staples
 ]
 
 # ── Market priority tiers — Session 12 ────────────────────────────────────
 
+
 class MarketEntry(BaseModel):
     """A single market in the MarketConfig universe."""
+
     market_name: str
     priority: Literal["P0", "P1", "P2", "P3"] = "P1"
     benchmark_index: str = ""
-    benchmark_ticker: str = ""          # yfinance / FRED ticker for benchmark
+    benchmark_ticker: str = ""  # yfinance / FRED ticker for benchmark
     currency: str = "USD"
     is_au_market: bool = False
     default_tickers: list[str] = Field(default_factory=list)
-    sector_routing_key: Optional[str] = None   # maps to SECTOR_ROUTING key if applicable
+    sector_routing_key: Optional[str] = None  # maps to SECTOR_ROUTING key if applicable
     notes: str = ""
 
 
@@ -66,9 +69,10 @@ class MarketConfig(BaseModel):
       P2 — planned future session
       P3 — low priority / aspirational
     """
+
     markets: list[MarketEntry] = Field(default_factory=list)
     fred_api_key: Optional[str] = None
-    default_currency: str = "AUD"    # AU-based client office default presentation currency
+    default_currency: str = "AUD"  # AU-based client office default presentation currency
 
     def get_p0_markets(self) -> list[MarketEntry]:
         return [m for m in self.markets if m.priority == "P0"]
@@ -95,8 +99,25 @@ DEFAULT_MARKET_CONFIG = MarketConfig(
             benchmark_ticker="^GSPC",
             currency="USD",
             is_au_market=False,
-            default_tickers=["NVDA", "AVGO", "TSM", "AMD", "ANET", "CEG", "VST", "GEV",
-                              "NLR", "PWR", "ETN", "HUBB", "APH", "FIX", "FCX", "BHP", "NXT"],
+            default_tickers=[
+                "NVDA",
+                "AVGO",
+                "TSM",
+                "AMD",
+                "ANET",
+                "CEG",
+                "VST",
+                "GEV",
+                "NLR",
+                "PWR",
+                "ETN",
+                "HUBB",
+                "APH",
+                "FIX",
+                "FCX",
+                "BHP",
+                "NXT",
+            ],
             notes="Primary AI infrastructure universe — fully built",
         ),
         MarketEntry(
@@ -162,6 +183,7 @@ DEFAULT_MARKET_CONFIG = MarketConfig(
     ]
 )
 
+
 # ── Threshold sub-models ────────────────────────────────────────────────────
 class ReconciliationThresholds(BaseModel):
     price_drift_amber_pct: float = 0.5
@@ -209,9 +231,7 @@ class PipelineConfig(BaseModel):
     sector_routing: dict[str, list[str]] = Field(default_factory=lambda: dict(SECTOR_ROUTING))
     # Session 12: multi-market config — AU/US/Global market scope
     market_config: MarketConfig = Field(default_factory=lambda: DEFAULT_MARKET_CONFIG)
-    portfolio_variants: list[str] = Field(
-        default=["balanced", "higher_return", "lower_volatility"]
-    )
+    portfolio_variants: list[str] = Field(default=["balanced", "higher_return", "lower_volatility"])
     report_sections: list[str] = Field(
         default=[
             "executive_summary",
@@ -270,7 +290,13 @@ def load_pipeline_config(config_path: Path | str | None = None) -> PipelineConfi
         project_name=raw.get("project_name", "ai_infrastructure_research_platform"),
         thresholds=thresholds,
         stages=stages,
-        portfolio_variants=portfolio_raw.get("required_variants", PipelineConfig.model_fields["portfolio_variants"].default),
-        report_sections=report_raw.get("required_sections", PipelineConfig.model_fields["report_sections"].default),
-        test_categories=raw.get("testing", {}).get("categories", PipelineConfig.model_fields["test_categories"].default),
+        portfolio_variants=portfolio_raw.get(
+            "required_variants", PipelineConfig.model_fields["portfolio_variants"].default
+        ),
+        report_sections=report_raw.get(
+            "required_sections", PipelineConfig.model_fields["report_sections"].default
+        ),
+        test_categories=raw.get("testing", {}).get(
+            "categories", PipelineConfig.model_fields["test_categories"].default
+        ),
     )

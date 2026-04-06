@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from research_pipeline.agents.base_agent import BaseAgent
+
+if TYPE_CHECKING:
+    from research_pipeline.schemas.macro_economy import GlobalMacroRegime
 
 
 class MacroStrategistAgent(BaseAgent):
@@ -74,7 +77,7 @@ RULES:
         raw_output: dict[str, Any],
         run_id: str,
         economy_analysis: Optional[Any] = None,
-    ) -> "GlobalMacroRegime":
+    ) -> GlobalMacroRegime:
         """Parse MacroStrategistAgent output into a GlobalMacroRegime schema.
 
         Session 12: accepts an optional EconomyAnalysis to enrich the regime
@@ -144,7 +147,6 @@ RULES:
             economy_analysis_summary=economy_summary,
             has_economy_analysis=has_economy,
         )
-
 
 
 class PoliticalRiskAnalystAgent(BaseAgent):

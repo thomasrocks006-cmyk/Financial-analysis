@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
-from typing import Optional
 
 import numpy as np
 
@@ -15,20 +13,36 @@ logger = logging.getLogger(__name__)
 # Default benchmark constituent weights (top holdings approximation)
 BENCHMARK_CONSTITUENTS = {
     "SPY": {  # S&P 500 proxy — AI infra relevant names
-        "NVDA": 6.5, "AVGO": 1.8, "TSM": 0.0,  # TSM not in S&P 500
-        "CEG": 0.15, "VST": 0.10, "GEV": 0.12,
-        "ETN": 0.25, "APH": 0.15, "PWR": 0.10,
-        "FCX": 0.15, "FIX": 0.05, "HUBB": 0.05,
+        "NVDA": 6.5,
+        "AVGO": 1.8,
+        "TSM": 0.0,  # TSM not in S&P 500
+        "CEG": 0.15,
+        "VST": 0.10,
+        "GEV": 0.12,
+        "ETN": 0.25,
+        "APH": 0.15,
+        "PWR": 0.10,
+        "FCX": 0.15,
+        "FIX": 0.05,
+        "HUBB": 0.05,
     },
     "QQQ": {  # Nasdaq 100 proxy
-        "NVDA": 8.5, "AVGO": 2.5, "TSM": 0.0,
-        "CEG": 0.0, "VST": 0.0, "GEV": 0.0,
+        "NVDA": 8.5,
+        "AVGO": 2.5,
+        "TSM": 0.0,
+        "CEG": 0.0,
+        "VST": 0.0,
+        "GEV": 0.0,
     },
     "XLK": {  # Tech Select proxy
-        "NVDA": 14.0, "AVGO": 4.5,
+        "NVDA": 14.0,
+        "AVGO": 4.5,
     },
     "SOXX": {  # Semiconductor ETF proxy
-        "NVDA": 10.0, "AVGO": 8.0, "TSM": 7.0, "AMD": 6.0,
+        "NVDA": 10.0,
+        "AVGO": 8.0,
+        "TSM": 7.0,
+        "AMD": 6.0,
     },
 }
 

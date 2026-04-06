@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from research_pipeline.schemas.governance import (
     MandateCheckResult,
@@ -30,10 +30,11 @@ logger = logging.getLogger(__name__)
 
 # ── Mandate parameter model ────────────────────────────────────────────────
 
+
 class SuperannuationMandate(BaseModel):
     """Investment mandate parameters for a super fund option type."""
 
-    mandate_type: str           # "growth" | "balanced" | "conservative" | etc.
+    mandate_type: str  # "growth" | "balanced" | "conservative" | etc.
     description: str = ""
 
     # Single-name concentration (APRA SPS 530 § 60 — diversification)
@@ -104,7 +105,7 @@ SUPER_MANDATES: dict[str, SuperannuationMandate] = {
             "Direct Investment Option — member-directed; APRA single-name "
             "diversification still applies"
         ),
-        max_single_name_pct=20.0,   # higher limit; member accepts concentration
+        max_single_name_pct=20.0,  # higher limit; member accepts concentration
         max_growth_assets_pct=100.0,
         min_growth_assets_pct=0.0,
         max_international_pct=100.0,
@@ -116,6 +117,7 @@ SUPER_MANDATES: dict[str, SuperannuationMandate] = {
 
 # ── Service ────────────────────────────────────────────────────────────────
 
+
 class SuperannuationMandateService:
     """Deterministic APRA SPS 530 mandate checks for super fund portfolios.
 
@@ -126,9 +128,7 @@ class SuperannuationMandateService:
         """Return mandate parameters; falls back to 'balanced' if unknown."""
         key = (mandate_type or "balanced").lower()
         if key not in SUPER_MANDATES:
-            logger.warning(
-                "Unknown super mandate type '%s', falling back to 'balanced'", key
-            )
+            logger.warning("Unknown super mandate type '%s', falling back to 'balanced'", key)
             key = "balanced"
         return SUPER_MANDATES[key]
 
@@ -159,10 +159,7 @@ class SuperannuationMandateService:
         if asx_tickers is not None:
             au_set = set(asx_tickers)
         else:
-            au_set = {
-                t for t in weights
-                if t.endswith(".AX") or t.endswith(".ASX")
-            }
+            au_set = {t for t in weights if t.endswith(".AX") or t.endswith(".ASX")}
 
         # 1 ── APRA SPS 530 §60: single-name concentration limit ────────
         for ticker, weight in weights.items():
@@ -190,9 +187,7 @@ class SuperannuationMandateService:
                 )
 
         # 2 ── International allocation cap ──────────────────────────────
-        intl_total = sum(
-            w for t, w in weights.items() if t not in au_set
-        )
+        intl_total = sum(w for t, w in weights.items() if t not in au_set)
         if intl_total > mandate.max_international_pct:
             violations.append(
                 MandateViolation(

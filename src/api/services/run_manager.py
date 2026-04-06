@@ -19,10 +19,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, AsyncGenerator, Optional
 
 from research_pipeline.config.loader import PipelineConfig, load_pipeline_config
@@ -34,6 +32,7 @@ from research_pipeline.schemas.run_request import RunRequest
 logger = logging.getLogger(__name__)
 
 # ── Run status ────────────────────────────────────────────────────────────────
+
 
 class ApiRunStatus:
     QUEUED = "queued"
@@ -109,12 +108,15 @@ class RunManager:
         # Build an engine with per-request overrides
         overrides = request.to_settings_overrides()
         from dataclasses import replace
+
         run_settings = replace(self.settings, **overrides)
 
         # Apply client_profile and benchmark overrides to config
-        run_config = self.config.model_copy(
-            update={"client_profile": request.client_profile}
-        ) if request.client_profile is not None else self.config
+        run_config = (
+            self.config.model_copy(update={"client_profile": request.client_profile})
+            if request.client_profile is not None
+            else self.config
+        )
 
         engine = PipelineEngine(run_settings, run_config)
 
@@ -153,12 +155,13 @@ class RunManager:
     def get_stages(self, run_id: str) -> list[dict[str, Any]]:
         """Return per-stage summaries with timing, output, gate status."""
         from research_pipeline.schemas.events import STAGE_LABELS
+
         run = self._runs.get(run_id)
         if run is None:
             return []
 
         stages: list[dict[str, Any]] = []
-        engine = run.engine if hasattr(run, "engine") else None
+        _engine = run.engine if hasattr(run, "engine") else None
         result = run.result or {}
         stage_outputs = result.get("stage_outputs", {})
 
@@ -185,21 +188,33 @@ class RunManager:
             # Status
             if isinstance(output, dict) and output:
                 st = "completed" if gate_passed is not False else "failed"
-            elif stage_num in {int(k) if isinstance(k, str) and k.isdigit() else k for k in stage_outputs}:
+            elif stage_num in {
+                int(k) if isinstance(k, str) and k.isdigit() else k for k in stage_outputs
+            }:
                 st = "completed"
             else:
-                st = "pending" if run.status in (ApiRunStatus.QUEUED, ApiRunStatus.RUNNING) else "skipped"
+                st = (
+                    "pending"
+                    if run.status in (ApiRunStatus.QUEUED, ApiRunStatus.RUNNING)
+                    else "skipped"
+                )
 
-            stages.append({
-                "stage_num": stage_num,
-                "stage_label": label,
-                "status": st,
-                "duration_ms": timing_ms,
-                "gate_passed": gate_passed,
-                "gate_reason": gate_reason,
-                "output": output if isinstance(output, dict) else {"data": output} if output else {},
-                "has_output": bool(output),
-            })
+            stages.append(
+                {
+                    "stage_num": stage_num,
+                    "stage_label": label,
+                    "status": st,
+                    "duration_ms": timing_ms,
+                    "gate_passed": gate_passed,
+                    "gate_reason": gate_reason,
+                    "output": output
+                    if isinstance(output, dict)
+                    else {"data": output}
+                    if output
+                    else {},
+                    "has_output": bool(output),
+                }
+            )
         return stages
 
     def get_audit_packet(self, run_id: str) -> dict[str, Any]:
@@ -286,6 +301,7 @@ class RunManager:
         prov_path = self.settings.storage_dir / "artifacts" / run_id / "provenance_packet.json"
         if prov_path.exists():
             import json as _json
+
             try:
                 return _json.loads(prov_path.read_text(encoding="utf-8"))
             except Exception:
@@ -300,11 +316,13 @@ class RunManager:
         artifacts = []
         for f in sorted(artifact_dir.iterdir()):
             if f.is_file():
-                artifacts.append({
-                    "filename": f.name,
-                    "size_bytes": f.stat().st_size,
-                    "path": str(f),
-                })
+                artifacts.append(
+                    {
+                        "filename": f.name,
+                        "size_bytes": f.stat().st_size,
+                        "path": str(f),
+                    }
+                )
         return artifacts
 
     def cancel_run(self, run_id: str) -> bool:

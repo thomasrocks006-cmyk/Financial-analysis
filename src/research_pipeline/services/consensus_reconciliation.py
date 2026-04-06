@@ -91,18 +91,20 @@ class ConsensusReconciliationService:
                 self.thresholds.target_divergence_amber_pct,
                 self.thresholds.target_divergence_red_pct,
             )
-            fields.append(ReconciliationField(
-                field_name=label,
-                ticker=ticker,
-                source_a="fmp",
-                source_a_value=a_val,
-                source_b="finnhub",
-                source_b_value=b_val,
-                preferred_source="fmp",
-                divergence_pct=diff,
-                status=status,
-                reviewer_required=status == ReconciliationStatus.RED,
-            ))
+            fields.append(
+                ReconciliationField(
+                    field_name=label,
+                    ticker=ticker,
+                    source_a="fmp",
+                    source_a_value=a_val,
+                    source_b="finnhub",
+                    source_b_value=b_val,
+                    preferred_source="fmp",
+                    divergence_pct=diff,
+                    status=status,
+                    reviewer_required=status == ReconciliationStatus.RED,
+                )
+            )
         return fields
 
     def reconcile_ticker(

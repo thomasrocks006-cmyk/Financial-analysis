@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 
 try:
     import httpx
+
     _HTTPX_AVAILABLE = True
 except ImportError:
     _HTTPX_AVAILABLE = False
@@ -49,10 +50,23 @@ _BENZINGA_NEWS_BASE = "https://api.benzinga.com/api/v2"
 
 # Minimum finance signal quality for news — exclude low-signal sources
 _PUBLISHER_ALLOWLIST = {
-    "Reuters", "Associated Press", "AP", "Bloomberg", "Financial Times",
-    "Wall Street Journal", "WSJ", "The Economist", "CNBC", "MarketWatch",
-    "Barron's", "Benzinga", "TheStreet", "Seeking Alpha", "Motley Fool",
-    "Investor's Business Daily", "IBD",
+    "Reuters",
+    "Associated Press",
+    "AP",
+    "Bloomberg",
+    "Financial Times",
+    "Wall Street Journal",
+    "WSJ",
+    "The Economist",
+    "CNBC",
+    "MarketWatch",
+    "Barron's",
+    "Benzinga",
+    "TheStreet",
+    "Seeking Alpha",
+    "Motley Fool",
+    "Investor's Business Daily",
+    "IBD",
 }
 
 
@@ -60,10 +74,9 @@ def _parse_date(val: Any) -> Optional[datetime]:
     if not val:
         return None
     val = str(val).strip()
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d",
-                "%a, %d %b %Y %H:%M:%S %z"):
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d", "%a, %d %b %Y %H:%M:%S %z"):
         try:
-            dt = datetime.strptime(val[:len(fmt)], fmt)
+            dt = datetime.strptime(val[: len(fmt)], fmt)
             return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt
         except ValueError:
             continue
@@ -74,9 +87,16 @@ class RatingChange:
     """A single analyst rating change from Benzinga."""
 
     __slots__ = (
-        "ticker", "analyst_firm", "action_type", "rating_current",
-        "rating_prior", "price_target_current", "price_target_prior",
-        "published_at", "headline", "source_tier",
+        "ticker",
+        "analyst_firm",
+        "action_type",
+        "rating_current",
+        "rating_prior",
+        "price_target_current",
+        "price_target_prior",
+        "published_at",
+        "headline",
+        "source_tier",
     )
 
     def __init__(
@@ -93,7 +113,7 @@ class RatingChange:
     ):
         self.ticker = ticker
         self.analyst_firm = analyst_firm
-        self.action_type = action_type        # e.g. "Upgrade", "Downgrade", "Initiate"
+        self.action_type = action_type  # e.g. "Upgrade", "Downgrade", "Initiate"
         self.rating_current = rating_current  # e.g. "Buy", "Hold", "Sell"
         self.rating_prior = rating_prior
         self.price_target_current = price_target_current
@@ -128,8 +148,14 @@ class BenzingaNewsItem:
     """A Benzinga news article with finance-quality metadata."""
 
     __slots__ = (
-        "ticker", "headline", "summary", "published_at",
-        "author", "url", "channels", "source_tier",
+        "ticker",
+        "headline",
+        "summary",
+        "published_at",
+        "author",
+        "url",
+        "channels",
+        "source_tier",
     )
 
     def __init__(
@@ -218,9 +244,7 @@ class BenzingaService:
 
     # ── Public API ─────────────────────────────────────────────────────
 
-    async def fetch_universe(
-        self, tickers: list[str]
-    ) -> dict[str, BenzingaTickerPackage]:
+    async def fetch_universe(self, tickers: list[str]) -> dict[str, BenzingaTickerPackage]:
         """Fetch Benzinga data for all tickers."""
         if not self._available:
             return {t: BenzingaTickerPackage(ticker=t) for t in tickers}
@@ -237,16 +261,15 @@ class BenzingaService:
                     results[ticker] = pkg
         return results
 
-    async def fetch_ticker(
-        self, client: httpx.AsyncClient, ticker: str
-    ) -> BenzingaTickerPackage:
+    async def fetch_ticker(self, client: httpx.AsyncClient, ticker: str) -> BenzingaTickerPackage:
         """Fetch all Benzinga data for one ticker."""
         pkg = BenzingaTickerPackage(ticker=ticker)
 
         # Rating changes
         ratings = await self._safe(
             self._fetch_ratings(client, ticker),
-            "ratings", pkg.coverage_gaps,
+            "ratings",
+            pkg.coverage_gaps,
         )
         if ratings:
             pkg.rating_changes = ratings
@@ -254,7 +277,8 @@ class BenzingaService:
         # News
         news = await self._safe(
             self._fetch_news(client, ticker),
-            "news", pkg.coverage_gaps,
+            "news",
+            pkg.coverage_gaps,
         )
         if news:
             pkg.news = news
@@ -262,7 +286,8 @@ class BenzingaService:
         # Earnings calendar
         earnings = await self._safe(
             self._fetch_earnings_calendar(client, ticker),
-            "earnings_calendar", pkg.coverage_gaps,
+            "earnings_calendar",
+            pkg.coverage_gaps,
         )
         if earnings:
             pkg.earnings_events = earnings
@@ -271,9 +296,7 @@ class BenzingaService:
 
     # ── Rating changes ──────────────────────────────────────────────────
 
-    async def _fetch_ratings(
-        self, client: httpx.AsyncClient, ticker: str
-    ) -> list[RatingChange]:
+    async def _fetch_ratings(self, client: httpx.AsyncClient, ticker: str) -> list[RatingChange]:
         """Fetch analyst rating changes for a ticker."""
         resp = await client.get(
             f"{_BENZINGA_BASE}/calendar/ratings",
@@ -287,28 +310,28 @@ class BenzingaService:
         data = resp.json()
 
         changes: list[RatingChange] = []
-        for row in (data.get("ratings") or []):
+        for row in data.get("ratings") or []:
             try:
-                changes.append(RatingChange(
-                    ticker=ticker,
-                    analyst_firm=row.get("analyst", ""),
-                    action_type=row.get("action_company", row.get("action_pt", "")),
-                    rating_current=row.get("rating_current", ""),
-                    rating_prior=row.get("rating_prior", ""),
-                    price_target_current=_to_float(row.get("pt_current")),
-                    price_target_prior=_to_float(row.get("pt_prior")),
-                    published_at=_parse_date(row.get("date")),
-                    headline=row.get("headline", ""),
-                ))
+                changes.append(
+                    RatingChange(
+                        ticker=ticker,
+                        analyst_firm=row.get("analyst", ""),
+                        action_type=row.get("action_company", row.get("action_pt", "")),
+                        rating_current=row.get("rating_current", ""),
+                        rating_prior=row.get("rating_prior", ""),
+                        price_target_current=_to_float(row.get("pt_current")),
+                        price_target_prior=_to_float(row.get("pt_prior")),
+                        published_at=_parse_date(row.get("date")),
+                        headline=row.get("headline", ""),
+                    )
+                )
             except Exception as exc:
                 logger.debug("Benzinga rating parse error: %s", exc)
         return changes
 
     # ── News ────────────────────────────────────────────────────────────
 
-    async def _fetch_news(
-        self, client: httpx.AsyncClient, ticker: str
-    ) -> list[BenzingaNewsItem]:
+    async def _fetch_news(self, client: httpx.AsyncClient, ticker: str) -> list[BenzingaNewsItem]:
         """Fetch finance-native news articles for a ticker."""
         resp = await client.get(
             f"{_BENZINGA_NEWS_BASE}/headline",
@@ -323,20 +346,20 @@ class BenzingaService:
         data = resp.json()
 
         items: list[BenzingaNewsItem] = []
-        for row in (data if isinstance(data, list) else []):
+        for row in data if isinstance(data, list) else []:
             try:
-                channels = [
-                    ch.get("name", "") for ch in (row.get("channels") or [])
-                ]
-                items.append(BenzingaNewsItem(
-                    ticker=ticker,
-                    headline=row.get("title", ""),
-                    summary=row.get("teaser", ""),
-                    published_at=_parse_date(row.get("created")),
-                    author=row.get("author", ""),
-                    url=row.get("url", ""),
-                    channels=channels,
-                ))
+                channels = [ch.get("name", "") for ch in (row.get("channels") or [])]
+                items.append(
+                    BenzingaNewsItem(
+                        ticker=ticker,
+                        headline=row.get("title", ""),
+                        summary=row.get("teaser", ""),
+                        published_at=_parse_date(row.get("created")),
+                        author=row.get("author", ""),
+                        url=row.get("url", ""),
+                        channels=channels,
+                    )
+                )
             except Exception as exc:
                 logger.debug("Benzinga news parse error: %s", exc)
         return items
@@ -359,19 +382,21 @@ class BenzingaService:
         data = resp.json()
 
         events = []
-        for row in (data.get("earnings") or []):
-            events.append({
-                "ticker": ticker,
-                "date": row.get("date", ""),
-                "time": row.get("time", ""),
-                "eps_est": _to_float(row.get("eps_est")),
-                "eps_actual": _to_float(row.get("eps_actual")),
-                "revenue_est": _to_float(row.get("revenue_est")),
-                "revenue_actual": _to_float(row.get("revenue_actual")),
-                "fiscal_quarter_ending": row.get("period_of_report", ""),
-                "source": "benzinga",
-                "source_tier": 2,
-            })
+        for row in data.get("earnings") or []:
+            events.append(
+                {
+                    "ticker": ticker,
+                    "date": row.get("date", ""),
+                    "time": row.get("time", ""),
+                    "eps_est": _to_float(row.get("eps_est")),
+                    "eps_actual": _to_float(row.get("eps_actual")),
+                    "revenue_est": _to_float(row.get("revenue_est")),
+                    "revenue_actual": _to_float(row.get("revenue_actual")),
+                    "fiscal_quarter_ending": row.get("period_of_report", ""),
+                    "source": "benzinga",
+                    "source_tier": 2,
+                }
+            )
         return events
 
     # ── Utility ─────────────────────────────────────────────────────────

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
 
 import numpy as np
 
@@ -14,6 +13,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class OptimisationResult:
     """Output from a portfolio optimisation."""
+
     method: str  # "min_variance", "max_sharpe", "risk_parity", "black_litterman"
     weights: dict[str, float]
     expected_return: float = 0.0
@@ -25,6 +25,7 @@ class OptimisationResult:
 @dataclass
 class BlackLittermanInputs:
     """Inputs for Black-Litterman model."""
+
     market_cap_weights: dict[str, float]  # equilibrium weights
     views: dict[str, float]  # ticker -> expected excess return
     view_confidences: dict[str, float]  # ticker -> confidence (0-1)
@@ -238,7 +239,9 @@ class PortfolioOptimisationEngine:
         if min_len < 10:
             return OptimisationResult(
                 method="black_litterman",
-                weights={t: round(bl_inputs.market_cap_weights.get(t, 100 / n), 2) for t in tickers},
+                weights={
+                    t: round(bl_inputs.market_cap_weights.get(t, 100 / n), 2) for t in tickers
+                },
             )
 
         data = np.array([returns[t][:min_len] for t in tickers])

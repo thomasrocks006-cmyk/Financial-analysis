@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 
 import sys
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 
@@ -29,11 +30,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 # Group 1: Provenance Schema Tests
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestProvenanceSchemas:
     """Test the provenance Pydantic models."""
 
     def test_data_source_creation(self):
         from research_pipeline.schemas.provenance import DataSource
+
         ds = DataSource(name="fmp_financials", source_type="api")
         assert ds.name == "fmp_financials"
         assert ds.source_type == "api"
@@ -41,17 +44,22 @@ class TestProvenanceSchemas:
 
     def test_data_source_with_origin(self):
         from research_pipeline.schemas.provenance import DataSource
+
         ds = DataSource(name="stage_2_data", source_type="upstream_stage", stage_origin=2)
         assert ds.stage_origin == 2
 
     def test_stage_output_creation(self):
         from research_pipeline.schemas.provenance import StageOutput
-        so = StageOutput(name="validated_universe", output_type="data", description="Confirmed tickers")
+
+        so = StageOutput(
+            name="validated_universe", output_type="data", description="Confirmed tickers"
+        )
         assert so.name == "validated_universe"
         assert so.output_type == "data"
 
     def test_provenance_card_creation(self):
         from research_pipeline.schemas.provenance import ProvenanceCard
+
         card = ProvenanceCard(
             stage_num=5,
             stage_label="Evidence Library",
@@ -67,6 +75,7 @@ class TestProvenanceSchemas:
 
     def test_provenance_card_serialization(self):
         from research_pipeline.schemas.provenance import ProvenanceCard
+
         card = ProvenanceCard(
             stage_num=0,
             stage_label="Bootstrap",
@@ -81,6 +90,7 @@ class TestProvenanceSchemas:
 
     def test_report_section_provenance(self):
         from research_pipeline.schemas.provenance import ReportSectionProvenance
+
         rsp = ReportSectionProvenance(
             section_title="Executive Summary",
             section_index=1,
@@ -94,10 +104,8 @@ class TestProvenanceSchemas:
 
     def test_provenance_packet_completeness(self):
         from research_pipeline.schemas.provenance import ProvenancePacket, ProvenanceCard
-        cards = [
-            ProvenanceCard(stage_num=i, stage_label=f"S{i}", run_id="r1")
-            for i in range(10)
-        ]
+
+        cards = [ProvenanceCard(stage_num=i, stage_label=f"S{i}", run_id="r1") for i in range(10)]
         packet = ProvenancePacket(run_id="r1", stage_cards=cards)
         packet.compute_completeness()
         assert packet.stages_with_provenance == 10
@@ -105,10 +113,8 @@ class TestProvenanceSchemas:
 
     def test_provenance_packet_full_completeness(self):
         from research_pipeline.schemas.provenance import ProvenancePacket, ProvenanceCard
-        cards = [
-            ProvenanceCard(stage_num=i, stage_label=f"S{i}", run_id="r1")
-            for i in range(15)
-        ]
+
+        cards = [ProvenanceCard(stage_num=i, stage_label=f"S{i}", run_id="r1") for i in range(15)]
         packet = ProvenancePacket(run_id="r1", stage_cards=cards)
         packet.compute_completeness()
         assert packet.stages_with_provenance == 15
@@ -116,6 +122,7 @@ class TestProvenanceSchemas:
 
     def test_provenance_packet_serialization(self):
         from research_pipeline.schemas.provenance import ProvenancePacket
+
         packet = ProvenancePacket(run_id="r1")
         data = json.loads(packet.model_dump_json())
         assert data["run_id"] == "r1"
@@ -127,11 +134,13 @@ class TestProvenanceSchemas:
 # Group 2: ProvenanceService Tests
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestProvenanceService:
     """Test the ProvenanceService business logic."""
 
     def test_build_stage_card(self):
         from research_pipeline.services.provenance_service import ProvenanceService
+
         svc = ProvenanceService(run_id="r1", model="gpt-4o", temperature=0.3)
         card = svc.build_stage_card(
             stage_num=2,
@@ -156,6 +165,7 @@ class TestProvenanceService:
     def test_build_stage_card_accumulates(self):
         """Multiple calls accumulate cards internally."""
         from research_pipeline.services.provenance_service import ProvenanceService
+
         svc = ProvenanceService(run_id="r1")
         svc.build_stage_card(0, "Bootstrap", {}, True)
         svc.build_stage_card(1, "Universe", {}, True)
@@ -164,6 +174,7 @@ class TestProvenanceService:
 
     def test_build_stage_card_with_error(self):
         from research_pipeline.services.provenance_service import ProvenanceService
+
         svc = ProvenanceService(run_id="r1")
         card = svc.build_stage_card(
             stage_num=5,
@@ -180,6 +191,7 @@ class TestProvenanceService:
 
     def test_build_report_provenance(self):
         from research_pipeline.services.provenance_service import ProvenanceService
+
         svc = ProvenanceService(run_id="r1")
         md = """# Report Title
 ## Executive Summary
@@ -203,6 +215,7 @@ Weights.
     def test_report_section_source_stages(self):
         """Report provenance maps sections to correct source stages."""
         from research_pipeline.services.provenance_service import ProvenanceService
+
         svc = ProvenanceService(run_id="r1")
         md = "## Valuation\nDCF models."
         sections = svc.build_report_provenance(md)
@@ -211,6 +224,7 @@ Weights.
 
     def test_build_packet(self):
         from research_pipeline.services.provenance_service import ProvenanceService
+
         svc = ProvenanceService(run_id="r1")
         svc.build_stage_card(0, "Bootstrap", {}, True, duration_ms=100)
         svc.build_stage_card(1, "Universe", {}, True, duration_ms=200)
@@ -222,6 +236,7 @@ Weights.
     def test_save_packet(self):
         from research_pipeline.services.provenance_service import ProvenanceService
         from research_pipeline.schemas.provenance import ProvenancePacket
+
         svc = ProvenanceService(run_id="r1")
         packet = ProvenancePacket(run_id="r1")
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -235,26 +250,31 @@ Weights.
 # Group 3: STAGE_INPUTS / STAGE_OUTPUTS / STAGE_ASSUMPTIONS Coverage
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestStageMetadata:
     """Verify the stage metadata dictionaries are complete."""
 
     def test_stage_inputs_covers_all_stages(self):
         from research_pipeline.services.provenance_service import STAGE_INPUTS
+
         for i in range(15):
             assert i in STAGE_INPUTS, f"STAGE_INPUTS missing stage {i}"
 
     def test_stage_outputs_covers_all_stages(self):
         from research_pipeline.services.provenance_service import STAGE_OUTPUTS
+
         for i in range(15):
             assert i in STAGE_OUTPUTS, f"STAGE_OUTPUTS missing stage {i}"
 
     def test_stage_assumptions_covers_all_stages(self):
         from research_pipeline.services.provenance_service import STAGE_ASSUMPTIONS
+
         for i in range(15):
             assert i in STAGE_ASSUMPTIONS, f"STAGE_ASSUMPTIONS missing stage {i}"
 
     def test_inputs_have_required_fields(self):
         from research_pipeline.services.provenance_service import STAGE_INPUTS
+
         for stage, inputs in STAGE_INPUTS.items():
             for inp in inputs:
                 assert "name" in inp, f"Stage {stage} input missing 'name'"
@@ -262,6 +282,7 @@ class TestStageMetadata:
 
     def test_outputs_have_required_fields(self):
         from research_pipeline.services.provenance_service import STAGE_OUTPUTS
+
         for stage, outputs in STAGE_OUTPUTS.items():
             for out in outputs:
                 assert "name" in out, f"Stage {stage} output missing 'name'"
@@ -271,6 +292,7 @@ class TestStageMetadata:
 # Group 4: Engine Integration
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 class TestEngineProvenance:
     """Verify the engine has provenance wiring."""
 
@@ -278,6 +300,7 @@ class TestEngineProvenance:
         """PipelineEngine initialises _provenance to None."""
         from research_pipeline.pipeline.engine import PipelineEngine
         from unittest.mock import MagicMock
+
         settings = MagicMock()
         settings.storage_dir = Path(tempfile.mkdtemp())
         settings.prompts_dir = Path(tempfile.mkdtemp())
@@ -299,12 +322,14 @@ class TestEngineProvenance:
     def test_provenance_service_import(self):
         """ProvenanceService can be imported from the engine module context."""
         from research_pipeline.services.provenance_service import ProvenanceService
+
         svc = ProvenanceService(run_id="test", model="gpt-4o")
         assert svc.run_id == "test"
 
     def test_confidence_assessment(self):
         """_assess_confidence returns correct levels."""
         from research_pipeline.services.provenance_service import ProvenanceService
+
         assert ProvenanceService._assess_confidence([]) == "low"
         assert ProvenanceService._assess_confidence([0, 1, 2, 3]) == "high"
         assert ProvenanceService._assess_confidence([5, 6, 7]) == "medium"
@@ -313,6 +338,7 @@ class TestEngineProvenance:
     def test_section_mapping(self):
         """_map_section_to_sources maps known sections correctly."""
         from research_pipeline.services.provenance_service import ProvenanceService
+
         stages, agents, methods = ProvenanceService._map_section_to_sources("Sector Analysis")
         assert 6 in stages
         assert "sector_analyst" in agents

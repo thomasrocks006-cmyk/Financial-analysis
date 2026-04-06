@@ -6,14 +6,11 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
 
 import numpy as np
 
 from research_pipeline.schemas.performance import (
     BHBAttribution,
-    BenchmarkComparison,
-    DrawdownAnalysis,
     LiquidityProfile,
     PortfolioSnapshot,
     ThesisRecord,
@@ -42,7 +39,9 @@ class PerformanceTracker:
         snapshots = self._load_snapshots()
         snapshots.append(snapshot.model_dump(mode="json"))
         self._write_json(self._snapshots_file, snapshots)
-        logger.info("Portfolio snapshot saved for run %s (%s)", snapshot.run_id, snapshot.variant_name)
+        logger.info(
+            "Portfolio snapshot saved for run %s (%s)", snapshot.run_id, snapshot.variant_name
+        )
 
     def get_snapshots(
         self, variant_name: str | None = None, limit: int = 100
@@ -87,8 +86,7 @@ class PerformanceTracker:
             p_tickers = [t for t, s in sector_map.items() if s == sector and t in portfolio_weights]
             p_weight = sum(portfolio_weights.get(t, 0) for t in p_tickers)
             p_return = sum(
-                portfolio_returns.get(t, 0) * portfolio_weights.get(t, 0)
-                for t in p_tickers
+                portfolio_returns.get(t, 0) * portfolio_weights.get(t, 0) for t in p_tickers
             )
             p_return = p_return / p_weight if p_weight > 0 else 0
 
@@ -96,8 +94,7 @@ class PerformanceTracker:
             b_tickers = [t for t, s in sector_map.items() if s == sector and t in benchmark_weights]
             b_weight = sum(benchmark_weights.get(t, 0) for t in b_tickers)
             b_return = sum(
-                benchmark_returns.get(t, 0) * benchmark_weights.get(t, 0)
-                for t in b_tickers
+                benchmark_returns.get(t, 0) * benchmark_weights.get(t, 0) for t in b_tickers
             )
             b_return = b_return / b_weight if b_weight > 0 else 0
 
@@ -108,13 +105,11 @@ class PerformanceTracker:
 
         # Total benchmark return
         total_bench_r = sum(
-            sector_bench_w.get(s, 0) * sector_bench_r.get(s, 0)
-            for s in sectors
+            sector_bench_w.get(s, 0) * sector_bench_r.get(s, 0) for s in sectors
         ) / max(sum(sector_bench_w.values()), 1)
 
         total_port_r = sum(
-            sector_port_w.get(s, 0) * sector_port_r.get(s, 0)
-            for s in sectors
+            sector_port_w.get(s, 0) * sector_port_r.get(s, 0) for s in sectors
         ) / max(sum(sector_port_w.values()), 1)
 
         # BHB decomposition per sector
@@ -169,7 +164,9 @@ class PerformanceTracker:
         """Compute liquidity metrics for a position."""
         position_value = portfolio_value * position_weight_pct / 100
         adv_value = avg_daily_volume * price
-        days_to_liquidate = position_value / (adv_value * participation_rate) if adv_value > 0 else 999
+        days_to_liquidate = (
+            position_value / (adv_value * participation_rate) if adv_value > 0 else 999
+        )
 
         # Market impact estimate (square root model)
         if adv_value > 0:

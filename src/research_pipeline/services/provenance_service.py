@@ -12,7 +12,6 @@ report markdown and matching sections to source stages.
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from pathlib import Path
@@ -105,21 +104,111 @@ STAGE_INPUTS: dict[int, list[dict[str, str]]] = {
 # ── Stage → output descriptions ──────────────────────────────────────────
 
 STAGE_OUTPUTS: dict[int, list[dict[str, str]]] = {
-    0: [{"name": "config_validated", "output_type": "data", "description": "Validated configuration and API keys"}],
-    1: [{"name": "validated_universe", "output_type": "data", "description": "Confirmed and filtered ticker list"}],
-    2: [{"name": "financial_data", "output_type": "data", "description": "Ingested financial data per ticker"}],
-    3: [{"name": "reconciled_data", "output_type": "data", "description": "Cross-validated and reconciled dataset"}],
-    4: [{"name": "qa_scores", "output_type": "metric", "description": "Data quality scores and lineage metadata"}],
-    5: [{"name": "evidence_library", "output_type": "data", "description": "Verified claims with source citations"}],
-    6: [{"name": "sector_analyses", "output_type": "data", "description": "6-box sector analysis per ticker/sector"}],
-    7: [{"name": "valuation_models", "output_type": "data", "description": "DCF + multi-methodology valuations"}],
-    8: [{"name": "macro_overlay", "output_type": "data", "description": "Macroeconomic and geopolitical context"}],
-    9: [{"name": "risk_assessment", "output_type": "data", "description": "Scenario analysis and risk metrics"}],
-    10: [{"name": "red_team_report", "output_type": "data", "description": "Falsification tests and risk challenges"}],
-    11: [{"name": "review_result", "output_type": "decision", "description": "Associate review pass/fail with feedback"}],
-    12: [{"name": "portfolio", "output_type": "decision", "description": "Portfolio weights, IC decision, mandate compliance"}],
-    13: [{"name": "final_report", "output_type": "artifact", "description": "Assembled research report markdown"}],
-    14: [{"name": "monitoring_record", "output_type": "data", "description": "Run registry record and audit artefact"}],
+    0: [
+        {
+            "name": "config_validated",
+            "output_type": "data",
+            "description": "Validated configuration and API keys",
+        }
+    ],
+    1: [
+        {
+            "name": "validated_universe",
+            "output_type": "data",
+            "description": "Confirmed and filtered ticker list",
+        }
+    ],
+    2: [
+        {
+            "name": "financial_data",
+            "output_type": "data",
+            "description": "Ingested financial data per ticker",
+        }
+    ],
+    3: [
+        {
+            "name": "reconciled_data",
+            "output_type": "data",
+            "description": "Cross-validated and reconciled dataset",
+        }
+    ],
+    4: [
+        {
+            "name": "qa_scores",
+            "output_type": "metric",
+            "description": "Data quality scores and lineage metadata",
+        }
+    ],
+    5: [
+        {
+            "name": "evidence_library",
+            "output_type": "data",
+            "description": "Verified claims with source citations",
+        }
+    ],
+    6: [
+        {
+            "name": "sector_analyses",
+            "output_type": "data",
+            "description": "6-box sector analysis per ticker/sector",
+        }
+    ],
+    7: [
+        {
+            "name": "valuation_models",
+            "output_type": "data",
+            "description": "DCF + multi-methodology valuations",
+        }
+    ],
+    8: [
+        {
+            "name": "macro_overlay",
+            "output_type": "data",
+            "description": "Macroeconomic and geopolitical context",
+        }
+    ],
+    9: [
+        {
+            "name": "risk_assessment",
+            "output_type": "data",
+            "description": "Scenario analysis and risk metrics",
+        }
+    ],
+    10: [
+        {
+            "name": "red_team_report",
+            "output_type": "data",
+            "description": "Falsification tests and risk challenges",
+        }
+    ],
+    11: [
+        {
+            "name": "review_result",
+            "output_type": "decision",
+            "description": "Associate review pass/fail with feedback",
+        }
+    ],
+    12: [
+        {
+            "name": "portfolio",
+            "output_type": "decision",
+            "description": "Portfolio weights, IC decision, mandate compliance",
+        }
+    ],
+    13: [
+        {
+            "name": "final_report",
+            "output_type": "artifact",
+            "description": "Assembled research report markdown",
+        }
+    ],
+    14: [
+        {
+            "name": "monitoring_record",
+            "output_type": "data",
+            "description": "Run registry record and audit artefact",
+        }
+    ],
 }
 
 # ── Stage → assumptions ──────────────────────────────────────────────────
@@ -130,14 +219,32 @@ STAGE_ASSUMPTIONS: dict[int, list[str]] = {
     2: ["FMP/yfinance/Finnhub APIs return current data", "Missing data fields are non-critical"],
     3: ["Source data agreement within 10% is acceptable"],
     4: ["Quality score ≥ 0.6 is sufficient to proceed"],
-    5: ["LLM-generated claims are subject to hallucination risk", "Source tier classification is heuristic"],
+    5: [
+        "LLM-generated claims are subject to hallucination risk",
+        "Source tier classification is heuristic",
+    ],
     6: ["Sector boundaries are correctly assigned per GICS classification"],
-    7: ["DCF terminal growth rate of 3% is appropriate", "WACC assumptions match current market conditions"],
-    8: ["Economic indicators are representative of macro conditions", "Political risk assessment may lag current events"],
-    9: ["Synthetic returns are used when live data unavailable", "VaR/CVaR computed at 95% confidence"],
-    10: ["Red team prompts cover major risk categories", "Falsification tests may miss novel risks"],
+    7: [
+        "DCF terminal growth rate of 3% is appropriate",
+        "WACC assumptions match current market conditions",
+    ],
+    8: [
+        "Economic indicators are representative of macro conditions",
+        "Political risk assessment may lag current events",
+    ],
+    9: [
+        "Synthetic returns are used when live data unavailable",
+        "VaR/CVaR computed at 95% confidence",
+    ],
+    10: [
+        "Red team prompts cover major risk categories",
+        "Falsification tests may miss novel risks",
+    ],
     11: ["Review agent applies consistent scoring methodology"],
-    12: ["Portfolio constraints match client mandate", "Optimisation uses available return/risk data"],
+    12: [
+        "Portfolio constraints match client mandate",
+        "Optimisation uses available return/risk data",
+    ],
     13: ["Report structure follows standard research format"],
     14: ["Monitoring snapshot reflects end-of-pipeline state"],
 }
@@ -174,20 +281,24 @@ class ProvenanceService:
         inputs = []
         for inp in STAGE_INPUTS.get(stage_num, []):
             origin = int(inp["stage_origin"]) if "stage_origin" in inp else None
-            inputs.append(DataSource(
-                name=inp["name"],
-                source_type=inp.get("source_type", "unknown"),
-                stage_origin=origin,
-            ))
+            inputs.append(
+                DataSource(
+                    name=inp["name"],
+                    source_type=inp.get("source_type", "unknown"),
+                    stage_origin=origin,
+                )
+            )
 
         # Build StageOutput outputs
         outputs = []
         for out in STAGE_OUTPUTS.get(stage_num, []):
-            outputs.append(StageOutput(
-                name=out["name"],
-                output_type=out.get("output_type", "data"),
-                description=out.get("description", ""),
-            ))
+            outputs.append(
+                StageOutput(
+                    name=out["name"],
+                    output_type=out.get("output_type", "data"),
+                    description=out.get("description", ""),
+                )
+            )
 
         card = ProvenanceCard(
             stage_num=stage_num,
@@ -209,9 +320,7 @@ class ProvenanceService:
         self._cards.append(card)
         return card
 
-    def build_report_provenance(
-        self, report_md: str
-    ) -> list[ReportSectionProvenance]:
+    def build_report_provenance(self, report_md: str) -> list[ReportSectionProvenance]:
         """Parse report markdown and build section-level provenance."""
         sections: list[ReportSectionProvenance] = []
 
@@ -227,16 +336,20 @@ class ProvenanceService:
                 current_idx += 1
 
                 # Map section titles to source stages
-                source_stages, source_agents, methodology = self._map_section_to_sources(current_title)
+                source_stages, source_agents, methodology = self._map_section_to_sources(
+                    current_title
+                )
 
-                sections.append(ReportSectionProvenance(
-                    section_title=current_title,
-                    section_index=current_idx,
-                    source_stages=source_stages,
-                    source_agents=source_agents,
-                    methodology_tags=methodology,
-                    confidence_level=self._assess_confidence(source_stages),
-                ))
+                sections.append(
+                    ReportSectionProvenance(
+                        section_title=current_title,
+                        section_index=current_idx,
+                        source_stages=source_stages,
+                        source_agents=source_agents,
+                        methodology_tags=methodology,
+                        confidence_level=self._assess_confidence(source_stages),
+                    )
+                )
 
         return sections
 
@@ -273,15 +386,50 @@ class ProvenanceService:
             (["data quality", "qa", "lineage"], [3, 4], ["reconciliation"], ["data_qa"]),
             (["evidence", "claim", "source"], [5], ["evidence_librarian"], ["claim_verification"]),
             (["sector", "industry"], [6], ["sector_analyst"], ["six_box_analysis"]),
-            (["valuation", "dcf", "fair value", "target price"], [7], ["valuation_analyst"], ["dcf", "multi_methodology"]),
-            (["macro", "economic", "political", "geopolit"], [8], ["macro_agent", "political_agent"], ["macro_overlay"]),
-            (["risk", "scenario", "stress", "var", "drawdown"], [9], ["risk_analyst"], ["scenario_analysis", "var"]),
-            (["red team", "falsif", "challenge", "devil"], [10], ["red_team_analyst"], ["falsification"]),
-            (["review", "methodology", "compliance"], [11], ["associate_reviewer"], ["methodology_review"]),
-            (["portfolio", "weight", "allocation", "construct", "ic ", "investment committee"], [12], ["portfolio_manager"], ["portfolio_construction"]),
+            (
+                ["valuation", "dcf", "fair value", "target price"],
+                [7],
+                ["valuation_analyst"],
+                ["dcf", "multi_methodology"],
+            ),
+            (
+                ["macro", "economic", "political", "geopolit"],
+                [8],
+                ["macro_agent", "political_agent"],
+                ["macro_overlay"],
+            ),
+            (
+                ["risk", "scenario", "stress", "var", "drawdown"],
+                [9],
+                ["risk_analyst"],
+                ["scenario_analysis", "var"],
+            ),
+            (
+                ["red team", "falsif", "challenge", "devil"],
+                [10],
+                ["red_team_analyst"],
+                ["falsification"],
+            ),
+            (
+                ["review", "methodology", "compliance"],
+                [11],
+                ["associate_reviewer"],
+                ["methodology_review"],
+            ),
+            (
+                ["portfolio", "weight", "allocation", "construct", "ic ", "investment committee"],
+                [12],
+                ["portfolio_manager"],
+                ["portfolio_construction"],
+            ),
             (["esg", "sustain", "environment"], [6, 12], ["esg_analyst"], ["esg_screening"]),
             (["monitor", "next step", "watch"], [14], ["monitoring"], ["monitoring"]),
-            (["appendix", "disclaimer", "disclosure"], [13, 14], ["report_narrative"], ["disclosure"]),
+            (
+                ["appendix", "disclaimer", "disclosure"],
+                [13, 14],
+                ["report_narrative"],
+                ["disclosure"],
+            ),
         ]
 
         for keywords, stages, agents, methods in stage_map:

@@ -18,11 +18,11 @@ from pydantic import BaseModel, Field, model_validator
 ClientType = Literal["super_fund", "smsf", "hnw", "institutional", "retail"]
 
 SuperFundMandateType = Literal[
-    "growth",        # 60–85 % growth assets — typical default MySuper option
-    "balanced",      # 40–70 % growth assets — most common balanced option
+    "growth",  # 60–85 % growth assets — typical default MySuper option
+    "balanced",  # 40–70 % growth assets — most common balanced option
     "conservative",  # 0–30 % growth assets — capital preservation focus
-    "lifecycle",     # glide-path: high-growth when young → conservative at 55
-    "dio",           # Direct Investment Option — no APRA growth limits
+    "lifecycle",  # glide-path: high-growth when young → conservative at 55
+    "dio",  # Direct Investment Option — no APRA growth limits
 ]
 
 
@@ -43,8 +43,8 @@ class ClientProfile(BaseModel):
     is_smsf: bool = False
     super_fund_type: Optional[SuperFundMandateType] = None
     apra_regulated: bool = False
-    smsf_pension_phase: bool = False   # True → 0 % tax on pension-phase earnings
-    afsl_number: str = ""              # Authorised Financial Services Licence
+    smsf_pension_phase: bool = False  # True → 0 % tax on pension-phase earnings
+    afsl_number: str = ""  # Authorised Financial Services Licence
 
     # ── Allocation targets (%) ────────────────────────────────────────────
     target_au_pct: float = Field(default=60.0, ge=0.0, le=100.0)
@@ -77,16 +77,16 @@ class ClientProfile(BaseModel):
         if self.client_type == "super_fund":
             return 0.15
         if self.client_type == "hnw":
-            return 0.47   # top marginal rate + Medicare levy
-        return 0.325      # approximate mid-rate for retail / institutional
+            return 0.47  # top marginal rate + Medicare levy
+        return 0.325  # approximate mid-rate for retail / institutional
 
     @property
     def effective_cgt_discount(self) -> float:
         """CGT discount fraction (fraction of gain that is exempt after 12mo)."""
         if self.client_type == "smsf":
             if self.smsf_pension_phase:
-                return 1.0   # fully exempt in pension phase
-            return 0.333     # 1/3 discount for super funds (net effective 10%)
+                return 1.0  # fully exempt in pension phase
+            return 0.333  # 1/3 discount for super funds (net effective 10%)
         if self.client_type == "super_fund":
             return 0.333
         # individuals — 50% discount on long-term gains
@@ -94,6 +94,7 @@ class ClientProfile(BaseModel):
 
 
 # ── Convenience constructors ───────────────────────────────────────────────
+
 
 def default_super_fund_profile(
     fund_type: SuperFundMandateType = "balanced",

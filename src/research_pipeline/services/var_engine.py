@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import numpy as np
 from scipy import stats as scipy_stats
@@ -113,7 +112,7 @@ class VaREngine:
         trough_idx = int(np.argmin(drawdowns))
 
         # Find peak before trough
-        peak_idx = int(np.argmax(cumulative[:trough_idx + 1])) if trough_idx > 0 else 0
+        peak_idx = int(np.argmax(cumulative[: trough_idx + 1])) if trough_idx > 0 else 0
 
         # Find recovery after trough
         recovery_idx = None
@@ -166,13 +165,15 @@ class VaREngine:
 
         if method == "historical":
             return self.historical_var(
-                run_id, portfolio_returns.tolist(),
+                run_id,
+                portfolio_returns.tolist(),
                 confidence_level=confidence_level,
                 portfolio_value=portfolio_value,
             )
         else:
             return self.parametric_var(
-                run_id, portfolio_returns.tolist(),
+                run_id,
+                portfolio_returns.tolist(),
                 confidence_level=confidence_level,
                 portfolio_value=portfolio_value,
             )

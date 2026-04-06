@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 from jinja2 import Environment, FileSystemLoader, BaseLoader
 
@@ -199,8 +197,8 @@ class ReportAssemblyService:
         stock_cards: list[StockCard],
         self_audit_text: str = "",
         claim_register_text: str = "",
-        narrative_sections: dict[str, str] | None = None,   # Session 13: LLM-generated prose
-        au_disclosures: str | None = None,                   # Session 14: AU regulatory text
+        narrative_sections: dict[str, str] | None = None,  # Session 13: LLM-generated prose
+        au_disclosures: str | None = None,  # Session 14: AU regulatory text
     ) -> FinalReport:
         """Assemble the final report. Only runs if review passed.
 
@@ -214,11 +212,13 @@ class ReportAssemblyService:
             return FinalReport(
                 run_id=run_id,
                 publication_status="blocked",
-                sections=[ReportSection(
-                    section_name="error",
-                    content=f"Report blocked: review status {review_result.status.value}",
-                    approved=False,
-                )],
+                sections=[
+                    ReportSection(
+                        section_name="error",
+                        content=f"Report blocked: review status {review_result.status.value}",
+                        approved=False,
+                    )
+                ],
             )
 
         # Merge: start with static sections, overlay LLM narrative where available
@@ -234,8 +234,12 @@ class ReportAssemblyService:
 
         report_sections = []
         for name in [
-            "executive_summary", "methodology", "valuation_appendix",
-            "risk_appendix", "self_audit_appendix", "claim_register_appendix",
+            "executive_summary",
+            "methodology",
+            "valuation_appendix",
+            "risk_appendix",
+            "self_audit_appendix",
+            "claim_register_appendix",
             "au_disclosures",
         ]:
             content = merged_sections.get(name, "")
@@ -246,13 +250,19 @@ class ReportAssemblyService:
             # Only include au_disclosures section when content is present
             if name == "au_disclosures" and not content:
                 continue
-            report_sections.append(ReportSection(
-                section_name=name,
-                content=content,
-                approved=True,
-            ))
+            report_sections.append(
+                ReportSection(
+                    section_name=name,
+                    content=content,
+                    approved=True,
+                )
+            )
 
-        status = "published" if review_result.status == PublicationStatus.PASS else "published_with_disclosure"
+        status = (
+            "published"
+            if review_result.status == PublicationStatus.PASS
+            else "published_with_disclosure"
+        )
 
         return FinalReport(
             run_id=run_id,
