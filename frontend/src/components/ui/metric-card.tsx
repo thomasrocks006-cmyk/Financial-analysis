@@ -10,50 +10,43 @@ interface MetricCardProps {
   trend?: "up" | "down" | "neutral";
   subtext?: string;
   className?: string;
+  valueColor?: string;
 }
 
 export function MetricCard({
   label,
   value,
-  icon,
   trend,
   subtext,
   className,
+  valueColor,
 }: MetricCardProps) {
+  const autoColor =
+    trend === "up"
+      ? "text-[var(--success)]"
+      : trend === "down"
+      ? "text-[var(--error)]"
+      : "text-[var(--text-primary)]";
+
   return (
     <div
       className={cn(
-        "rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4",
+        "border border-[var(--border)] bg-[var(--surface)] px-4 py-3",
         className
       )}
     >
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider">
-          {label}
-        </span>
-        {icon && (
-          <span className="text-[var(--text-muted)]">{icon}</span>
-        )}
+      <div className="text-[var(--text-label)] text-[9px] tracking-[.1em] uppercase mb-2">
+        {label}
       </div>
-      <div className="mt-2 flex items-baseline gap-2">
-        <span className="text-2xl font-bold tabular-nums text-[var(--text-primary)]">
-          {value}
-        </span>
-        {trend && (
-          <span
-            className={cn(
-              "text-xs font-medium",
-              trend === "up" && "text-green-400",
-              trend === "down" && "text-red-400",
-              trend === "neutral" && "text-[var(--text-muted)]"
-            )}
-          >
-            {trend === "up" ? "↑" : trend === "down" ? "↓" : "—"}
-          </span>
-        )}
+      <div className={cn("text-xl tabular-nums", valueColor ?? autoColor)}>
+        {value}
+        {trend === "up" && <span className="text-[var(--success)] text-xs ml-1">▲</span>}
+        {trend === "down" && <span className="text-[var(--error)] text-xs ml-1">▼</span>}
       </div>
       {subtext && (
-        <p className="mt-1 text-xs text-[var(--text-muted)]">{subtext}</p>
+        <div className="text-[var(--text-muted)] text-[9px] mt-1 tracking-[.04em]">
+          {subtext}
+        </div>
       )}
     </div>
   );
