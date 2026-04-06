@@ -289,7 +289,6 @@ COMMODITY_UNIVERSE: Final[list[str]] = [
     "WEAT",
     # Broad commodities
     "GSG",
-    "PDBC",
 ]
 
 # ── Alternatives ──────────────────────────────────────────────────────────────

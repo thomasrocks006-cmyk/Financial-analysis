@@ -41,7 +41,7 @@ class TestUniverseSizes:
 
     def test_ai_infra_has_more_than_legacy_15(self):
         legacy = ["NVDA", "AMD", "INTC", "AVGO", "MRVL", "MSFT", "GOOGL", "AMZN", "META",
-                  "PLTR", "AI", "SNOW", "MDB", "VST"]
+                  "PLTR", "AI", "SNOW", "MDB", "VST", "EQIX"]  # original 15-stock preset
         assert len(AI_INFRASTRUCTURE_UNIVERSE) > len(legacy)
 
     def test_healthcare_universe_present(self):

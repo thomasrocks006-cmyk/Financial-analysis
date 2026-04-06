@@ -209,21 +209,21 @@ export default function NewRunPage() {
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               {[
-                { label: "US Equities (Tech, AI, Semis)", count: 20 },
-                { label: "Healthcare & Pharma", count: 10 },
-                { label: "Financials & Fintech", count: 10 },
-                { label: "Consumer Staples & Disc.", count: 10 },
-                { label: "Energy, Materials, Industrials", count: 30 },
-                { label: "Real Estate / REITs", count: 6 },
-                { label: "International Equities", count: 6 },
-                { label: "ETFs (Sector & Benchmark)", count: 16 },
-                { label: "Fixed Income ETFs", count: 10 },
-                { label: "Commodities", count: 6 },
-                { label: "Alternatives (Crypto, Futures)", count: 6 },
+                { label: "Tech, AI & Semiconductors", tags: "AAPL · NVDA · MSFT · ARM · TSM · ANET…" },
+                { label: "Healthcare & Pharma", tags: "LLY · UNH · JNJ · ABBV · MRK…" },
+                { label: "Financials & Fintech", tags: "JPM · BAC · GS · V · MA · BLK…" },
+                { label: "Consumer (Staples & Disc.)", tags: "TSLA · WMT · COST · HD · MCD…" },
+                { label: "Energy, Materials & Industrials", tags: "XOM · CVX · NEE · CAT · HON · BA…" },
+                { label: "Real Estate / REITs", tags: "EQIX · DLR · AMT · PLD · O…" },
+                { label: "International Equities", tags: "SAP · AZN · ASML · TM · BABA…" },
+                { label: "ETFs (Sector & Benchmark)", tags: "SPY · QQQ · IWM · XLK · XLV · SOXX…" },
+                { label: "Fixed Income ETFs", tags: "TLT · IEF · LQD · HYG · TIP · AGG…" },
+                { label: "Commodities", tags: "GLD · SLV · USO · DBA · PDBC…" },
+                { label: "Alternatives", tags: "IBIT · FBTC · DBMF · KMLM · VNQ…" },
               ].map((row) => (
                 <div key={row.label} className="border border-[var(--border)] px-3 py-2">
                   <div className="text-[10px] text-[var(--text-secondary)]">{row.label}</div>
-                  <div className="mt-1 text-[12px] tabular-nums text-[var(--accent)]">{row.count}</div>
+                  <div className="mt-1 text-[9px] text-[var(--text-muted)] font-mono truncate">{row.tags}</div>
                 </div>
               ))}
             </div>
