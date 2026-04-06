@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { BriefcaseBusiness, FolderOpen, Radar, Target } from "lucide-react";
-import { getRunStatus, listRuns, listSavedRuns } from "@/lib/api";
+import { getQuant, getRunStatus, listRuns, listSavedRuns } from "@/lib/api";
 import { usePipelineStore } from "@/lib/store";
 import { formatTimestamp } from "@/lib/utils";
 import { getApiTargetLabel } from "@/lib/runtime-settings";
@@ -35,18 +35,40 @@ export default function PortfolioPage() {
     enabled: !!candidateRunId,
   });
 
+  const { data: quantData } = useQuery({
+    queryKey: ["quant", candidateRunId],
+    queryFn: () => getQuant(candidateRunId as string),
+    enabled: !!candidateRunId,
+  });
+
+  const backendWeights = quantData?.quant?.baseline_weights || {};
+
   const blotterRows = useMemo(
     () =>
-      store.universe.slice(0, 12).map((ticker, index) => ({
+      store.universe.slice(0, 12).map((ticker, index) => {
+        const backendWeight = Number(backendWeights[ticker] ?? 0);
+        const resolvedWeight = backendWeight > 0 ? backendWeight * 100 : Math.max(3.2, 10.5 - index * 0.45);
+
+        return {
         ticker,
         bucket: DESK_BUCKETS[index % DESK_BUCKETS.length],
-        weight: Math.max(3.2, 10.5 - index * 0.45),
+        weight: resolvedWeight,
         conviction: convictionBand(index),
         benchmark: store.benchmarkTicker,
         market: ticker.endsWith(".AX") ? "AU" : store.market.toUpperCase(),
-        state: index < store.maxPositions / 5 ? "ACTIVE" : index < store.maxPositions / 3 ? "WATCH" : "QUEUE",
-      })),
-    [store.benchmarkTicker, store.market, store.maxPositions, store.universe],
+        state:
+          backendWeight >= 0.09
+            ? "ACTIVE"
+            : backendWeight >= 0.05
+            ? "WATCH"
+            : index < store.maxPositions / 5
+            ? "ACTIVE"
+            : index < store.maxPositions / 3
+            ? "WATCH"
+            : "QUEUE",
+        };
+      }),
+    [backendWeights, store.benchmarkTicker, store.market, store.maxPositions, store.universe],
   );
 
   const runningCount = activeRuns?.runs.filter((run) => run.status === "running").length || 0;
@@ -54,6 +76,7 @@ export default function PortfolioPage() {
   const packetQueue = savedRuns?.runs.slice(0, 5) || [];
   const selectedUniverse = selectedRun?.universe || [];
   const overlapCount = selectedUniverse.filter((ticker) => store.universe.includes(ticker)).length;
+  const backendWeightCount = Object.keys(backendWeights).length;
   const selectedCompletionState =
     selectedRun?.status === "completed"
       ? "COMPLETE"
@@ -149,6 +172,7 @@ export default function PortfolioPage() {
                   <div>Status: <span className="text-[var(--text-primary)]">{selectedCompletionState}</span></div>
                   <div>Universe size: <span className="text-[var(--text-primary)]">{selectedUniverse.length}</span></div>
                   <div>Desk overlap: <span className="text-[var(--text-primary)]">{overlapCount} / {selectedUniverse.length || 0}</span></div>
+                  <div>Weight source: <span className="text-[var(--text-primary)]">{backendWeightCount > 0 ? `STAGE 12 BASELINE (${backendWeightCount})` : "DEFAULT DESK MODEL"}</span></div>
                   <div>Started: <span className="text-[var(--text-primary)]">{selectedRun.started_at ? formatTimestamp(selectedRun.started_at) : "Pending"}</span></div>
                 </div>
               ) : (

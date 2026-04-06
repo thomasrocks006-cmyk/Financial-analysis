@@ -106,6 +106,62 @@ async function mockApi(page: Page): Promise<void> {
     },
   };
 
+  const provenancePacket = {
+    run_id: "run_demo_001",
+    provenance: {
+      run_id: "run_demo_001",
+      created_at: "2026-04-06T08:16:00Z",
+      total_stages: 15,
+      stages_with_provenance: 2,
+      completeness_pct: 13,
+      stage_cards: [
+        {
+          stage_num: 0,
+          stage_label: "Bootstrap",
+          run_id: "run_demo_001",
+          timestamp: "2026-04-06T08:00:05Z",
+          agent_name: "orchestrator",
+          model_used: "claude-sonnet-4-6",
+          model_temperature: 0.3,
+          inputs: [{ name: "Universe request", source_type: "request", stage_origin: null, freshness: null, confidence: 1 }],
+          outputs: [{ name: "Validated universe", output_type: "json", description: "Initial stage payload", artifact_path: null }],
+          gate_passed: true,
+          gate_reason: "Universe request accepted",
+          gate_blockers: [],
+          assumptions: ["Assume AU market session open"],
+          duration_ms: 1200,
+          error: null,
+        },
+      ],
+      report_sections: [
+        {
+          section_title: "Executive Summary",
+          section_index: 1,
+          source_stages: [0, 1],
+          source_agents: ["orchestrator", "valuation"],
+          data_sources: [],
+          confidence_level: "high",
+          methodology_tags: ["summary", "multi-factor"],
+        },
+      ],
+    },
+  };
+
+  const stageDetail = {
+    stage_num: 0,
+    stage_label: "Bootstrap",
+    status: "completed",
+    duration_ms: 1200,
+    gate_passed: true,
+    gate_reason: "Universe request accepted",
+    output: {
+      universe: ["NVDA", "AVGO", "TSM"],
+      accepted: true,
+      market: "us",
+    },
+    has_output: true,
+  };
+
   const fulfillJson = async (route: Route, payload: JsonValue) => {
     await route.fulfill({
       status: 200,
@@ -141,6 +197,16 @@ async function mockApi(page: Page): Promise<void> {
 
     if (method === "GET" && path.endsWith("/quant")) {
       await fulfillJson(route, quantPacket);
+      return;
+    }
+
+    if (method === "GET" && path.endsWith("/provenance")) {
+      await fulfillJson(route, provenancePacket);
+      return;
+    }
+
+    if (method === "GET" && /\/stages\/\d+$/.test(path)) {
+      await fulfillJson(route, stageDetail);
       return;
     }
 
@@ -198,6 +264,7 @@ async function mockApi(page: Page): Promise<void> {
 
   await page.addInitScript(() => {
     class MockEventSource {
+      listeners = new Map<string, Array<(event: MessageEvent) => void>>();
       onerror: ((event: Event) => void) | null = null;
       onopen: ((event: Event) => void) | null = null;
       readonly url: string;
@@ -207,13 +274,114 @@ async function mockApi(page: Page): Promise<void> {
         window.setTimeout(() => {
           this.onopen?.(new Event("open"));
         }, 0);
+
+        const events = [
+          {
+            type: "pipeline_started",
+            payload: {
+              run_id: "run_demo_001",
+              event_type: "pipeline_started",
+              timestamp: "2026-04-06T08:00:05Z",
+              stage: null,
+              stage_label: null,
+              agent_name: "orchestrator",
+              duration_ms: null,
+              data: {},
+            },
+          },
+          {
+            type: "stage_started",
+            payload: {
+              run_id: "run_demo_001",
+              event_type: "stage_started",
+              timestamp: "2026-04-06T08:00:06Z",
+              stage: 0,
+              stage_label: "Bootstrap",
+              agent_name: "orchestrator",
+              duration_ms: null,
+              data: {},
+            },
+          },
+          {
+            type: "stage_completed",
+            payload: {
+              run_id: "run_demo_001",
+              event_type: "stage_completed",
+              timestamp: "2026-04-06T08:00:07Z",
+              stage: 0,
+              stage_label: "Bootstrap",
+              agent_name: "orchestrator",
+              duration_ms: 1200,
+              data: {},
+            },
+          },
+          {
+            type: "stage_started",
+            payload: {
+              run_id: "run_demo_001",
+              event_type: "stage_started",
+              timestamp: "2026-04-06T08:00:08Z",
+              stage: 1,
+              stage_label: "Universe Validation",
+              agent_name: "validator",
+              duration_ms: null,
+              data: {},
+            },
+          },
+          {
+            type: "stage_completed",
+            payload: {
+              run_id: "run_demo_001",
+              event_type: "stage_completed",
+              timestamp: "2026-04-06T08:00:10Z",
+              stage: 1,
+              stage_label: "Universe Validation",
+              agent_name: "validator",
+              duration_ms: 2400,
+              data: {},
+            },
+          },
+          {
+            type: "pipeline_completed",
+            payload: {
+              run_id: "run_demo_001",
+              event_type: "pipeline_completed",
+              timestamp: "2026-04-06T08:03:07Z",
+              stage: null,
+              stage_label: null,
+              agent_name: null,
+              duration_ms: 182000,
+              data: {},
+            },
+          },
+        ];
+
+        events.forEach((entry, index) => {
+          window.setTimeout(() => {
+            this.dispatch(entry.type, entry.payload);
+          }, 30 * (index + 1));
+        });
       }
 
-      addEventListener() {
+      dispatch(type: string, payload: Record<string, unknown>) {
+        const event = new MessageEvent(type, { data: JSON.stringify(payload) });
+        const listeners = this.listeners.get(type) || [];
+        listeners.forEach((listener: (event: MessageEvent) => void) => listener(event));
+      }
+
+      addEventListener(type: string, callback: (event: MessageEvent) => void) {
+        const listeners = this.listeners.get(type) || [];
+        listeners.push(callback);
+        this.listeners.set(type, listeners);
         return undefined;
       }
 
-      removeEventListener() {
+      removeEventListener(type: string, callback: (event: MessageEvent) => void) {
+        const listeners = this.listeners.get(type) || [];
+        this.listeners.set(
+          type,
+          listeners.filter((listener: (event: MessageEvent) => void) => listener !== callback),
+        );
         return undefined;
       }
 
@@ -307,4 +475,27 @@ test("quant screen loads analytics for selected run", async ({ page }) => {
   await expect(page.getByText("Market Risk Metrics")).toBeVisible();
   await expect(page.getByText("ETF Overlap & Differentiation")).toBeVisible();
   await expect(page.getByText("72.5 / 100")).toBeVisible();
+});
+
+test("run detail covers report audit provenance and stage detail tabs", async ({ page }) => {
+  await page.goto("/runs/run_demo_001");
+
+  await expect(page.getByText("Completed")).toBeVisible();
+
+  await page.getByRole("button", { name: "Report", exact: true }).click();
+  await expect(page.getByText("Research Report")).toBeVisible();
+  await expect(page.getByText("Demo Report")).toBeVisible();
+
+  await page.getByRole("button", { name: "Audit & Quality", exact: true }).click();
+  await expect(page.getByText("Quality Score")).toBeVisible();
+  await expect(page.locator("li", { hasText: "Macro sensitivity requires CIO review" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Provenance", exact: true }).click();
+  await expect(page.getByText("Provenance Coverage")).toBeVisible();
+  await expect(page.getByText(/Executive Summary/i)).toBeVisible();
+
+  await page.getByRole("button", { name: "Stage Detail", exact: true }).click();
+  await page.getByText("Bootstrap", { exact: true }).first().click();
+  await expect(page.getByText(/Gate reason:/)).toBeVisible();
+  await expect(page.getByText(/Universe request accepted/)).toBeVisible();
 });
