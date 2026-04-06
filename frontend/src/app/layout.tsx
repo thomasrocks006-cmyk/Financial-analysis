@@ -3,6 +3,7 @@ import "./globals.css";
 import { Providers } from "@/components/providers";
 import { Sidebar } from "@/components/layout/sidebar";
 import { TopBar } from "@/components/layout/top-bar";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 
 export const metadata: Metadata = {
   title: "AI Research Platform",
@@ -23,7 +24,9 @@ export default function RootLayout({
             <div className="flex flex-1 flex-col overflow-hidden">
               <TopBar />
               <main className="flex-1 overflow-auto p-6">
-                {children}
+                <ErrorBoundary>
+                  {children}
+                </ErrorBoundary>
               </main>
             </div>
           </div>

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { usePipelineStore } from "@/lib/store";
+import { marked } from "marked";
 import {
   getRunStatus,
   getReport,
@@ -44,21 +45,28 @@ export default function RunDetailPage() {
   const [activeTab, setActiveTab] = useState<"live" | "report" | "audit" | "provenance" | "quant" | "stages">("live");
   const [showStageDetail, setShowStageDetail] = useState<number | null>(null);
 
-  // Connect to SSE if this is the active run
+  // Connect to SSE if this is the active run; reset store on unmount
   useEffect(() => {
+    const { resetRun, setRunStarted, processEvent } = store;
     if (runId && store.activeRunId !== runId) {
-      store.setRunStarted(runId);
+      setRunStarted(runId);
       const cleanup = createEventStream(
         runId,
         (event) => {
-          store.processEvent(event.data as unknown as PipelineEvent);
+          processEvent(event.data as unknown as PipelineEvent);
         },
         (error) => {
           console.error("SSE error:", error);
         }
       );
-      return cleanup;
+      return () => {
+        cleanup();
+        resetRun();
+      };
     }
+    return () => {
+      resetRun();
+    };
   }, [runId]);
 
   // Poll run status
@@ -458,24 +466,13 @@ export default function RunDetailPage() {
   );
 }
 
-// Simple markdown-to-HTML converter (for report display)
+// Proper markdown-to-HTML using marked (handles tables, nested lists, code blocks)
 function markdownToHtml(md: string): string {
-  return md
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/^### (.+)$/gm, "<h3>$1</h3>")
-    .replace(/^## (.+)$/gm, "<h2>$1</h2>")
-    .replace(/^# (.+)$/gm, "<h1>$1</h1>")
-    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    .replace(/`(.+?)`/g, "<code>$1</code>")
-    .replace(/^- (.+)$/gm, "<li>$1</li>")
-    .replace(/(<li>[\s\S]*<\/li>)/, "<ul>$1</ul>")
-    .replace(/^---$/gm, "<hr />")
-    .replace(/\n\n/g, "</p><p>")
-    .replace(/^(.+)$/gm, (match) => {
-      if (match.startsWith("<")) return match;
-      return `<p>${match}</p>`;
-    });
+  try {
+    const result = marked.parse(md, { async: false });
+    return result as string;
+  } catch {
+    // Fallback: return escaped plaintext
+    return `<pre>${md.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre>`;
+  }
 }
