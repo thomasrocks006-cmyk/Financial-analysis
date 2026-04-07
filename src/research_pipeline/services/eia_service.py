@@ -3,7 +3,10 @@ EIAService — US Energy Information Administration public REST API (free with k
 """
 import logging
 import os
+import re
 from typing import Optional
+
+import httpx
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -60,7 +63,7 @@ class EIAService:
             return [PowerPricePoint(period="2024", region=region, sector="commercial", price_cents_kwh=12.5)]
 
         try:
-            import httpx
+
             url = f"{self.BASE_URL}/electricity/retail-sales/data/"
             params = {
                 "api_key": self.api_key,
@@ -100,7 +103,7 @@ class EIAService:
                 hydro_gw=80.0, other_gw=62.0,
             )
         try:
-            import httpx
+
             url = f"{self.BASE_URL}/electricity/operating-generator-capacity/data/"
             params = {
                 "api_key": self.api_key,

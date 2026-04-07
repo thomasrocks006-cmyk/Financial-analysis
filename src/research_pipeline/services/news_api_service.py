@@ -7,6 +7,8 @@ import os
 from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 
+import httpx
+
 from research_pipeline.services.article_extraction_service import ArticleExtractionService, ExtractedArticle
 
 logger = logging.getLogger(__name__)
@@ -83,7 +85,6 @@ class NewsApiService:
         query = " OR ".join(f'"{t}"' for t in query_topics[:3])
 
         try:
-            import httpx
             from_date = (datetime.now(timezone.utc) - timedelta(days=days_back)).strftime("%Y-%m-%d")
             params = {
                 "q": query,

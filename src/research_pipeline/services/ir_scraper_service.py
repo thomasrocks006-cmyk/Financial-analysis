@@ -4,7 +4,11 @@ Robots.txt-respecting. Rate-limited. Feeds Stage 5 and Stage 10.
 """
 import hashlib
 import logging
+import re
 from datetime import datetime, timezone, timedelta
+from typing import Optional
+
+import httpx
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -72,7 +76,6 @@ class IRScraperService:
             return []
 
         try:
-            import httpx
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(
                     feed_url,
@@ -93,7 +96,6 @@ class IRScraperService:
 
     def _parse_rss(self, ticker: str, rss_text: str, days_back: int) -> list[IRNewsItem]:
         """Simple RSS XML parser."""
-        import re
         cutoff = datetime.now(timezone.utc) - timedelta(days=days_back)
         items: list[IRNewsItem] = []
 

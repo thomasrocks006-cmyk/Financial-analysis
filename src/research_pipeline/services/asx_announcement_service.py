@@ -5,6 +5,9 @@ AU ticker parity equivalent to SEC API for US tickers.
 """
 import logging
 from datetime import datetime, timezone, timedelta
+from typing import Optional
+
+import httpx
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -55,7 +58,6 @@ class ASXAnnouncementService:
         """Recent ASX company announcements."""
         clean_ticker = self._normalize_ticker(asx_ticker)
         try:
-            import httpx
             url = self.BASE_URL.format(ticker=clean_ticker)
             params = {"count": 20, "market_sensitive": "false"}
             async with httpx.AsyncClient(timeout=15.0) as client:

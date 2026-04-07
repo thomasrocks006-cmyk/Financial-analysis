@@ -2,6 +2,9 @@
 FERCService — FERC interconnection queue public data.
 """
 import logging
+from typing import Optional
+
+import httpx
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -35,7 +38,6 @@ class FERCService:
     async def get_queue_summary(self, iso: str = "ALL") -> InterconnectionQueueSummary:
         """FERC interconnection queue summary. Returns synthetic defaults on failure."""
         try:
-            import httpx
             async with httpx.AsyncClient(timeout=15.0) as client:
                 resp = await client.get(self.BASE_URL, timeout=15.0)
                 if resp.status_code != 200:
