@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -164,4 +164,75 @@ class MacroContextPacket(BaseModel):
             f"Regime: {self.regime_classification} (confidence: {self.confidence.value}), "
             f"Winners: {', '.join(self.regime_winners[:3]) if self.regime_winners else 'none'}, "
             f"Key risks: {', '.join(self.key_risks_to_regime[:2]) if self.key_risks_to_regime else 'none'}"
+        )
+
+
+# ── DSQ-27: Political risk / regulatory event schemas ────────────────────────
+
+
+class RegulatoryEvent(BaseModel):
+    event_type: Literal[
+        "export_control", "ai_regulation", "grid_policy",
+        "chip_sanctions", "trade_restriction", "data_center_permitting",
+        "antitrust", "tax_policy",
+    ]
+    jurisdiction: str
+    headline: str
+    source: str = ""
+    published_at: str = ""
+    affected_tickers: list[str] = Field(default_factory=list)
+    is_adverse: bool = False
+    severity: Literal["watch", "material", "critical"] = "watch"
+
+    def to_prompt_line(self) -> str:
+        return f"[{self.event_type.upper()}][{self.severity.upper()}][{self.jurisdiction}] {self.headline}"
+
+
+class RegulatoryEventPacket(BaseModel):
+    run_id: str
+    events: list[RegulatoryEvent] = Field(default_factory=list)
+    most_adverse: list[RegulatoryEvent] = Field(default_factory=list)
+    affected_ticker_map: dict[str, list[str]] = Field(default_factory=dict)
+
+    @classmethod
+    def build(
+        cls,
+        run_id: str,
+        events: list[RegulatoryEvent],
+        universe: list[str],
+    ) -> "RegulatoryEventPacket":
+        adverse = sorted(
+            [e for e in events if e.is_adverse],
+            key=lambda e: {"critical": 0, "material": 1, "watch": 2}[e.severity],
+        )[:3]
+        ticker_map: dict[str, list[str]] = {}
+        for evt in events:
+            for t in evt.affected_tickers:
+                if t in universe:
+                    ticker_map.setdefault(t, []).append(evt.headline)
+        return cls(run_id=run_id, events=events, most_adverse=adverse, affected_ticker_map=ticker_map)
+
+
+class MacroPowerGridPacket(BaseModel):
+    run_id: str
+    commercial_electricity_price_cents_kwh: float = 12.5
+    total_generation_capacity_gw: float = 1200.0
+    datacenter_demand_forecast_twh_2030: float = 324.0
+    datacenter_demand_yoy_growth_pct: float = 4.2
+    interconnection_queue_total_gw: float = 2600.0
+    interconnection_load_queue_gw: float = 200.0
+    avg_interconnection_wait_years: float = 5.0
+    top_congested_regions: list[str] = Field(default_factory=list)
+    eia_notes: str = ""
+    data_source: str = "eia_ferc_public"
+
+    def to_prompt_summary(self) -> str:
+        return (
+            f"US grid: commercial power {self.commercial_electricity_price_cents_kwh:.1f}¢/kWh, "
+            f"{self.total_generation_capacity_gw:.0f} GW total capacity. "
+            f"Data center power demand forecast: {self.datacenter_demand_forecast_twh_2030:.0f} TWh by 2030 "
+            f"({self.datacenter_demand_yoy_growth_pct:.1f}% YoY growth). "
+            f"FERC interconnection queue: {self.interconnection_queue_total_gw:.0f} GW pending, "
+            f"{self.interconnection_load_queue_gw:.0f} GW large-load (data center), "
+            f"avg wait {self.avg_interconnection_wait_years:.1f} years."
         )

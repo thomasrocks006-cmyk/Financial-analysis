@@ -21,6 +21,8 @@ class APIKeys:
     benzinga_api_key: str = ""  # Benzinga — Tier 2 finance-native news + ratings
     # GDR-1: Gemini Deep Research (Stage 4.5) — separate from google_api_key
     gemini_api_key: str = ""  # GEMINI_API_KEY — used only by GeminiDeepResearchService
+    # Session 20 / DSQ-9: NewsAPI.org — macro/regulatory news (Stage 8 only)
+    news_api_key: str = ""
 
     @classmethod
     def from_env(cls) -> "APIKeys":
@@ -33,6 +35,7 @@ class APIKeys:
             sec_api_key=os.getenv("SEC_API_KEY", ""),
             benzinga_api_key=os.getenv("BENZINGA_API_KEY", ""),
             gemini_api_key=os.getenv("GEMINI_API_KEY", ""),
+            news_api_key=os.getenv("NEWS_API_KEY", ""),
         )
 
     def validate(self) -> list[str]:

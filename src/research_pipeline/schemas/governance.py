@@ -258,6 +258,9 @@ class SelfAuditPacket(BaseModel):
 
     # Rebalancing snapshot (ACT-S9-3)
     rebalancing_summary: dict = Field(default_factory=dict)  # turnover, trade count, impact
+    # DSQ-14: Synthetic data contamination fields
+    synthetic_data_fields: list[str] = Field(default_factory=list)
+    data_quality_flags: dict[str, str] = Field(default_factory=dict)
 
     # Summary verdict
     publication_quality_score: float = 0.0  # 0-10 derived metric

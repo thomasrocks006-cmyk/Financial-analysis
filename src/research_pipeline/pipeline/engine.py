@@ -72,6 +72,20 @@ from research_pipeline.services.sec_api_service import SECApiService
 # Session 19 / DSQ-3: Benzinga service — Tier 2 finance-native news + analyst ratings
 from research_pipeline.services.benzinga_service import BenzingaService
 
+# Session 20: New data services
+from research_pipeline.services.news_api_service import NewsApiService
+from research_pipeline.services.eia_service import EIAService
+from research_pipeline.services.ferc_service import FERCService
+from research_pipeline.services.asx_announcement_service import ASXAnnouncementService
+from research_pipeline.services.wsts_service import WSTSService
+from research_pipeline.services.hyperscaler_capex_tracker import HyperscalerCapexTracker
+from research_pipeline.services.rate_limit_manager import RateLimitBudgetManager
+from research_pipeline.services.source_ranking_service import SourceRankingService
+from research_pipeline.services.data_freshness_service import DataFreshnessCatalog
+from research_pipeline.services.ir_scraper_service import IRScraperService
+from research_pipeline.services.transcript_parser_service import TranscriptParserService
+from research_pipeline.schemas.macro import MacroPowerGridPacket, RegulatoryEventPacket
+
 # GDR-1: Gemini Deep Research Stage 4.5 — fires between Stage 4 (Data QA) and Stage 5
 from research_pipeline.services.gemini_deep_research import (
     GeminiDeepResearchService,
@@ -265,6 +279,20 @@ class PipelineEngine:
         self.benzinga_svc = BenzingaService(
             api_key=settings.api_keys.benzinga_api_key,
         )
+
+        # Session 20: New data services — all degrade gracefully when keys absent.
+        self.news_api_svc = NewsApiService(api_key=settings.api_keys.news_api_key)
+        self.eia_svc = EIAService()
+        self.ferc_svc = FERCService()
+        self.asx_announcement_svc = ASXAnnouncementService()
+        self.wsts_svc = WSTSService()
+        self.hyperscaler_capex_tracker = HyperscalerCapexTracker(
+            sec_api_service=self.sec_api_svc,
+        )
+        self.rate_limit_manager = RateLimitBudgetManager()
+        self.source_ranking_svc = SourceRankingService()
+        self.ir_scraper_svc = IRScraperService()
+        self.transcript_parser_svc = TranscriptParserService()
 
         # GDR-1: Gemini Deep Research service — Stage 4.5 (non-blocking).
         # Gracefully degrades when GEMINI_API_KEY is absent or google-generativeai
@@ -756,6 +784,34 @@ class PipelineEngine:
             logger.debug("_get_returns: live fetch error — %s", exc)
         return self._generate_synthetic_returns(tickers, n_days=n_days, seed_offset=seed_offset)
 
+    def _get_returns_with_metadata(
+        self,
+        tickers: list[str],
+        n_days: int = 252,
+        seed_offset: int = 0,
+    ) -> tuple[dict[str, list[float]], list[str]]:
+        """Like _get_returns but also returns the list of synthetic tickers.
+
+        Returns (returns_dict, synthetic_ticker_list) where synthetic_ticker_list
+        contains the tickers for which live data was unavailable.
+        """
+        try:
+            live = self.live_return_store.fetch(tickers)
+            if live and len(live) == len(tickers):
+                logger.info("_get_returns_with_metadata: all %d tickers live", len(tickers))
+                return live, []
+            if live:
+                missing = [t for t in tickers if t not in live]
+                synth = self._generate_synthetic_returns(
+                    missing, n_days=n_days, seed_offset=seed_offset
+                )
+                merged = {**synth, **live}
+                return merged, missing
+        except Exception as exc:
+            logger.debug("_get_returns_with_metadata: live fetch error — %s", exc)
+        synth = self._generate_synthetic_returns(tickers, n_days=n_days, seed_offset=seed_offset)
+        return synth, list(tickers)
+
     def _save_stage_output(self, stage: int, data: Any) -> None:
         """Persist stage output to disk and build provenance card."""
         persist_stage_output(
@@ -898,6 +954,21 @@ class PipelineEngine:
                             ticker_data["benzinga_coverage_gaps"] = pkg.coverage_gaps
         except Exception as exc:
             logger.warning("Benzinga stage_2 enrichment failed: %s", exc)
+
+        # Session 20: ASX announcements — AU ticker parity with SEC API
+        try:
+            au_tickers = [t for t in universe if is_asx_ticker(t)]
+            if au_tickers:
+                for ticker_data in results:
+                    if isinstance(ticker_data, dict):
+                        ticker = ticker_data.get("ticker", "")
+                        if ticker in au_tickers:
+                            anns = await self.asx_announcement_svc.get_recent_announcements(ticker)
+                            ticker_data["asx_announcements"] = [
+                                a.model_dump() for a in anns
+                            ]
+        except Exception as exc:
+            logger.warning("ASX announcements stage_2 enrichment failed: %s", exc)
 
         gate = self.gates.gate_2_ingestion(results, universe)
         self._save_stage_output(2, results)
@@ -1492,6 +1563,65 @@ class PipelineEngine:
             ),
             self.political_agent.run(self.run_record.run_id, {"tickers": universe}),
         )
+
+        # Session 20: NewsAPI + EIA/FERC + WSTS enrichment (non-blocking)
+        news_articles_text = ""
+        power_grid_packet: Optional[MacroPowerGridPacket] = None
+        regulatory_packet: Optional[RegulatoryEventPacket] = None
+        wsts_text = ""
+        hyperscaler_text = ""
+        try:
+            # NewsAPI allowlisted macro/policy news
+            news_articles = await self.news_api_svc.get_policy_news(days_back=7, max_articles=15)
+            news_articles_text = self.news_api_svc.format_for_prompt(news_articles)
+
+            # EIA power price + demand + FERC interconnection queue
+            power_prices, gen_capacity, dc_forecast, queue_summary = await asyncio.gather(
+                self.eia_svc.get_power_prices(),
+                self.eia_svc.get_generation_capacity(),
+                self.eia_svc.get_datacenter_power_demand_forecast(),
+                self.ferc_svc.get_queue_summary(),
+            )
+            power_grid_packet = MacroPowerGridPacket(
+                run_id=self.run_record.run_id,
+                commercial_electricity_price_cents_kwh=power_prices[0].price_cents_kwh if power_prices else 12.5,
+                total_generation_capacity_gw=gen_capacity.total_gw,
+                datacenter_demand_forecast_twh_2030=dc_forecast.datacenter_twh,
+                datacenter_demand_yoy_growth_pct=dc_forecast.yoy_growth_pct,
+                interconnection_queue_total_gw=queue_summary.total_pending_gw,
+                interconnection_load_queue_gw=queue_summary.load_pending_gw,
+                avg_interconnection_wait_years=max(
+                    (s.avg_wait_years for s in queue_summary.by_region.values()), default=5.0
+                ),
+                top_congested_regions=list(queue_summary.by_region.keys())[:3],
+                eia_notes=dc_forecast.notes,
+            )
+
+            # WSTS semiconductor shipment data
+            semicon_snapshot, btb = await asyncio.gather(
+                self.wsts_svc.get_latest_shipment_data(),
+                self.wsts_svc.get_equipment_book_to_bill(),
+            )
+            wsts_text = self.wsts_svc.format_for_prompt(semicon_snapshot, btb)
+
+            # Hyperscaler capex tracker
+            capex_data = await self.hyperscaler_capex_tracker.get_latest_capex_snapshot()
+            hyperscaler_text = self.hyperscaler_capex_tracker.format_for_prompt(capex_data)
+
+            # Build regulatory event packet (populated from political agent output when available)
+            regulatory_packet = RegulatoryEventPacket.build(
+                run_id=self.run_record.run_id,
+                events=[],
+                universe=universe,
+            )
+
+            logger.info(
+                "Stage 8 enrichment: %d news articles, grid packet built, WSTS ok",
+                len(news_articles),
+            )
+        except Exception as exc:
+            logger.warning("Stage 8 Session 20 enrichment failed (non-blocking): %s", exc)
+
         self._save_stage_output(
             8,
             {
@@ -1502,6 +1632,11 @@ class PipelineEngine:
                 "economic_indicators": economic_indicators.model_dump()
                 if economic_indicators
                 else {},
+                "news_articles_summary": news_articles_text,
+                "power_grid": power_grid_packet.model_dump() if power_grid_packet else {},
+                "regulatory_events": regulatory_packet.model_dump() if regulatory_packet else {},
+                "wsts_semiconductor": wsts_text,
+                "hyperscaler_capex": hyperscaler_text,
             },
         )
         gate = self.gates.gate_8_macro(
@@ -1521,7 +1656,10 @@ class PipelineEngine:
         scenario_results = self.scenario_engine.run_all_scenarios(universe)
 
         # Factor exposure analysis — ACT-S10-4: pass live returns for OLS regression
-        live_factor_returns = self._get_returns(universe, n_days=252, seed_offset=9)
+        # DSQ-14: use _get_returns_with_metadata to track which tickers are synthetic
+        live_factor_returns, synthetic_tickers = self._get_returns_with_metadata(
+            universe, n_days=252, seed_offset=9
+        )
         # Synthetic market factor proxy (returns on "market" factor, seed=0)
         import numpy as _np
 
@@ -1583,6 +1721,26 @@ class PipelineEngine:
             drawdown=drawdown_result,
         )
         risk_packet.scenario_results = scenario_results
+
+        # DSQ-14: populate synthetic data tracking fields
+        try:
+            all_live = len(synthetic_tickers) == 0
+            all_synth = len(synthetic_tickers) == len(universe)
+            if all_live:
+                risk_packet.returns_data_source = "live"
+            elif all_synth:
+                risk_packet.returns_data_source = "synthetic"
+            else:
+                risk_packet.returns_data_source = "mixed"
+            risk_packet.synthetic_tickers = list(synthetic_tickers)
+            if synthetic_tickers:
+                risk_packet.data_quality_warning = (
+                    f"Synthetic returns used for {len(synthetic_tickers)} ticker(s): "
+                    f"{', '.join(sorted(synthetic_tickers)[:5])}. "
+                    "VaR and drawdown figures may not reflect actual market behaviour."
+                )
+        except Exception as exc:
+            logger.debug("DSQ-14 risk_packet metadata failed: %s", exc)
 
         # Build enhanced risk output — start from the typed packet
         risk_output = risk_packet.model_dump()
