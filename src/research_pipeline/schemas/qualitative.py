@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -628,3 +628,45 @@ class AdverseSignal(BaseModel):
         """Single-line summary for Red Team prompt injection."""
         date_str = self.published_at.strftime("%Y-%m-%d") if self.published_at else "N/A"
         return f"[{self.severity.upper()}] {self.signal_type}: {self.description} ({date_str})"
+
+
+# ── DSQ-25: Transcript parsing schemas ───────────────────────────────────────
+
+
+class GuidanceStatement(BaseModel):
+    category: Literal["eps", "revenue", "capex", "margin", "volume", "timing", "other"] = "other"
+    speaker_role: Literal["ceo", "cfo", "ir", "analyst", "unknown"] = "unknown"
+    raw_text: str
+    metric: Optional[str] = None
+    direction: Optional[Literal["raise", "maintain", "lower", "initiate", "withdraw"]] = None
+    confidence: Literal["explicit", "implied"] = "implied"
+    quarter: str = ""
+
+
+class ManagementToneSignal(BaseModel):
+    topic: str
+    tone: Literal["positive", "neutral", "cautious", "negative"] = "neutral"
+    evidence_quote: str = ""
+
+
+class GuidanceRevisionDelta(BaseModel):
+    ticker: str
+    current_quarter: str
+    prior_quarter: str
+    direction: Literal["raise", "maintain", "lower", "mixed", "unknown"] = "unknown"
+    categories_revised: list[str] = Field(default_factory=list)
+    summary: str = ""
+
+
+class ParsedTranscript(BaseModel):
+    ticker: str
+    quarter: str
+    guidance_statements: list[GuidanceStatement] = Field(default_factory=list)
+    capex_commentary: list[str] = Field(default_factory=list)
+    demand_commentary: list[str] = Field(default_factory=list)
+    supply_constraint_mentions: list[str] = Field(default_factory=list)
+    margin_commentary: list[str] = Field(default_factory=list)
+    tone_signals: list[ManagementToneSignal] = Field(default_factory=list)
+    revision_vs_prior: Optional[str] = None
+    raw_word_count: int = 0
+    parse_confidence: float = 0.0

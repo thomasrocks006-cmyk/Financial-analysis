@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -98,6 +98,10 @@ class RiskPacket(BaseModel):
     drawdown_analysis: Optional[dict[str, Any]] = None  # DrawdownAnalysis.model_dump()
     var_method: str = ""  # "parametric" | "historical"
     confidence_level: Optional[float] = None  # e.g. 0.95
+    # DSQ-14: Synthetic data contamination tracking
+    returns_data_source: Literal["live", "synthetic", "mixed"] = "synthetic"
+    synthetic_tickers: list[str] = Field(default_factory=list)
+    data_quality_warning: str = ""
 
     # Convenience read-only properties
     @property
