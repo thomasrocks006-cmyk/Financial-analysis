@@ -165,7 +165,7 @@ class TestSourceRankingService:
         svc = SourceRankingService()
         h = svc.hash_url("https://reuters.com/article")
         assert len(h) == 16
-        # Normalisation: same URL different case
+        # Normalization: same URL different case
         assert svc.hash_url("https://Reuters.com/article") == h
 
     def test_rank_and_deduplicate(self):

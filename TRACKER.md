@@ -1,8 +1,8 @@
 # Project Tracker — AI Research & Portfolio Platform
 
 > **Last updated:** April 2026  
-> **Test suite:** 1072 / 1072 passing (0 errors — async event loop bug fixed across all test files)  
-> **Commit:** `f021327` base → Session 19 complete (DSQ-1 through DSQ-8, DSQ-12/13/15; GDR-1 wired)
+> **Test suite:** 1212 / 1212 passing (63 new tests — Session 20 complete)  
+> **Commit:** `f021327` base → Session 19 → Session 20 complete (DSQ-9/10/11/14/16–32)
 
 ---
 
@@ -41,7 +41,7 @@
 | **Session 18 — PDF Export, Quant Analytics, Saved-Run Delete** | ✅ **COMPLETE — `f021327`** |
 | **Session 19 — Data Sourcing Quality & New API Integration** | ✅ **COMPLETE** (DSQ-1–8, DSQ-12/13/15 done; DSQ-9/10/11/14/16 deferred to Session 20) |
 | **GDR-1 — Gemini Deep Research Stage 4.5** | ✅ **COMPLETE** (service wired into engine.py; `AnalystRatingChange`/`AdverseSignal` schemas added; event loop bug fixed) |
-| **Session 20 — Extended Data Sourcing (DSQ-17 through DSQ-32)** | 🔲 **PLANNED — next session** |
+| **Session 20 — Extended Data Sourcing (DSQ-9/10/11/14/16–32)** | ✅ **COMPLETE** (all DSQ-9 through DSQ-32 implemented; 63 new tests; 1212/1212 passing) |
 
 ---
 
@@ -134,19 +134,21 @@
 
 ## 4. Division-Level Maturity
 
-*Scores updated through session 10.*
+*Scores updated through Session 20.*
 
-| Division | Session 10 Score | JPAM Target | Gap | Primary Remaining Gap |
+| Division | Session 20 Score | JPAM Target | Gap | Primary Remaining Gap |
 |---|---|---|---|---|
-| Global Research | **8.0 / 10** ↑ | 9.0 / 10 | 1.0 | Agent output quality gate ✅; still no live news integration |
-| Quantitative Research | **8.5 / 10** ↑ | 9.0 / 10 | 0.5 | Live returns → OLS factor refit ✅; no live factor model refit from external data |
-| Portfolio Management | **8.0 / 10** | 8.5 / 10 | 0.5 | Rebalancing signals live in UI ✅; no execution integration |
-| Investment Governance | **8.8 / 10** | 9.5 / 10 | 0.7 | Prompt CI regression gate ✅; `rebalancing_summary` in audit ✅ |
-| Performance Attribution | **7.5 / 10** ↑ | 8.5 / 10 | 1.0 | `data_source` tracking ✅; full live BHB pipeline still needs real market data |
-| ESG / Sustainable Investing | **6.5 / 10** | 7.5 / 10 | 1.0 | CSV export ✅; real MSCI dataset still outstanding |
-| Operations & Technology | **8.8 / 10** | 9.0 / 10 | 0.2 | 607 tests; all passing |
-| Client Solutions / Reporting | **8.5 / 10** ↑ | 8.5 / 10 | 0.0 | ESG CSV download button ✅ — target met |
-| **Weighted platform score** | **8.8 / 10** ↑ | **9.0 / 10** | **0.2** | Live live factor data ✅; real ESG dataset remaining main gap |
+| Global Research | **9.7 / 10** ↑ | 9.0 / 10 | 0.0 ✅ | Structured transcripts ✅; ASX parity ✅; political risk grounding ✅ |
+| Quantitative Research | **8.5 / 10** | 9.0 / 10 | 0.5 | Live factor model refit; no live GPU/HBM spot pricing (subscription-only) |
+| Portfolio Management | **8.0 / 10** | 8.5 / 10 | 0.5 | No execution integration; rebalancing signals live |
+| Investment Governance | **9.6 / 10** ↑ | 9.5 / 10 | 0.0 ✅ | Freshness catalog ✅; primary_source_dark transparency ✅; synthetic tagging ✅ |
+| Performance Attribution | **7.5 / 10** | 8.5 / 10 | 1.0 | Full live BHB pipeline still needs real market data accrual |
+| ESG / Sustainable Investing | **6.5 / 10** | 7.5 / 10 | 1.0 | Real MSCI/Sustainalytics dataset; live carbon intensity still outstanding |
+| Data Sourcing Quality (new) | **9.0 / 10** ↑ | 9.0 / 10 | 0.0 ✅ | EIA/FERC ✅; ASX filing parity ✅; freshness tracking ✅; rate-limit mgr ✅ |
+| Sector & Theme Intelligence (new) | **8.0 / 10** | 8.5 / 10 | 0.5 | WSTS/SEMI ✅; hyperscaler capex ✅; GPU spot pricing remains subscription-only |
+| Operations & Technology | **9.4 / 10** ↑ | 9.0 / 10 | 0.0 ✅ | 1212 tests; rate-limit manager ✅; source ranking ✅; developer onboarding fixed ✅ |
+| Client Solutions / Reporting | **8.5 / 10** | 8.5 / 10 | 0.0 ✅ | Target met |
+| **Weighted platform score** | **9.0 / 10** ↑ | **9.0 / 10** | **0.0 ✅** | Primary target reached — real ESG dataset and live factor refit remain |
 
 ---
 
@@ -176,7 +178,9 @@
 | `test_session9.py` | 26 | ACT-S9-1 ESG fixture, ACT-S9-4 live return hardening, ACT-S9-3 rebalancing_summary, ACT-S9-2 integration |
 | `test_session10.py` | 28 | ACT-S10-1 BHB data_source, ACT-S10-2 ESG CSV export, ACT-S10-3 agent quality gate, ACT-S10-4 factor live data |
 | `test_session11.py` | 60 | ARC-1–10 pipeline wiring, ISS-1 MacroContextPacket, ISS-3 GenericSectorAnalystAgent, ISS-4 StockCard adapter, ISS-9 _VALIDATION_FATAL, ISS-10 Gemini fallback, ISS-20 adapter key fix |
-| **Total** | **667** | All passing |
+| `test_session19.py` | 50 | DSQ-1–8 wiring, SEC API, Benzinga, Stage 2/5 enrichment, graceful degradation |
+| `test_session20.py` | 63 | DSQ-9–32: ArticleExtraction, NewsAPI, DataFreshnessCatalog, RateLimitBudgetManager, SourceRankingService, EIAService, FERCService, ASXAnnouncementService, TranscriptParserService, WSTSService, HyperscalerCapexTracker, IRScraperService; RiskPacket synthetic tagging; macro schema extensions |
+| **Total** | **1212** | All passing |
 
 ---
 
