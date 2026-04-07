@@ -73,6 +73,11 @@ class TestGate1Universe:
         assert result.passed is True
         assert result.stage == 1
 
+    def test_single_ticker_custom_style_universe(self):
+        result = PipelineGates.gate_1_universe(universe=["AAPL"])
+        assert result.passed is True
+        assert result.stage == 1
+
     def test_empty_universe(self):
         result = PipelineGates.gate_1_universe(universe=[])
         assert result.passed is False

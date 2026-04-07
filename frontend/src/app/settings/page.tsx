@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 
 export default function SettingsPage() {
   const store = usePipelineStore();
-  const defaultApiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  const defaultApiUrl = process.env.NEXT_PUBLIC_API_URL || "";
   const [apiUrl, setApiUrl] = useState("");
   const [savedBanner, setSavedBanner] = useState<string | null>(null);
   const [connectionState, setConnectionState] = useState<"checking" | "online" | "offline">("checking");
@@ -76,10 +76,14 @@ export default function SettingsPage() {
               type="text"
               value={apiUrl}
               onChange={(e) => setApiUrl(e.target.value)}
+              placeholder="Leave blank to use the app's built-in API proxy"
               className="w-full border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-sm text-[var(--text-secondary)] font-mono"
             />
             <p className="mt-1 text-xs text-[var(--text-muted)]">
               Current target: {connectionLabel}
+            </p>
+            <p className="mt-1 text-xs text-[var(--text-muted)]">
+              On remote/dev-container previews, a saved localhost URL can point at your own machine instead of this workspace. Leaving this blank is the safest default.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -118,7 +122,7 @@ export default function SettingsPage() {
           <div className="grid gap-3 md:grid-cols-3 text-[11px] text-[var(--text-secondary)]">
             <div className="border border-[var(--border)] p-3">
               <div className="text-[10px] tracking-[.08em] uppercase text-[var(--text-label)]">Recommended local target</div>
-              <div className="mt-2 font-mono text-[var(--text-primary)]">http://localhost:8000</div>
+              <div className="mt-2 font-mono text-[var(--text-primary)]">Blank / built-in proxy</div>
             </div>
             <div className="border border-[var(--border)] p-3">
               <div className="text-[10px] tracking-[.08em] uppercase text-[var(--text-label)]">Primary failure mode</div>

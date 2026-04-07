@@ -64,6 +64,17 @@ export interface RunSummary {
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
+  current_stage?: number | null;
+  completed_stage_count?: number;
+  stages_completed?: number[];
+  failed_stage_count?: number;
+  stages_failed?: number[];
+  progress_pct?: number;
+  last_event_type?: string | null;
+  last_event_at?: string | null;
+  last_event_stage?: number | null;
+  last_event_label?: string | null;
+  blocker_summary?: string | null;
   error?: string | null;
   has_result?: boolean;
 }

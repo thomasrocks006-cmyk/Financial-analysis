@@ -54,6 +54,14 @@ class ManagedRun:
     completed_at: Optional[datetime] = None
     result: Optional[dict[str, Any]] = None
     error: Optional[str] = None
+    current_stage: Optional[int] = None
+    stages_completed: list[int] = field(default_factory=list)
+    stages_failed: list[int] = field(default_factory=list)
+    last_event_type: Optional[str] = None
+    last_event_at: Optional[datetime] = None
+    last_event_stage: Optional[int] = None
+    last_event_label: Optional[str] = None
+    blocker_summary: Optional[str] = None
 
     # SSE event queue — None until the run starts
     event_queue: asyncio.Queue = field(default_factory=lambda: asyncio.Queue(maxsize=512))
@@ -62,7 +70,76 @@ class ManagedRun:
     # asyncio task handle (cancel() supported)
     task: Optional[asyncio.Task] = None
 
+    @staticmethod
+    def _coerce_stage_num(value: Any) -> Optional[int]:
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str) and value.isdigit():
+            return int(value)
+        return None
+
+    @staticmethod
+    def _is_generic_blocker(summary: Optional[str]) -> bool:
+        if not summary:
+            return True
+        normalized = summary.strip().lower()
+        if normalized in {"skipped", "not executed", "pipeline blocked"}:
+            return True
+        return normalized.startswith("stage ") or normalized.startswith("blocked at stage ")
+
+    def _gate_blocker_detail(
+        self, gate_results: dict[Any, Any], blocked_at: Optional[int]
+    ) -> Optional[str]:
+        if blocked_at is None:
+            return None
+        gate = gate_results.get(blocked_at, gate_results.get(str(blocked_at)))
+        if not isinstance(gate, dict):
+            return None
+        blockers = gate.get("blockers") or []
+        if isinstance(blockers, list) and blockers:
+            return str(blockers[0])
+        reason = gate.get("reason")
+        return str(reason) if reason else None
+
+    def _derived_stages_completed(self) -> list[int]:
+        completed = set(self.stages_completed)
+        if isinstance(self.result, dict):
+            result_completed = self.result.get("stages_completed", [])
+            if isinstance(result_completed, list):
+                completed.update(int(stage) for stage in result_completed if isinstance(stage, int))
+            gate_results = self.result.get("gate_results", {})
+            if isinstance(gate_results, dict):
+                for stage, gate in gate_results.items():
+                    stage_num = int(stage) if isinstance(stage, str) and stage.isdigit() else stage
+                    if isinstance(stage_num, int) and isinstance(gate, dict) and gate.get("passed"):
+                        completed.add(stage_num)
+        return sorted(completed)
+
+    def _derived_stages_failed(self) -> list[int]:
+        if self.status == ApiRunStatus.FAILED and isinstance(self.result, dict):
+            blocked_at = self._coerce_stage_num(self.result.get("blocked_at"))
+            if blocked_at is not None:
+                return [blocked_at]
+
+        failed = set(self.stages_failed)
+        if isinstance(self.result, dict):
+            gate_results = self.result.get("gate_results", {})
+            if isinstance(gate_results, dict):
+                for stage, gate in gate_results.items():
+                    stage_num = self._coerce_stage_num(stage)
+                    if isinstance(stage_num, int) and isinstance(gate, dict) and gate.get("passed") is False:
+                        failed.add(stage_num)
+            blocked_at = self._coerce_stage_num(self.result.get("blocked_at"))
+            if blocked_at is not None:
+                failed.add(blocked_at)
+        return sorted(failed)
+
     def to_summary(self) -> dict[str, Any]:
+        completed_stages = self._derived_stages_completed()
+        failed_stages = self._derived_stages_failed()
+        current_stage = self.current_stage
+        if current_stage is None and completed_stages:
+            current_stage = max(completed_stages)
         return {
             "run_id": self.run_id,
             "status": self.status,
@@ -71,7 +148,91 @@ class ManagedRun:
             "created_at": self.created_at.isoformat(),
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "current_stage": current_stage,
+            "completed_stage_count": len(completed_stages),
+            "stages_completed": completed_stages,
+            "failed_stage_count": len(failed_stages),
+            "stages_failed": failed_stages,
+            "progress_pct": round(len(completed_stages) / 15 * 100, 1),
+            "last_event_type": self.last_event_type,
+            "last_event_at": self.last_event_at.isoformat() if self.last_event_at else None,
+            "last_event_stage": self.last_event_stage,
+            "last_event_label": self.last_event_label,
+            "blocker_summary": self.blocker_summary,
         }
+
+    def update_from_event(self, event: PipelineEvent) -> None:
+        self.last_event_type = event.event_type
+        self.last_event_at = event.timestamp
+        self.last_event_stage = event.stage
+        self.last_event_label = event.stage_label or event.agent_name or event.event_type.replace("_", " ")
+
+        if event.event_type == "stage_started" and event.stage is not None:
+            self.current_stage = event.stage
+        elif event.event_type == "stage_completed" and event.stage is not None:
+            self.current_stage = event.stage
+            if event.stage not in self.stages_completed:
+                self.stages_completed.append(event.stage)
+                self.stages_completed.sort()
+        elif event.event_type == "stage_failed" and event.stage is not None:
+            self.current_stage = event.stage
+            if event.stage not in self.stages_failed:
+                self.stages_failed.append(event.stage)
+                self.stages_failed.sort()
+            self.blocker_summary = str(event.data.get("reason") or f"Stage {event.stage} failed")
+        elif event.event_type == "pipeline_failed":
+            blocked_at = self._coerce_stage_num(event.data.get("blocked_at"))
+            prior_failed_stages = set(self.stages_failed)
+            if blocked_at is not None:
+                self.current_stage = blocked_at
+                self.stages_failed = [blocked_at]
+                self.last_event_stage = blocked_at
+            reason = event.data.get("reason")
+            if reason:
+                self.blocker_summary = str(reason)
+            elif blocked_at is not None and (
+                blocked_at not in prior_failed_stages or self._is_generic_blocker(self.blocker_summary)
+            ):
+                self.blocker_summary = f"Blocked at stage {blocked_at}"
+            self.last_event_label = "Pipeline blocked"
+        elif event.event_type == "pipeline_completed":
+            self.current_stage = 14
+
+    def hydrate_from_result(self) -> None:
+        if not isinstance(self.result, dict):
+            return
+
+        result_completed = self.result.get("stages_completed", [])
+        if isinstance(result_completed, list):
+            self.stages_completed = sorted(
+                {int(stage) for stage in result_completed if isinstance(stage, int)}
+            )
+
+        blocked_at = self._coerce_stage_num(self.result.get("blocked_at"))
+        if blocked_at is not None:
+            self.stages_failed = [blocked_at]
+            self.current_stage = blocked_at
+
+        if self.stages_completed:
+            self.current_stage = blocked_at if blocked_at is not None else max(self.stages_completed)
+
+        gate_results = self.result.get("gate_results", {})
+        if isinstance(gate_results, dict):
+            blocker_detail = self._gate_blocker_detail(gate_results, blocked_at)
+            if blocker_detail:
+                self.blocker_summary = blocker_detail
+            elif self.status == ApiRunStatus.FAILED and blocked_at is not None and self._is_generic_blocker(self.blocker_summary):
+                self.blocker_summary = f"Blocked at stage {blocked_at}"
+
+        if self.status == ApiRunStatus.FAILED and blocked_at is not None and not self.blocker_summary:
+            self.blocker_summary = f"Blocked at stage {blocked_at}"
+
+        if self.status == ApiRunStatus.COMPLETED:
+            self.last_event_type = self.last_event_type or "pipeline_completed"
+            self.last_event_label = self.last_event_label or "Pipeline completed"
+        elif self.status == ApiRunStatus.FAILED:
+            self.last_event_type = self.last_event_type or "pipeline_failed"
+            self.last_event_label = self.last_event_label or "Pipeline blocked"
 
 
 class RunManager:
@@ -378,6 +539,7 @@ class RunManager:
         """Return an async callback that enqueues events for ``managed``."""
 
         async def _cb(event: PipelineEvent) -> None:
+            managed.update_from_event(event)
             try:
                 managed.event_queue.put_nowait(event)
             except asyncio.QueueFull:
@@ -400,15 +562,18 @@ class RunManager:
             managed.result = result
             if result.get("status") == "completed":
                 managed.status = ApiRunStatus.COMPLETED
+                managed.current_stage = 14
             else:
                 managed.status = ApiRunStatus.FAILED
                 managed.error = f"blocked_at stage {result.get('blocked_at')}"
+            managed.hydrate_from_result()
         except asyncio.CancelledError:
             managed.status = ApiRunStatus.CANCELLED
             logger.info("Run %s was cancelled", managed.run_id)
         except Exception as exc:
             managed.status = ApiRunStatus.FAILED
             managed.error = str(exc)
+            managed.blocker_summary = str(exc)
             logger.exception("Run %s failed with exception", managed.run_id)
         finally:
             managed.completed_at = datetime.now(timezone.utc)

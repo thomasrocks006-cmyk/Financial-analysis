@@ -37,6 +37,35 @@ from api.services.run_manager import RunManager
 logger = logging.getLogger(__name__)
 
 
+def _load_env_file() -> None:
+    """Populate process environment from project-root .env if present.
+
+    Existing environment variables win over .env values.
+    """
+    env_file = Path(__file__).resolve().parents[2] / ".env"
+    if not env_file.exists():
+        return
+
+    for raw_line in env_file.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        if key.startswith("export "):
+            key = key[len("export ") :].strip()
+        if not key or key in os.environ:
+            continue
+
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+            value = value[1:-1]
+        os.environ[key] = value
+
+
+_load_env_file()
+
+
 # ── Lifespan (startup / shutdown) ────────────────────────────────────────────
 
 

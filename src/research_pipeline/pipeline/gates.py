@@ -60,7 +60,7 @@ class PipelineGates:
     @staticmethod
     def gate_1_universe(
         universe: list[str],
-        min_tickers: int = 3,
+        min_tickers: int = 1,
     ) -> GateResult:
         blockers = []
         if len(universe) < min_tickers:

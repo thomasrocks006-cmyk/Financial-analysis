@@ -7,12 +7,17 @@ import { usePipelineStore } from "@/lib/store";
 import type { UniverseMode } from "@/lib/store";
 import {
   startRun,
+  getMarketQuotes,
   getUniversePresets,
   getUniverseTickers,
   type UniversePreset,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { Layers, Globe, Cpu, DollarSign, Heart, Zap, BarChart2, Leaf, Building2, Package, Shuffle, ChevronRight } from "lucide-react";
+import { Layers, Globe, Cpu, DollarSign, Heart, Zap, BarChart2, Leaf, Building2, Package, Shuffle, ChevronRight, AlertTriangle, CheckCircle2, LoaderCircle } from "lucide-react";
+
+const COMMON_TICKER_FIXES: Record<string, string> = {
+  APPL: "AAPL",
+};
 
 const UNIVERSE_ICONS: Record<string, React.ReactNode> = {
   broad_market:    <Globe className="h-4 w-4" />,
@@ -77,12 +82,22 @@ export default function NewRunPage() {
 
   const presets: UniversePreset[] = presetsData?.universes ?? [];
 
+  function parseCustomTickers(input: string): string[] {
+    const seen = new Set<string>();
+    return input
+      .split(/[\s,]+/)
+      .map((t) => t.trim().toUpperCase())
+      .filter(Boolean)
+      .filter((ticker) => {
+        if (seen.has(ticker)) return false;
+        seen.add(ticker);
+        return true;
+      });
+  }
+
   function getEffectiveUniverse(): string[] {
     if (universeMode === "custom") {
-      return customTickers
-        .split(/[\s,]+/)
-        .map((t) => t.trim().toUpperCase())
-        .filter(Boolean);
+      return parseCustomTickers(customTickers);
     }
     if (universeMode === "preset" && presetTickersData?.tickers) {
       return presetTickersData.tickers;
@@ -91,12 +106,67 @@ export default function NewRunPage() {
     return store.universe;
   }
 
+  function getTickerSuggestion(ticker: string): string | null {
+    return COMMON_TICKER_FIXES[ticker] ?? null;
+  }
+
+  function applyTickerSuggestion(fromTicker: string, toTicker: string): void {
+    const nextTickers = parseCustomTickers(customTickers).map((ticker) =>
+      ticker === fromTicker ? toTicker : ticker,
+    );
+    setCustomTickers(nextTickers.join(", "));
+    setLaunchError(null);
+  }
+
+  function formatTickerValidationMessage(ticker: string): string {
+    const suggestion = getTickerSuggestion(ticker);
+    return suggestion
+      ? `${ticker} did not resolve to a live quote. Did you mean ${suggestion}?`
+      : `${ticker} did not resolve to a live quote. Double-check the symbol before launching.`;
+  }
+
+  const customUniverse = universeMode === "custom" ? getEffectiveUniverse() : [];
+
+  const { data: customQuoteCheck, isFetching: isCheckingCustomTickers } = useQuery({
+    queryKey: ["custom-ticker-check", customUniverse],
+    queryFn: () => getMarketQuotes(customUniverse),
+    enabled: universeMode === "custom" && customUniverse.length > 0 && customUniverse.length <= 25,
+    staleTime: 30_000,
+    retry: 1,
+  });
+
+  const flaggedCustomTickers =
+    universeMode === "custom" && customQuoteCheck?.source === "fmp"
+      ? customQuoteCheck.quotes.filter((quote) => quote.error)
+      : [];
+
   async function handleLaunch() {
     setLaunchError(null);
     const tickers = getEffectiveUniverse();
     if (!tickers.length) {
       setLaunchError("Please add at least one ticker.");
       return;
+    }
+
+    if (universeMode === "custom") {
+      try {
+        const quoteCheck = await getMarketQuotes(tickers.slice(0, 25));
+        const unresolved = quoteCheck.source === "fmp"
+          ? quoteCheck.quotes.filter((quote) => quote.error).map((quote) => quote.sym)
+          : [];
+        if (unresolved.length) {
+          const first = unresolved[0];
+          const extraCount = unresolved.length - 1;
+          setLaunchError(
+            extraCount > 0
+              ? `${formatTickerValidationMessage(first)} ${extraCount} more ticker(s) also need review.`
+              : formatTickerValidationMessage(first),
+          );
+          return;
+        }
+      } catch {
+        // Do not block launch if the preflight quote check is temporarily unavailable.
+      }
     }
 
     // Persist mode & preset to store
@@ -327,6 +397,65 @@ export default function NewRunPage() {
             <div className="text-[10px] text-[var(--text-muted)]">
               {getEffectiveUniverse().length} ticker(s) parsed
             </div>
+            {customUniverse.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {customUniverse.map((ticker) => (
+                  <span
+                    key={ticker}
+                    className="border border-[var(--border)] px-2 py-1 text-[10px] font-mono text-[var(--text-secondary)]"
+                  >
+                    {ticker}
+                  </span>
+                ))}
+              </div>
+            )}
+            {customUniverse.length > 0 && customUniverse.length <= 25 && (
+              <div className="border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-[10px] text-[var(--text-secondary)]">
+                <div className="flex items-center gap-2">
+                  {isCheckingCustomTickers ? (
+                    <>
+                      <LoaderCircle className="h-3.5 w-3.5 animate-spin text-[var(--accent)]" />
+                      <span>Checking ticker symbols against live market quotes…</span>
+                    </>
+                  ) : flaggedCustomTickers.length ? (
+                    <>
+                      <AlertTriangle className="h-3.5 w-3.5 text-[var(--warning)]" />
+                      <span>
+                        {flaggedCustomTickers.length} ticker(s) need review before launch.
+                      </span>
+                    </>
+                  ) : customQuoteCheck?.source === "fmp" ? (
+                    <>
+                      <CheckCircle2 className="h-3.5 w-3.5 text-[var(--success)]" />
+                      <span>All parsed tickers resolved to live quotes.</span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertTriangle className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+                      <span>Live ticker validation is unavailable right now, but launch is still allowed.</span>
+                    </>
+                  )}
+                </div>
+                {flaggedCustomTickers.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {flaggedCustomTickers.map((quote) => (
+                      <div key={quote.sym} className="flex flex-wrap items-center gap-2 text-[var(--warning)]">
+                        <span>{formatTickerValidationMessage(quote.sym)}</span>
+                        {getTickerSuggestion(quote.sym) && (
+                          <button
+                            type="button"
+                            onClick={() => applyTickerSuggestion(quote.sym, getTickerSuggestion(quote.sym) || quote.sym)}
+                            className="border border-[var(--warning)] px-2 py-0.5 text-[9px] tracking-[.06em] uppercase hover:bg-[var(--warning)] hover:text-black"
+                          >
+                            Replace with {getTickerSuggestion(quote.sym)}
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

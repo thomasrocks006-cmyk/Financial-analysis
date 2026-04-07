@@ -203,6 +203,59 @@ class TestRunManagerMethods:
         assert len(arts) == 2
         assert arts[0]["filename"] == "stage_00.json"
 
+    def test_list_runs_summary_includes_progress_metadata(self):
+        """Run summaries include stage progress, event, and blocker metadata."""
+        manager = self._make_manager(result={"status": "failed", "blocked_at": 5}, status="failed")
+        run = manager._runs["test-run-001"]
+        run.current_stage = 5
+        run.stages_completed = [0, 1, 2]
+        run.last_event_type = "pipeline_failed"
+        run.last_event_label = "pipeline failed"
+        run.blocker_summary = "Claim ledger is empty"
+
+        summary = manager.list_runs()[0]
+        assert summary["current_stage"] == 5
+        assert summary["completed_stage_count"] == 3
+        assert summary["stages_failed"] == [5]
+        assert summary["last_event_type"] == "pipeline_failed"
+        assert summary["blocker_summary"] == "Claim ledger is empty"
+
+    def test_failed_run_summary_prefers_blocked_stage_only(self):
+        """Failed summaries do not report skipped downstream stages as failures."""
+        result = {
+            "status": "failed",
+            "blocked_at": 0,
+            "gate_results": {
+                0: {"passed": False, "reason": "Bootstrap failed", "blockers": ["Missing required API keys"]},
+                14: {"passed": False, "reason": "Skipped", "blockers": ["Not executed"]},
+            },
+        }
+        manager = self._make_manager(result=result, status="failed")
+        run = manager._runs["test-run-001"]
+        run.hydrate_from_result()
+
+        summary = manager.list_runs()[0]
+        assert summary["stages_failed"] == [0]
+        assert summary["failed_stage_count"] == 1
+        assert summary["blocker_summary"] == "Missing required API keys"
+
+    def test_pipeline_failed_event_overrides_downstream_stage_noise(self):
+        """Pipeline failure events reset stale downstream stage-failed summaries."""
+        from research_pipeline.schemas.events import PipelineEvent
+
+        manager = self._make_manager(result={"status": "failed", "blocked_at": 0}, status="failed")
+        run = manager._runs["test-run-001"]
+
+        run.update_from_event(PipelineEvent.stage_failed("test-run-001", 14))
+        run.update_from_event(PipelineEvent.pipeline_failed("test-run-001", blocked_at=0))
+
+        summary = manager.list_runs()[0]
+        assert summary["current_stage"] == 0
+        assert summary["stages_failed"] == [0]
+        assert summary["last_event_stage"] == 0
+        assert summary["last_event_label"] == "Pipeline blocked"
+        assert summary["blocker_summary"] == "Blocked at stage 0"
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Group 3: FastAPI App Integration
