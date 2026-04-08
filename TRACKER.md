@@ -1,12 +1,24 @@
 # Project Tracker — AI Research & Portfolio Platform
 
-> **Last updated:** April 2026  
+> **Last updated:** April 8, 2026  
 > **Test suite:** 1072 / 1072 passing (0 errors — async event loop bug fixed across all test files)  
 > **Commit:** `f021327` base → Session 19 complete (DSQ-1 through DSQ-8, DSQ-12/13/15; GDR-1 wired)
 
 ---
 
 ## Status Summary
+
+### April 8, 2026 operator hardening update
+
+- ✅ Verified a full diversified publish-path run end to end using `gpt-4o`
+- ✅ Added provider-exhaustion fallback handling for Anthropic credit/billing exhaustion
+- ✅ Fixed completed-run API summary noise that incorrectly showed stale Stage 14 failure state
+- ✅ Added backend diagnostics endpoint and documented E2E testing workflow in [E2E_TESTING_RUNBOOK.md](E2E_TESTING_RUNBOOK.md)
+- ✅ Hardened Next.js live-follow UX with:
+	- SSE + polling snapshot resilience
+	- clearer stage-by-stage operator guidance
+	- better blocker and connection-state messaging
+	- light browser haptic feedback on stage transitions/failures
 
 | Area | Status |
 |---|---|

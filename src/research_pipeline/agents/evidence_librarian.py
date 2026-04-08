@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from research_pipeline.agents.base_agent import BaseAgent
@@ -77,12 +78,23 @@ Return a JSON array of claim ledger entries."""
 
         parsed = super().parse_output(raw_response)
 
+        if isinstance(parsed, dict) and not parsed.get("claims"):
+            if {"claim_id", "ticker", "claim_text"}.issubset(parsed.keys()):
+                salvaged = self._salvage_claims_from_array_text(raw_response)
+                parsed = salvaged or {"claims": [parsed]}
+
         # Agent may return a list or {"claims": [...], "sources": [...]}
         if isinstance(parsed, list):
             claims_list = parsed
             parsed = {"claims": claims_list}
         else:
             claims_list = parsed.get("claims", [])
+
+        if not claims_list:
+            salvaged = self._salvage_claims_from_array_text(raw_response)
+            if salvaged:
+                parsed = salvaged
+                claims_list = parsed.get("claims", [])
 
         violations: list[str] = []
         for claim in claims_list:
@@ -106,3 +118,35 @@ Return a JSON array of claim ledger entries."""
             )
 
         return parsed
+
+    @staticmethod
+    def _salvage_claims_from_array_text(raw_response: str) -> dict[str, Any] | None:
+        """Recover complete claim objects from a truncated top-level JSON array."""
+
+        cleaned = raw_response.strip()
+        fence_start = cleaned.find("```json")
+        if fence_start != -1:
+            cleaned = cleaned[fence_start + len("```json") :].strip()
+
+        start_idx = cleaned.find("[")
+        if start_idx == -1:
+            return None
+
+        decoder = json.JSONDecoder()
+        idx = start_idx + 1
+        claims: list[dict[str, Any]] = []
+
+        while idx < len(cleaned):
+            while idx < len(cleaned) and cleaned[idx] in " \r\n\t,":
+                idx += 1
+            if idx >= len(cleaned) or cleaned[idx] in "]`":
+                break
+            try:
+                obj, end = decoder.raw_decode(cleaned, idx)
+            except json.JSONDecodeError:
+                break
+            if isinstance(obj, dict) and {"claim_id", "ticker", "claim_text"}.issubset(obj.keys()):
+                claims.append(obj)
+            idx = end
+
+        return {"claims": claims} if claims else None

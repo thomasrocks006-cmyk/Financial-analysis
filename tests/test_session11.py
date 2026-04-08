@@ -22,9 +22,10 @@ Covers:
 from __future__ import annotations
 
 import inspect
+import json
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -43,10 +44,12 @@ from research_pipeline.agents.base_agent import BaseAgent, StructuredOutputError
 from research_pipeline.agents.valuation_analyst import ValuationAnalystAgent
 from research_pipeline.agents.red_team_analyst import RedTeamAnalystAgent
 from research_pipeline.agents.associate_reviewer import AssociateReviewerAgent
+from research_pipeline.agents.evidence_librarian import EvidenceLibrarianAgent
 from research_pipeline.agents.generic_sector_analyst import GenericSectorAnalystAgent
 from research_pipeline.config.loader import PipelineConfig, SECTOR_ROUTING
 from research_pipeline.config.settings import APIKeys, Settings
 from research_pipeline.pipeline.engine import PipelineEngine
+from research_pipeline.agents.base_agent import AgentResult
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -274,6 +277,13 @@ class TestValidationFatal:
     def test_associate_reviewer_has_status_key(self):
         assert "publication_status" in AssociateReviewerAgent._REQUIRED_OUTPUT_KEYS  # type: ignore[attr-defined]
 
+    def test_parse_output_prefers_top_level_array_after_preamble(self):
+        agent = _ConcreteAgent(name="array_preferring", model="claude-opus-4-6")
+        raw = 'Preamble text before JSON\n[{"ticker":"AAPL"},{"ticker":"MSFT"}]'
+        parsed = agent.parse_output(raw)
+        assert isinstance(parsed, list)
+        assert [item["ticker"] for item in parsed] == ["AAPL", "MSFT"]
+
 
 # ─── ARC-5: SECTOR_ROUTING config ────────────────────────────────────────────
 
@@ -353,6 +363,29 @@ class TestGenericSectorAnalystAgent:
         agent = self._make_agent()
         prompt = agent.format_input({"tickers": [], "market_data": [], "macro_context_summary": ""})
         assert isinstance(prompt, str)
+
+        def test_evidence_librarian_salvages_truncated_claim_array(self):
+                agent = EvidenceLibrarianAgent(model="claude-opus-4-6")
+                raw = """Audit preamble
+```json
+[
+    {
+        "claim_id": "CLM-AAPL-001",
+        "ticker": "AAPL",
+        "claim_text": "Apple price claim",
+        "source_tier": 2,
+        "claim_type": "metric"
+    },
+    {
+        "claim_id": "CLM-MSFT-001",
+        "ticker": "MSFT",
+        "claim_text": "Microsoft price claim",
+        "source_tier": 2,
+        "claim_type": "metric"
+    }
+"""
+                parsed = agent.parse_output(raw)
+                assert [claim["ticker"] for claim in parsed["claims"]] == ["AAPL", "MSFT"]
 
 
 # ─── ARC-1: _get_macro_context helper ────────────────────────────────────────
@@ -452,6 +485,98 @@ class TestEngineGenericAnalystRouting:
         assert "generic_analyst" in source, (
             "stage_6 must call generic_analyst for unmapped tickers (ARC-5)"
         )
+
+    @pytest.mark.asyncio
+    async def test_stage6_chunks_large_generic_batches(self, tmp_path: Path):
+        engine = _make_engine(tmp_path)
+        engine.run_record = MagicMock()
+        engine.run_record.run_id = "run-stage6-batch"
+        engine.stage_outputs = {
+            2: [
+                {"ticker": ticker, "fmp_quote": {"ticker": ticker, "price": 100.0}}
+                for ticker in ["AAPL", "MSFT", "AMZN", "GOOGL", "META"]
+            ]
+        }
+
+        async def _generic_success(run_id: str, inputs: dict):
+            parsed = {
+                "sector_outputs": [
+                    {
+                        "ticker": ticker,
+                        "company_name": ticker,
+                        "date": "2026-04-07",
+                        "box1_verified_facts": "facts",
+                        "box2_management_guidance": "guidance",
+                        "box3_consensus_market_view": "consensus",
+                        "box4_analyst_judgment": "judgment",
+                        "key_risks": ["risk"],
+                    }
+                    for ticker in inputs["tickers"]
+                ]
+            }
+            return AgentResult(
+                agent_name="generic_sector_analyst",
+                run_id=run_id,
+                success=True,
+                raw_response=json.dumps(parsed),
+                parsed_output=parsed,
+            )
+
+        engine.generic_analyst.run = AsyncMock(side_effect=_generic_success)
+        engine.esg_analyst_agent.run = AsyncMock(
+            return_value=AgentResult(
+                agent_name="esg_analyst",
+                run_id="run-stage6-batch",
+                success=True,
+                raw_response=json.dumps({"esg_scores": []}),
+                parsed_output={"esg_scores": []},
+            )
+        )
+
+        passed = await engine.stage_6_sector_analysis(["AAPL", "MSFT", "AMZN", "GOOGL", "META"])
+
+        assert passed is True
+        assert engine.generic_analyst.run.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_stage6_uses_fallback_when_generic_batch_fails(self, tmp_path: Path):
+        engine = _make_engine(tmp_path)
+        engine.run_record = MagicMock()
+        engine.run_record.run_id = "run-stage6-fallback"
+        engine.stage_outputs = {
+            2: [
+                {"ticker": "AAPL", "fmp_quote": {"ticker": "AAPL", "price": 190.25}},
+                {"ticker": "MSFT", "fmp_quote": {"ticker": "MSFT", "price": 420.10}},
+            ]
+        }
+        engine.generic_analyst.run = AsyncMock(
+            return_value=AgentResult(
+                agent_name="generic_sector_analyst",
+                run_id="run-stage6-fallback",
+                success=False,
+                error="Structured output failed after 3 attempts: malformed JSON",
+                prompt_hash="abc123",
+                retries_used=3,
+            )
+        )
+        engine.esg_analyst_agent.run = AsyncMock(
+            return_value=AgentResult(
+                agent_name="esg_analyst",
+                run_id="run-stage6-fallback",
+                success=True,
+                raw_response=json.dumps({"esg_scores": []}),
+                parsed_output={"esg_scores": []},
+            )
+        )
+
+        passed = await engine.stage_6_sector_analysis(["AAPL", "MSFT"])
+
+        assert passed is True
+        saved = engine.stage_outputs[6]
+        assert len(saved["sector_outputs"]) == 1
+        parsed = saved["sector_outputs"][0]["parsed_output"]
+        assert [card["ticker"] for card in parsed["sector_outputs"]] == ["AAPL", "MSFT"]
+        assert "deterministically synthesized" in parsed["sector_outputs"][0]["box1_verified_facts"]
 
 
 # ─── ARC-6/7/8: Macro context wiring ─────────────────────────────────────────

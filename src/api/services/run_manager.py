@@ -113,9 +113,16 @@ class ManagedRun:
                     stage_num = int(stage) if isinstance(stage, str) and stage.isdigit() else stage
                     if isinstance(stage_num, int) and isinstance(gate, dict) and gate.get("passed"):
                         completed.add(stage_num)
+        if self.status == ApiRunStatus.COMPLETED:
+            completed.add(14)
         return sorted(completed)
 
     def _derived_stages_failed(self) -> list[int]:
+        if self.status == ApiRunStatus.COMPLETED and isinstance(self.result, dict):
+            blocked_at = self._coerce_stage_num(self.result.get("blocked_at"))
+            if blocked_at is None:
+                return []
+
         if self.status == ApiRunStatus.FAILED and isinstance(self.result, dict):
             blocked_at = self._coerce_stage_num(self.result.get("blocked_at"))
             if blocked_at is not None:
@@ -212,9 +219,16 @@ class ManagedRun:
         if blocked_at is not None:
             self.stages_failed = [blocked_at]
             self.current_stage = blocked_at
+        elif self.status == ApiRunStatus.COMPLETED:
+            self.stages_failed = []
+            self.current_stage = 14
+            self.blocker_summary = None
 
         if self.stages_completed:
-            self.current_stage = blocked_at if blocked_at is not None else max(self.stages_completed)
+            if blocked_at is not None:
+                self.current_stage = blocked_at
+            elif self.status != ApiRunStatus.COMPLETED:
+                self.current_stage = max(self.stages_completed)
 
         gate_results = self.result.get("gate_results", {})
         if isinstance(gate_results, dict):

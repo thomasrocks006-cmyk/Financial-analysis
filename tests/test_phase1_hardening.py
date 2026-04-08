@@ -345,6 +345,24 @@ class TestLLMProviderFallback:
         assert result == json.dumps({"claims": []})
 
     @pytest.mark.asyncio
+    async def test_fallback_chain_triggered_on_credit_exhaustion(self):
+        """Anthropic credit exhaustion should be treated like quota exhaustion."""
+
+        async def mock_anthropic(messages, api_key, model_override=None):
+            raise Exception(
+                "Error code: 400 - Your credit balance is too low to access the Anthropic API"
+            )
+
+        async def mock_openai(messages, api_key, response_format=None, model_override=None):
+            return json.dumps({"claims": []})
+
+        with patch.object(self.agent, "_call_anthropic", side_effect=mock_anthropic):
+            with patch.object(self.agent, "_call_openai", side_effect=mock_openai):
+                result = await self.agent.call_llm([{"role": "user", "content": "test"}])
+
+        assert result == json.dumps({"claims": []})
+
+    @pytest.mark.asyncio
     async def test_non_rate_limit_error_not_retried(self):
         """Permission errors etc. should propagate without fallback."""
 
@@ -365,3 +383,50 @@ class TestLLMProviderFallback:
         assert not openai_called, (
             "OpenAI fallback should NOT be triggered for non-rate-limit errors"
         )
+
+    @pytest.mark.asyncio
+    async def test_deepseek_model_uses_deepseek_key_and_base_url(self, monkeypatch):
+        from research_pipeline.agents.evidence_librarian import EvidenceLibrarianAgent
+
+        agent = EvidenceLibrarianAgent(model="deepseek-chat", temperature=0.0, prompts_dir=Path("/tmp"))
+        monkeypatch.setenv("DEEPSEEK_API_KEY", "deepseek-test-key")
+        monkeypatch.setenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+
+        captured: dict[str, object] = {}
+
+        class _DummyCompletions:
+            async def create(self, **kwargs):
+                captured["kwargs"] = kwargs
+
+                class _Message:
+                    content = json.dumps({"claims": []})
+
+                class _Choice:
+                    message = _Message()
+
+                class _Response:
+                    choices = [_Choice()]
+
+                return _Response()
+
+        class _DummyChat:
+            completions = _DummyCompletions()
+
+        class _DummyClient:
+            def __init__(self, **kwargs):
+                captured["client_kwargs"] = kwargs
+                self.chat = _DummyChat()
+
+        with patch("openai.AsyncOpenAI", _DummyClient):
+            result = await agent._call_openai(
+                [{"role": "user", "content": "test"}],
+                api_key="fallback-openai-key",
+                model_override="deepseek-chat",
+            )
+
+        assert result == json.dumps({"claims": []})
+        assert captured["client_kwargs"] == {
+            "api_key": "deepseek-test-key",
+            "base_url": "https://api.deepseek.com/v1",
+        }
+        assert captured["kwargs"]["model"] == "deepseek-chat"

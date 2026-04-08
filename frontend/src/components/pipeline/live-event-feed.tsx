@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { usePipelineStore, type LiveEvent } from "@/lib/store";
+import { getStreamStateMeta, type StreamState } from "@/lib/live-stage-feedback";
 import { cn, formatDuration } from "@/lib/utils";
 import {
   Activity,
@@ -100,9 +101,16 @@ function EventRow({ event }: { event: LiveEvent }) {
   );
 }
 
-export function LiveEventFeed() {
+export function LiveEventFeed({
+  streamState = "connecting",
+  statusMessage,
+}: {
+  streamState?: StreamState;
+  statusMessage?: string;
+}) {
   const events = usePipelineStore((s) => s.events);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const streamMeta = getStreamStateMeta(streamState);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -118,9 +126,18 @@ export function LiveEventFeed() {
             Live Event Feed
           </h3>
         </div>
-        <span className="text-[10px] text-[var(--text-muted)] tabular-nums">
-          {events.length} events
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={cn("rounded-full border px-2 py-0.5 text-[9px] tracking-[.08em] uppercase", streamMeta.tone)}>
+            {streamMeta.label}
+          </span>
+          <span className="text-[10px] text-[var(--text-muted)] tabular-nums">
+            {events.length} events
+          </span>
+        </div>
+      </div>
+
+      <div className="border-b border-[var(--border)] px-4 py-2 text-[11px] text-[var(--text-secondary)]">
+        {statusMessage || streamMeta.detail}
       </div>
 
       {/* Event list */}

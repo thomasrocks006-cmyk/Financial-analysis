@@ -37,6 +37,39 @@ from api.services.run_manager import RunManager
 logger = logging.getLogger(__name__)
 
 
+def _diagnostics_payload() -> dict[str, Any]:
+    env_file = Path(__file__).resolve().parents[2] / ".env"
+    key_names = [
+        "FMP_API_KEY",
+        "FINNHUB_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "GOOGLE_API_KEY",
+        "SEC_API_KEY",
+        "BENZINGA_API_KEY",
+        "GEMINI_API_KEY",
+    ]
+    return {
+        "status": "ok",
+        "env_file": {
+            "present": env_file.exists(),
+            "path": str(env_file),
+        },
+        "runtime": {
+            "app_env": os.getenv("APP_ENV", "development"),
+            "llm_model": os.getenv("LLM_MODEL", "claude-sonnet-4-6"),
+            "llm_max_tokens": int(os.getenv("LLM_MAX_TOKENS", "8192") or "8192"),
+            "storage_dir": os.getenv("STORAGE_DIR", "storage"),
+            "prompts_dir": os.getenv("PROMPTS_DIR", "prompts"),
+        },
+        "credentials": {key: bool(os.getenv(key, "")) for key in key_names},
+        "api_security": {
+            "api_key_required": bool(os.getenv("API_KEY", "")),
+        },
+    }
+
+
 def _load_env_file() -> None:
     """Populate process environment from project-root .env if present.
 
@@ -138,7 +171,14 @@ def create_app() -> FastAPI:
         @app.middleware("http")
         async def _check_api_key(request: Request, call_next):
             # Health check is always public
-            if request.url.path in ("/health", "/", "/docs", "/redoc", "/openapi.json"):
+            if request.url.path in (
+                "/health",
+                "/health/details",
+                "/",
+                "/docs",
+                "/redoc",
+                "/openapi.json",
+            ):
                 return await call_next(request)
             key = request.headers.get("X-API-Key", "")
             if key != api_key:
@@ -161,6 +201,10 @@ def create_app() -> FastAPI:
     @app.get("/health", tags=["ops"])
     async def health() -> dict[str, Any]:
         return {"status": "ok"}
+
+    @app.get("/health/details", tags=["ops"])
+    async def health_details() -> dict[str, Any]:
+        return _diagnostics_payload()
 
     return app
 

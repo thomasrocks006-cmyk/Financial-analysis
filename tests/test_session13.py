@@ -16,6 +16,8 @@ Covers:
 
 from __future__ import annotations
 import json
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 
 
@@ -439,3 +441,257 @@ class TestEngineSession13Init:
         from research_pipeline.agents.report_narrative_agent import ReportNarrativeAgent
 
         assert isinstance(engine.report_narrative_agent, ReportNarrativeAgent)
+
+
+class TestStage7ValuationFallback:
+    def _make_mock_engine(self):
+        from research_pipeline.pipeline.engine import PipelineEngine
+
+        engine = PipelineEngine.__new__(PipelineEngine)
+        engine.gates = MagicMock()
+        engine.gates.gate_7_valuation = MagicMock(return_value=MagicMock(passed=True))
+        engine.run_record = MagicMock()
+        engine.run_record.run_id = "run-stage7-fallback"
+        engine.stage_outputs = {
+            2: [
+                {
+                    "ticker": "AAPL",
+                    "fmp_quote": {
+                        "ticker": "AAPL",
+                        "price": 200.0,
+                        "market_cap": 3_000_000_000_000,
+                        "trailing_pe": 30.0,
+                        "forward_pe": 28.0,
+                        "ev_to_ebitda": 20.0,
+                    },
+                    "fmp_targets": {
+                        "target_mean": 240.0,
+                        "target_low": 180.0,
+                        "target_high": 260.0,
+                        "num_analysts": 25,
+                    },
+                    "finnhub_recommendation": {
+                        "buy_pct": 68.0,
+                        "hold_pct": 28.0,
+                        "sell_pct": 4.0,
+                    },
+                    "fmp_ratios": {"priceEarningsRatio": 30.0},
+                }
+            ],
+            6: {
+                "sector_outputs": [
+                    {
+                        "parsed_output": {
+                            "sector_outputs": [
+                                {
+                                    "ticker": "AAPL",
+                                    "thesis": "High-quality platform with sticky ecosystem demand.",
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+            8: {
+                "macro": {
+                    "parsed_output": {
+                        "regime_classification": "late-cycle expansion",
+                        "confidence": "MEDIUM",
+                        "key_macro_variables": {"fed_funds_rate": "5.375%"},
+                    }
+                },
+                "economy_analysis": {},
+                "macro_scenario": {},
+            },
+        }
+        engine._stage_timings = {}
+        engine._get_sector_outputs = lambda: engine.stage_outputs[6]["sector_outputs"]
+        engine._get_macro_context = lambda: MagicMock(
+            model_dump=lambda mode="json": {
+                "regime_classification": "late-cycle expansion",
+                "confidence": "MEDIUM",
+                "key_macro_variables": {"fed_funds_rate": "5.375%"},
+            }
+        )
+        engine.sector_data_svc = MagicMock()
+        engine.sector_data_svc.get_sector_data = MagicMock(return_value=[])
+        return engine
+
+    def test_stage_7_uses_fallback_when_agent_returns_malformed_output(self):
+        from research_pipeline.agents.base_agent import AgentResult
+
+        engine = self._make_mock_engine()
+        engine.valuation_agent = MagicMock()
+        engine.valuation_agent.run = AsyncMock(
+            return_value=AgentResult(
+                agent_name="valuation_analyst",
+                run_id="run-stage7-fallback",
+                success=False,
+                error="Structured output failed after 3 attempts: malformed JSON",
+            )
+        )
+
+        def save_output(stage_num, data):
+            engine.stage_outputs[stage_num] = data
+
+        engine._save_stage_output = save_output
+        engine._check_gate = lambda gate: gate.passed
+
+        result = __import__("asyncio").run(engine.stage_7_valuation(["AAPL"]))
+
+        assert result is True
+        saved = engine.stage_outputs[7]
+        assert saved["success"] is True
+        assert saved["parsed_output"]["fallback_used"] is True
+        assert saved["parsed_output"]["valuations"][0]["ticker"] == "AAPL"
+        assert saved["parsed_output"]["valuations"][0]["methodology_tag"] == "HOUSE VIEW"
+
+
+class TestStage11ReviewFallback:
+    def _make_mock_engine(self):
+        from research_pipeline.pipeline.engine import PipelineEngine
+
+        engine = PipelineEngine.__new__(PipelineEngine)
+        engine.gates = MagicMock()
+        engine.gates.gate_11_review = MagicMock(return_value=MagicMock(passed=True))
+        engine.run_record = MagicMock()
+        engine.run_record.run_id = "run-stage11-fallback"
+        engine.stage_outputs = {
+            5: {
+                "parsed_output": {
+                    "claims": [
+                        {"claim_id": "AAPL-001", "status": "pass"},
+                        {"claim_id": "AAPL-002", "status": "caveat"},
+                    ]
+                }
+            },
+            7: {
+                "parsed_output": {
+                    "valuations": [
+                        {
+                            "ticker": "AAPL",
+                            "date": "2026-04-07",
+                            "methodology_tag": "HOUSE VIEW",
+                        }
+                    ]
+                }
+            },
+            9: {},
+            10: {
+                "parsed_output": {
+                    "assessments": [
+                        {
+                            "ticker": "AAPL",
+                            "section_2_falsification_tests": [
+                                {"test": "FT-1"},
+                                {"test": "FT-2"},
+                                {"test": "FT-3"},
+                            ],
+                        }
+                    ]
+                }
+            },
+        }
+        engine._stage_timings = {}
+        engine._get_sector_outputs = lambda: []
+        engine._get_macro_context = lambda: MagicMock(model_dump=lambda mode="json": {})
+        return engine
+
+    def test_stage_11_uses_fallback_when_reviewer_agent_fails(self):
+        from research_pipeline.agents.base_agent import AgentResult
+
+        engine = self._make_mock_engine()
+        engine.reviewer_agent = MagicMock()
+        engine.reviewer_agent.run = AsyncMock(
+            return_value=AgentResult(
+                agent_name="associate_reviewer",
+                run_id="run-stage11-fallback",
+                success=False,
+                error="Structured output failed after 3 attempts: missing publication_status",
+            )
+        )
+
+        def save_output(stage_num, data):
+            engine.stage_outputs[stage_num] = data
+
+        engine._save_stage_output = save_output
+        engine._check_gate = lambda gate: gate.passed
+
+        result = __import__("asyncio").run(engine.stage_11_review())
+
+        assert result is True
+        saved = engine.stage_outputs[11]
+        assert saved["success"] is True
+        assert saved["parsed_output"]["publication_status"] == "PASS"
+        assert saved["parsed_output"]["ready_for_pm"] is True
+
+
+class TestStage12PortfolioFallback:
+    def _make_mock_engine(self):
+        from research_pipeline.pipeline.engine import PipelineEngine
+
+        engine = PipelineEngine.__new__(PipelineEngine)
+        engine.gates = MagicMock()
+        engine.gates.gate_12_portfolio = MagicMock(return_value=MagicMock(passed=True))
+        engine.run_record = MagicMock()
+        engine.run_record.run_id = "run-stage12-fallback"
+        engine.stage_outputs = {7: {}, 8: {}, 9: {}, 10: {}, 11: {}}
+        engine.gate_results = {11: MagicMock(passed=True)}
+        engine._stage_timings = {}
+        engine._get_sector_outputs = lambda: []
+        engine._get_macro_context = lambda: MagicMock(model_dump=lambda mode="json": {})
+        engine.esg_service = MagicMock()
+        engine.esg_service.check_portfolio_esg_compliance = MagicMock(
+            return_value={"excluded_tickers": []}
+        )
+        engine.position_sizing = MagicMock()
+        engine.position_sizing.equal_weight = MagicMock(return_value={"AAPL": 1.0})
+        engine._get_returns = MagicMock(return_value={"AAPL": [0.01, -0.01, 0.0]})
+        engine.portfolio_optimisation = MagicMock()
+        engine.portfolio_optimisation.compute_risk_parity = MagicMock(side_effect=RuntimeError())
+        engine.portfolio_optimisation.compute_minimum_variance = MagicMock(side_effect=RuntimeError())
+        engine.portfolio_optimisation.compute_max_sharpe = MagicMock(side_effect=RuntimeError())
+        engine.rebalancing_engine = MagicMock()
+        engine.mandate_engine = MagicMock()
+        engine.mandate_engine.check_compliance = MagicMock(
+            return_value=MagicMock(is_compliant=True, violations=[], model_dump=lambda: {"is_compliant": True})
+        )
+        engine.investment_committee = MagicMock()
+        engine.investment_committee.evaluate_and_vote = MagicMock(
+            return_value=MagicMock(is_approved=True, model_dump=lambda: {"is_approved": True})
+        )
+        engine.investment_committee.create_audit_trail = MagicMock(
+            return_value=MagicMock(model_dump=lambda: {"entries": []})
+        )
+        engine.investment_committee.record_committee_decision = MagicMock()
+        engine._review_result = MagicMock(status=MagicMock(value="pass"), issues=[])
+        engine.config = MagicMock(client_profile=None)
+        return engine
+
+    def test_stage_12_uses_fallback_when_pm_agent_fails(self):
+        from research_pipeline.agents.base_agent import AgentResult
+
+        engine = self._make_mock_engine()
+        engine.pm_agent = MagicMock()
+        engine.pm_agent.run = AsyncMock(
+            return_value=AgentResult(
+                agent_name="portfolio_manager",
+                run_id="run-stage12-fallback",
+                success=False,
+                error="Structured output failed after 3 attempts: malformed JSON",
+            )
+        )
+
+        def save_output(stage_num, data):
+            engine.stage_outputs[stage_num] = data
+
+        engine._save_stage_output = save_output
+        engine._check_gate = lambda gate: gate.passed
+
+        result = __import__("asyncio").run(engine.stage_12_portfolio(["AAPL"]))
+
+        assert result is True
+        saved = engine.stage_outputs[12]
+        assert saved["pm_result"]["success"] is True
+        assert saved["parsed_output"]["fallback_used"] is True
+        assert len(saved["parsed_output"]["portfolios"]) == 3

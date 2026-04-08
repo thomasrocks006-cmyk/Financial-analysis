@@ -22,6 +22,7 @@ import asyncio
 import json
 from datetime import datetime
 from typing import TYPE_CHECKING
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -681,6 +682,94 @@ class TestMacroStrategistAgentExtension:
         prompt = agent.default_system_prompt()
         assert "au_regime_flag" in prompt
         assert "us_regime_flag" in prompt
+
+
+class TestStage8MacroFallback:
+    """Engine Stage 8 should keep running when the macro agent schema fails."""
+
+    def _make_mock_engine(self):
+        from research_pipeline.pipeline.engine import PipelineEngine
+        from research_pipeline.services.economic_indicator_service import EconomicIndicatorService
+        from research_pipeline.services.macro_scenario_service import MacroScenarioService
+
+        engine = PipelineEngine.__new__(PipelineEngine)
+        engine.gates = MagicMock()
+        engine.gates.gate_8_macro = MagicMock(return_value=MagicMock(passed=True))
+        engine.stage_outputs = {2: [], 3: {}}
+        engine._stage_timings = {}
+        engine.run_record = MagicMock()
+        engine.run_record.run_id = "run-stage8-fallback"
+        engine.economic_indicator_svc = EconomicIndicatorService(fred_api_key="")
+        engine.macro_scenario_svc = MacroScenarioService()
+        return engine
+
+    def test_stage_8_uses_fallback_when_macro_agent_fails(self):
+        from research_pipeline.agents.base_agent import AgentResult
+        from research_pipeline.schemas.macro_economy import (
+            EconomicIndicators,
+            EconomyAnalysis,
+            FedStance,
+            MacroScenario,
+            RBAStance,
+        )
+
+        engine = self._make_mock_engine()
+
+        indicators = EconomicIndicators(run_id="run-stage8-fallback")
+        scenario = MacroScenario(run_id="run-stage8-fallback")
+        economy_analysis = EconomyAnalysis(
+            run_id="run-stage8-fallback",
+            confidence="HIGH",
+            rba_cash_rate_thesis="RBA remains on hold while inflation moderates.",
+            fed_funds_thesis="Fed stays higher for longer with easing pushed out.",
+            aud_usd_outlook="AUD remains range-bound against USD.",
+            global_credit_conditions="Credit spreads remain contained but vulnerable to a growth shock.",
+            key_risks_us=["Inflation persistence", "Growth slowdown"],
+            rba_stance=RBAStance.ON_HOLD,
+            fed_stance=FedStance.ON_HOLD,
+        )
+
+        engine.economic_indicator_svc.get_indicators_sync = MagicMock(return_value=indicators)
+        engine.macro_scenario_svc.build_scenario = MagicMock(return_value=scenario)
+        engine.economy_analyst = MagicMock()
+        engine.economy_analyst.run_economy_analysis = AsyncMock(return_value=economy_analysis)
+
+        engine.macro_agent = MagicMock()
+        engine.macro_agent.run = AsyncMock(
+            return_value=AgentResult(
+                agent_name="macro_strategist",
+                run_id="run-stage8-fallback",
+                success=False,
+                error="Structured output failed after 3 attempts: missing regime_classification",
+            )
+        )
+        engine.political_agent = MagicMock()
+        engine.political_agent.run = AsyncMock(
+            return_value=AgentResult(
+                agent_name="political_risk_analyst",
+                run_id="run-stage8-fallback",
+                success=True,
+                parsed_output={"ticker": "AAPL", "policy_dependency_score": 7},
+            )
+        )
+
+        def save_output(stage_num, data):
+            engine.stage_outputs[stage_num] = data
+
+        engine._save_stage_output = save_output
+        engine._check_gate = lambda gate: gate.passed
+
+        result = asyncio.run(engine.stage_8_macro(["AAPL"]))
+
+        assert result is True
+        saved = engine.stage_outputs[8]
+        assert saved["macro"]["success"] is True
+        assert saved["macro"]["parsed_output"]["regime_classification"] != ""
+        assert saved["macro"]["parsed_output"]["au_regime_flag"] != ""
+        assert saved["macro"]["parsed_output"]["us_regime_flag"] != ""
+        assert saved["macro"]["parsed_output"]["economy_analysis_summary"].startswith(
+            "Fallback built from Session 12 economy services"
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════════════

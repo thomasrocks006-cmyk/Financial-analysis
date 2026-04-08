@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
@@ -99,6 +100,22 @@ class BaseAgent(ABC):
     # Tried in order on RateLimitError/ServiceUnavailableError.
     _FALLBACK_CHAIN: list[str] = ["claude-opus-4-6", "gpt-4o", "gemini-1.5-pro"]
 
+    def _max_output_tokens(self) -> int:
+        """Return the per-call max token cap for economical smoke runs.
+
+        Uses ``LLM_MAX_TOKENS`` when set, otherwise falls back to the historical
+        default used by the platform.
+        """
+        raw = os.getenv("LLM_MAX_TOKENS", "").strip()
+        if not raw:
+            return 8192
+        try:
+            parsed = int(raw)
+        except ValueError:
+            logger.warning("Invalid LLM_MAX_TOKENS=%r; falling back to 8192", raw)
+            return 8192
+        return max(1, parsed)
+
     async def call_llm(
         self, messages: list[dict[str, str]], response_format: type | None = None
     ) -> str:
@@ -108,8 +125,6 @@ class BaseAgent(ABC):
         Fallback chain (Phase 7.4): claude-opus-4-6 → gpt-4o → gemini-1.5-pro
         on rate-limit or quota errors only.  Other errors are NOT silently swallowed.
         """
-        import os
-
         providers_to_try: list[tuple[str, str]] = []
 
         # Build the ordered list: primary model first, then fallbacks that differ
@@ -164,6 +179,10 @@ class BaseAgent(ABC):
                         "rate_limit",
                         "ratelimit",
                         "quota",
+                        "credit balance",
+                        "insufficient credits",
+                        "insufficient_quota",
+                        "billing",
                         "overloaded",
                         "service unavailable",
                         "503",
@@ -218,7 +237,7 @@ class BaseAgent(ABC):
             try:
                 kwargs: dict[str, Any] = {
                     "model": model,
-                    "max_tokens": 8192,
+                    "max_tokens": self._max_output_tokens(),
                     "messages": user_messages,
                     "temperature": self.temperature,
                 }
@@ -249,7 +268,12 @@ class BaseAgent(ABC):
             return json.dumps({"mock": True, "agent": self.name})
 
         model = model_override or self.model
-        client = AsyncOpenAI(api_key=api_key)
+        client_kwargs: dict[str, Any] = {"api_key": api_key}
+        if model.startswith("deepseek"):
+            client_kwargs["api_key"] = os.getenv("DEEPSEEK_API_KEY", "") or api_key
+            client_kwargs["base_url"] = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+
+        client = AsyncOpenAI(**client_kwargs)
 
         for attempt in range(1, self.max_retries + 1):
             try:
@@ -257,6 +281,7 @@ class BaseAgent(ABC):
                     "model": model,
                     "messages": messages,
                     "temperature": self.temperature,
+                    "max_tokens": self._max_output_tokens(),
                 }
                 if response_format:
                     kwargs["response_format"] = response_format
@@ -293,7 +318,13 @@ class BaseAgent(ABC):
             g_model = genai.GenerativeModel(model)
             for attempt in range(1, self.max_retries + 1):
                 try:
-                    response = await g_model.generate_content_async(text_parts)
+                    response = await g_model.generate_content_async(
+                        text_parts,
+                        generation_config={
+                            "temperature": self.temperature,
+                            "max_output_tokens": self._max_output_tokens(),
+                        },
+                    )
                     return response.text
                 except Exception as exc:
                     logger.warning(
@@ -318,12 +349,16 @@ class BaseAgent(ABC):
                 response = client.models.generate_content(
                     model=model,
                     contents=text_parts,
+                    config={
+                        "temperature": self.temperature,
+                        "max_output_tokens": self._max_output_tokens(),
+                    },
                 )
                 return response.text
 
             for attempt in range(1, self.max_retries + 1):
                 try:
-                    return await asyncio.get_event_loop().run_in_executor(None, _sync_call)
+                    return await asyncio.get_running_loop().run_in_executor(None, _sync_call)
                 except Exception as exc:
                     logger.warning(
                         "%s: Gemini (new SDK) attempt %d failed: %s", self.name, attempt, exc
@@ -350,7 +385,15 @@ class BaseAgent(ABC):
         import urllib.error
 
         text_parts = "\n".join(f"[{m['role'].upper()}]\n{m['content']}" for m in messages)
-        payload = json.dumps({"contents": [{"parts": [{"text": text_parts}]}]}).encode()
+        payload = json.dumps(
+            {
+                "contents": [{"parts": [{"text": text_parts}]}],
+                "generationConfig": {
+                    "temperature": self.temperature,
+                    "maxOutputTokens": self._max_output_tokens(),
+                },
+            }
+        ).encode()
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/"
             f"{model}:generateContent?key={api_key}"
@@ -364,7 +407,7 @@ class BaseAgent(ABC):
                 body = json.loads(resp.read())
                 return body["candidates"][0]["content"]["parts"][0]["text"]
 
-        return await asyncio.get_event_loop().run_in_executor(None, _blocking_request)
+        return await asyncio.get_running_loop().run_in_executor(None, _blocking_request)
 
     def build_messages(self, user_content: str) -> list[dict[str, str]]:
         """Build standard message list with system prompt."""
@@ -576,22 +619,23 @@ class BaseAgent(ABC):
 
         # Strategy 3: find first '{' or '[' and raw_decode (skips LLM preamble)
         _decoder = json.JSONDecoder()
-        for start_char in ("{", "["):
-            idx = cleaned.find(start_char)
-            if idx != -1:
-                try:
-                    obj, _ = _decoder.raw_decode(cleaned, idx)
-                    if isinstance(obj, (dict, list)):
-                        logger.warning(
-                            "%s: stripped %d-char LLM preamble before JSON",
-                            self.name,
-                            idx,
-                        )
-                        if isinstance(obj, dict):
-                            self._validate_output_quality(obj)  # ACT-S10-3
-                        return obj
-                except json.JSONDecodeError:
-                    pass
+        candidate_starts = sorted(
+            [idx for idx in (cleaned.find("{"), cleaned.find("[")) if idx != -1]
+        )
+        for idx in candidate_starts:
+            try:
+                obj, _ = _decoder.raw_decode(cleaned, idx)
+                if isinstance(obj, (dict, list)):
+                    logger.warning(
+                        "%s: stripped %d-char LLM preamble before JSON",
+                        self.name,
+                        idx,
+                    )
+                    if isinstance(obj, dict):
+                        self._validate_output_quality(obj)  # ACT-S10-3
+                    return obj
+            except json.JSONDecodeError:
+                pass
 
         raise StructuredOutputError(
             f"Agent '{self.name}' returned malformed JSON: no valid JSON found. "

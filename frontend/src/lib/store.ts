@@ -14,6 +14,7 @@ import type {
   PipelineEvent,
   PipelineEventType,
   RunStatus,
+  RunSummary,
   StageInfo,
   ClientProfile,
   STAGE_COUNT,
@@ -71,6 +72,8 @@ interface PipelineStore {
   // ── Actions ────────────────────────────────────────────────────────
   setRunStarted: (runId: string) => void;
   processEvent: (event: PipelineEvent) => void;
+  syncRunSummary: (summary: RunSummary | null | undefined) => void;
+  syncStages: (stages: StageInfo[] | null | undefined) => void;
   resetRun: () => void;
   setUniverse: (tickers: string[]) => void;
   setUniverseMode: (mode: UniverseMode) => void;
@@ -255,6 +258,42 @@ export const usePipelineStore = create<PipelineStore>()(persist((set, get) => ({
     }
 
     set(updates);
+  },
+
+  syncRunSummary: (summary) => {
+    if (!summary) return;
+
+    set((state) => {
+      const nextStatus = summary.status ?? state.runStatus;
+      return {
+        activeRunId: summary.run_id || state.activeRunId,
+        runStatus: nextStatus,
+        error:
+          nextStatus === "failed"
+            ? summary.blocker_summary || summary.error || state.error
+            : nextStatus === "completed"
+            ? null
+            : state.error,
+      };
+    });
+  },
+
+  syncStages: (stages) => {
+    if (!stages?.length) return;
+
+    set((state) => {
+      const nextStages = [...state.stages];
+      for (const stage of stages) {
+        if (!nextStages[stage.stage_num]) continue;
+        nextStages[stage.stage_num] = {
+          ...nextStages[stage.stage_num],
+          label: stage.stage_label || nextStages[stage.stage_num].label,
+          status: stage.status,
+          duration_ms: stage.duration_ms || 0,
+        };
+      }
+      return { stages: nextStages };
+    });
   },
 
   resetRun: () =>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { usePipelineStore } from "@/lib/store";
@@ -9,6 +9,7 @@ import {
   getRunStatus,
   getReport,
   getAudit,
+  getStages,
   getStageDetail,
   createEventStream,
   downloadReportPdf,
@@ -19,6 +20,13 @@ import { LiveEventFeed } from "@/components/pipeline/live-event-feed";
 import { MetricCard } from "@/components/ui/metric-card";
 import { TimingChart } from "@/components/charts/timing-chart";
 import { cn, formatDuration, formatTimestamp } from "@/lib/utils";
+import {
+  getFailureGuidance,
+  getStageNarrative,
+  getStreamStateMeta,
+  triggerEventHaptic,
+  type StreamState,
+} from "@/lib/live-stage-feedback";
 import {
   Activity,
   CheckCircle2,
@@ -34,6 +42,10 @@ import {
   TrendingDown,
   FileDown,
   ArrowUpRight,
+  Radio,
+  WifiOff,
+  Siren,
+  CircleAlert,
 } from "lucide-react";
 import Link from "next/link";
 import { ProvenancePanel } from "@/components/provenance/provenance-panel";
@@ -129,21 +141,50 @@ export default function RunDetailPage() {
   const router = useRouter();
   const runId = params.run_id as string;
   const store = usePipelineStore();
+  const resetRun = store.resetRun;
+  const setRunStarted = store.setRunStarted;
+  const processEvent = store.processEvent;
+  const setError = store.setError;
+  const syncRunSummary = store.syncRunSummary;
+  const syncStages = store.syncStages;
   const [activeTab, setActiveTab] = useState<"live" | "report" | "audit" | "provenance" | "quant" | "stages">("live");
   const [showStageDetail, setShowStageDetail] = useState<number | null>(null);
+  const [streamState, setStreamState] = useState<StreamState>("connecting");
+  const [streamMessage, setStreamMessage] = useState<string>("Opening live stream…");
+  const lastHapticEventId = useRef<number | null>(null);
+  const runStatusRef = useRef(store.runStatus);
+
+  useEffect(() => {
+    runStatusRef.current = store.runStatus;
+  }, [store.runStatus]);
 
   // Connect to SSE if this is the active run; reset store on unmount
   useEffect(() => {
-    const { resetRun, setRunStarted, processEvent } = store;
     if (runId && store.activeRunId !== runId) {
       setRunStarted(runId);
+      setStreamState("connecting");
+      setStreamMessage("Opening live stream for this run…");
       const cleanup = createEventStream(
         runId,
         (event) => {
+          setStreamState("connected");
+          setStreamMessage("Live event stream connected.");
+          setError(null);
           processEvent(event.data as unknown as PipelineEvent);
         },
         (error) => {
           console.error("SSE error:", error);
+          setStreamState("polling");
+          setStreamMessage("Live stream interrupted — following the run via polling snapshots.");
+          setError(error.message || "Live stream interrupted.");
+        },
+        () => {
+          setStreamState((current) => (runStatusRef.current === "running" ? "polling" : current === "connected" ? "closed" : current));
+          setStreamMessage(
+            runStatusRef.current === "running"
+              ? "Live stream closed — keeping the page updated with run snapshots."
+              : "Live stream closed after the run reached a terminal state."
+          );
         }
       );
       return () => {
@@ -154,12 +195,19 @@ export default function RunDetailPage() {
     return () => {
       resetRun();
     };
-  }, [runId]);
+  }, [runId, store.activeRunId, processEvent, resetRun, setError, setRunStarted]);
 
   // Poll run status
   const { data: runStatus } = useQuery({
     queryKey: ["run-status", runId],
     queryFn: () => getRunStatus(runId),
+    refetchInterval: store.runStatus === "running" ? 3000 : false,
+    enabled: !!runId,
+  });
+
+  const { data: stagesData } = useQuery({
+    queryKey: ["stages", runId],
+    queryFn: () => getStages(runId),
     refetchInterval: store.runStatus === "running" ? 3000 : false,
     enabled: !!runId,
   });
@@ -184,8 +232,63 @@ export default function RunDetailPage() {
     enabled: !!runId && activeTab === "stages" && showStageDetail !== null,
   });
 
+  useEffect(() => {
+    syncRunSummary(runStatus);
+    if (runStatus?.status === "completed") {
+      setStreamState("closed");
+      setStreamMessage("Run completed. Live tracking is now showing the final recorded state.");
+    } else if (runStatus?.status === "failed") {
+      setStreamState((current) => (current === "connected" ? "error" : current));
+      setStreamMessage(runStatus.blocker_summary || runStatus.error || "Run failed. Review the blocker guidance below.");
+    }
+  }, [runStatus, syncRunSummary]);
+
+  useEffect(() => {
+    syncStages(stagesData?.stages);
+  }, [stagesData, syncStages]);
+
+  useEffect(() => {
+    const latestEvent = store.events[store.events.length - 1];
+    if (!latestEvent || latestEvent.id === lastHapticEventId.current) {
+      return;
+    }
+    lastHapticEventId.current = latestEvent.id;
+    triggerEventHaptic(latestEvent.type);
+  }, [store.events]);
+
   const completedStages = store.stages.filter((s) => s.status === "completed").length;
   const failedStages = store.stages.filter((s) => s.status === "failed").length;
+  const runningStage = store.stages.find((stage) => stage.status === "running") || null;
+  const failedStage = [...store.stages].reverse().find((stage) => stage.status === "failed") || null;
+  const latestEvent = store.events[store.events.length - 1] || null;
+  const focusStageNum =
+    runningStage?.stage_num ??
+    failedStage?.stage_num ??
+    runStatus?.current_stage ??
+    store.stages.find((stage) => stage.status === "completed")?.stage_num ??
+    null;
+  const stageNarrative = getStageNarrative(focusStageNum);
+  const streamMeta = getStreamStateMeta(streamState);
+  const blockerGuidance = getFailureGuidance(
+    failedStage?.stage_num ?? runStatus?.current_stage ?? null,
+    runStatus?.blocker_summary || store.error,
+    runStatus?.error || store.error
+  );
+  const liveHeadline = useMemo(() => {
+    if (failedStage) {
+      return `Blocked at S${String(failedStage.stage_num).padStart(2, "0")} · ${failedStage.label}`;
+    }
+    if (runningStage) {
+      return `Now running S${String(runningStage.stage_num).padStart(2, "0")} · ${runningStage.label}`;
+    }
+    if (store.runStatus === "completed") {
+      return "Run complete — all stages finalized.";
+    }
+    if (runStatus?.status === "queued") {
+      return "Queued — awaiting bootstrap.";
+    }
+    return "Waiting for the next stage signal.";
+  }, [failedStage, runningStage, runStatus?.status, store.runStatus]);
   const timings: Record<string, number> = {};
   store.stages.forEach((s) => {
     if (s.duration_ms > 0) {
@@ -366,7 +469,86 @@ export default function RunDetailPage() {
       {/* Tab content */}
       {activeTab === "live" && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-          <div className="lg:col-span-2">
+          <div className="space-y-4 lg:col-span-2">
+            <div className="border border-[var(--border)] bg-[var(--surface)]">
+              <div className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--surface-2)] px-4 py-2">
+                <div className="flex items-center gap-2">
+                  <Radio className="h-4 w-4 text-[var(--accent)]" />
+                  <h3 className="text-[10px] tracking-[.1em] uppercase text-[var(--text-label)]">Live Follow</h3>
+                </div>
+                <span className={cn("rounded-full border px-2 py-0.5 text-[9px] tracking-[.08em] uppercase", streamMeta.tone)}>
+                  {streamMeta.label}
+                </span>
+              </div>
+              <div className="space-y-4 px-4 py-4">
+                <div>
+                  <div className="text-[10px] tracking-[.08em] uppercase text-[var(--text-label)]">Current signal</div>
+                  <div className="mt-2 text-sm font-medium text-[var(--text-primary)]">{liveHeadline}</div>
+                  <div className="mt-1 text-xs text-[var(--text-secondary)]">{streamMessage || streamMeta.detail}</div>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                  <div className="border border-[var(--border)] bg-[var(--surface-2)] p-3">
+                    <div className="text-[10px] tracking-[.08em] uppercase text-[var(--accent)]">What is happening</div>
+                    <div className="mt-2 text-sm text-[var(--text-primary)]">{stageNarrative.title}</div>
+                    <p className="mt-1 text-[11px] leading-5 text-[var(--text-secondary)]">{stageNarrative.summary}</p>
+                  </div>
+                  <div className="border border-[var(--border)] bg-[var(--surface-2)] p-3">
+                    <div className="text-[10px] tracking-[.08em] uppercase text-[var(--success)]">What success looks like</div>
+                    <p className="mt-2 text-[11px] leading-5 text-[var(--text-secondary)]">{stageNarrative.successSignal}</p>
+                    <div className="mt-3 text-[10px] tracking-[.08em] uppercase text-[var(--warning)]">If it stalls</div>
+                    <p className="mt-1 text-[11px] leading-5 text-[var(--text-secondary)]">{stageNarrative.stallHint}</p>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-3">
+                  <div className="border border-[var(--border)] px-3 py-2">
+                    <div className="text-[10px] tracking-[.08em] uppercase text-[var(--text-label)]">Last event</div>
+                    <div className="mt-1 text-[11px] text-[var(--text-secondary)]">{latestEvent?.label || latestEvent?.type || "Awaiting events"}</div>
+                  </div>
+                  <div className="border border-[var(--border)] px-3 py-2">
+                    <div className="text-[10px] tracking-[.08em] uppercase text-[var(--text-label)]">Stage count</div>
+                    <div className="mt-1 text-[11px] text-[var(--text-secondary)]">{completedStages}/15 complete</div>
+                  </div>
+                  <div className="border border-[var(--border)] px-3 py-2">
+                    <div className="text-[10px] tracking-[.08em] uppercase text-[var(--text-label)]">Live follow mode</div>
+                    <div className="mt-1 text-[11px] text-[var(--text-secondary)]">{streamState === "connected" ? "SSE" : "Polling snapshot"}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {(store.error || runStatus?.blocker_summary || streamState === "polling" || streamState === "error") && (
+              <div className={cn(
+                "border p-4",
+                failedStages > 0 || store.runStatus === "failed"
+                  ? "border-[var(--error)] bg-[var(--error-faint)]"
+                  : "border-[var(--warning)] bg-[var(--warning-faint)]"
+              )}>
+                <div className="flex items-center gap-2">
+                  {failedStages > 0 || store.runStatus === "failed" ? (
+                    <Siren className="h-4 w-4 text-[var(--error)]" />
+                  ) : (
+                    <WifiOff className="h-4 w-4 text-[var(--warning)]" />
+                  )}
+                  <h3 className={cn(
+                    "text-[10px] tracking-[.1em] uppercase",
+                    failedStages > 0 || store.runStatus === "failed" ? "text-[var(--error)]" : "text-[var(--warning)]"
+                  )}>
+                    {failedStages > 0 || store.runStatus === "failed" ? "Blocker guidance" : "Connection guidance"}
+                  </h3>
+                </div>
+                <ul className="mt-3 space-y-2 text-[11px] text-[var(--text-secondary)]">
+                  {blockerGuidance.map((hint, index) => (
+                    <li key={`${hint}-${index}`} className="flex gap-2">
+                      <CircleAlert className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-[var(--warning)]" />
+                      <span>{hint}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             <PipelineTracker
               onStageClick={(n) => {
                 setShowStageDetail(n);
@@ -375,7 +557,7 @@ export default function RunDetailPage() {
             />
           </div>
           <div className="lg:col-span-3">
-            <LiveEventFeed />
+            <LiveEventFeed streamState={streamState} statusMessage={streamMessage} />
           </div>
         </div>
       )}
@@ -696,6 +878,23 @@ export default function RunDetailPage() {
                     </div>
                   )}
                 </div>
+                {showStageDetail === stage.stage_num && (
+                  <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                    <div className="border border-[var(--border)] bg-[var(--surface-2)] p-3">
+                      <div className="text-[10px] tracking-[.08em] uppercase text-[var(--accent)]">Stage intent</div>
+                      <div className="mt-2 text-sm text-[var(--text-primary)]">{getStageNarrative(stage.stage_num).title}</div>
+                      <div className="mt-1 text-[11px] leading-5 text-[var(--text-secondary)]">{getStageNarrative(stage.stage_num).summary}</div>
+                    </div>
+                    <div className="border border-[var(--border)] bg-[var(--surface-2)] p-3">
+                      <div className="text-[10px] tracking-[.08em] uppercase text-[var(--warning)]">Operator note</div>
+                      <div className="mt-2 text-[11px] leading-5 text-[var(--text-secondary)]">
+                        {stage.status === "failed"
+                          ? getFailureGuidance(stage.stage_num, selectedStageDetail?.gate_reason || runStatus?.blocker_summary, store.error)[0]
+                          : getStageNarrative(stage.stage_num).stallHint}
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {showStageDetail === stage.stage_num && (
                   <div className="mt-4 border border-[var(--border)] bg-[var(--surface-2)] p-3">
                     <div className="mb-2 text-[10px] tracking-[.08em] uppercase text-[var(--text-label)]">Stage output</div>

@@ -256,6 +256,25 @@ class TestRunManagerMethods:
         assert summary["last_event_label"] == "Pipeline blocked"
         assert summary["blocker_summary"] == "Blocked at stage 0"
 
+    def test_completed_run_clears_transient_stage_14_failure_noise(self):
+        """Completed runs should not retain stale stage-failed noise from interim events."""
+        result = {"status": "completed", "stages_completed": list(range(14))}
+        manager = self._make_manager(result=result, status="completed")
+        run = manager._runs["test-run-001"]
+        run.stages_failed = [14]
+        run.blocker_summary = "Stage 14 failed"
+
+        run.hydrate_from_result()
+        summary = manager.list_runs()[0]
+
+        assert summary["current_stage"] == 14
+        assert summary["completed_stage_count"] == 15
+        assert summary["stages_completed"] == list(range(15))
+        assert summary["stages_failed"] == []
+        assert summary["failed_stage_count"] == 0
+        assert summary["progress_pct"] == 100.0
+        assert summary["blocker_summary"] is None
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Group 3: FastAPI App Integration
@@ -276,6 +295,24 @@ class TestFastAPIApp:
         # saved-runs is included via api/v1 prefix
         saved_paths = [p for p in paths if "saved-runs" in p]
         assert len(saved_paths) >= 1, f"Expected saved-runs routes, got paths: {paths}"
+
+    def test_health_details_endpoint_reports_redacted_diagnostics(self, monkeypatch):
+        from fastapi.testclient import TestClient
+        from api.main import create_app
+
+        monkeypatch.setenv("LLM_MAX_TOKENS", "10")
+        monkeypatch.setenv("OPENAI_API_KEY", "set-for-test")
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+        client = TestClient(create_app())
+        response = client.get("/health/details")
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["status"] == "ok"
+        assert payload["runtime"]["llm_max_tokens"] == 10
+        assert payload["credentials"]["OPENAI_API_KEY"] is True
+        assert payload["credentials"]["ANTHROPIC_API_KEY"] is False
 
 
 # ═══════════════════════════════════════════════════════════════════════════

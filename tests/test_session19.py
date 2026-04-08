@@ -696,6 +696,78 @@ class TestStage5EvidenceEnrichment:
         result = asyncio.run(engine.stage_5_evidence(["NVDA"]))
         assert result is True
 
+    def test_stage_5_normalizes_claim_aliases_into_canonical_ledger_schema(self):
+        """Stage 5 should accept prompt-style aliases instead of dropping valid claims."""
+        engine = self._make_mock_engine()
+
+        agent_result = MagicMock()
+        agent_result.model_dump = MagicMock(return_value={"success": True, "parsed_output": {}})
+        agent_result.success = True
+        agent_result.parsed_output = {
+            "claims": [
+                {
+                    "claim_id": "NVDA-001",
+                    "ticker": "nvda",
+                    "claim_text": "Revenue growth remains above peer median.",
+                    "source_name": "Reuters",
+                    "source_url": "https://example.com/reuters",
+                    "source_date": "07-Apr-2026",
+                    "source_tier": "Tier 2",
+                    "claim_type": "PRIMARY_FACT",
+                    "corroborated": "YES (Company filing)",
+                    "confidence": "HIGH",
+                    "gate_status": "PASS",
+                    "caveat_note": "none",
+                },
+                {
+                    "claim_id": "NVDA-002",
+                    "ticker": "NVDA",
+                    "claim_text": "Street FY+1 EPS estimate moved higher.",
+                    "source_name": "TipRanks",
+                    "source_tier": 3,
+                    "evidence_class": "estimate",
+                    "corroborated": "PARTIAL (MarketBeat)",
+                    "confidence": "moderate",
+                    "gate_status": "CAVEAT",
+                },
+                {
+                    "claim_id": "NVDA-003",
+                    "ticker": "NVDA",
+                    "claim_text": "Base-case upside still depends on house modelling assumptions.",
+                    "source_name": "Internal model",
+                    "source_tier": 4,
+                    "evidence_class": "derived",
+                    "confidence": "LOW",
+                    "gate_status": "FAIL",
+                },
+            ]
+        }
+        engine.evidence_agent.run = AsyncMock(return_value=agent_result)
+
+        def save_output(stage_num, data):
+            engine.stage_outputs[stage_num] = data
+
+        engine._save_stage_output = save_output
+        engine._check_gate = lambda gate: gate.passed
+
+        asyncio.run(engine.stage_5_evidence(["NVDA"]))
+
+        ledger = engine.gates.gate_5_evidence.call_args.args[0]
+        assert len(ledger.claims) == 3
+        assert ledger.claims[0].evidence_class.value == "primary_fact"
+        assert ledger.claims[0].status.value == "pass"
+        assert ledger.claims[0].corroborated is True
+        assert ledger.claims[0].corroboration_source == "Company filing"
+        assert ledger.claims[0].ticker == "NVDA"
+        assert ledger.claims[1].evidence_class.value == "consensus_datapoint"
+        assert ledger.claims[1].status.value == "caveat"
+        assert ledger.claims[1].confidence.value == "medium"
+        assert ledger.claims[1].corroborated is False
+        assert ledger.claims[1].corroboration_source == "MarketBeat"
+        assert ledger.claims[2].evidence_class.value == "house_inference"
+        assert ledger.claims[2].status.value == "fail"
+        assert len(ledger.sources) == 3
+
 
 # =============================================================================
 # 7. File structure validation
