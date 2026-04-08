@@ -92,18 +92,26 @@ class PipelineEvent(BaseModel):
         )
 
     @classmethod
-    def stage_started(cls, run_id: str, stage: int) -> "PipelineEvent":
+    def stage_started(
+        cls, run_id: str, stage: int, extra_data: Optional[dict[str, Any]] = None
+    ) -> "PipelineEvent":
         label = STAGE_LABELS.get(stage, f"Stage {stage}")
         return cls(
             run_id=run_id,
             event_type="stage_started",
             stage=stage,
             stage_label=label,
-            data={"stage_label": label},
+            data={"stage_label": label, **(extra_data or {})},
         )
 
     @classmethod
-    def stage_completed(cls, run_id: str, stage: int, duration_ms: float) -> "PipelineEvent":
+    def stage_completed(
+        cls,
+        run_id: str,
+        stage: int,
+        duration_ms: float,
+        extra_data: Optional[dict[str, Any]] = None,
+    ) -> "PipelineEvent":
         label = STAGE_LABELS.get(stage, f"Stage {stage}")
         return cls(
             run_id=run_id,
@@ -111,18 +119,24 @@ class PipelineEvent(BaseModel):
             stage=stage,
             stage_label=label,
             duration_ms=duration_ms,
-            data={"stage_label": label, "duration_ms": duration_ms},
+            data={"stage_label": label, "duration_ms": duration_ms, **(extra_data or {})},
         )
 
     @classmethod
-    def stage_failed(cls, run_id: str, stage: int, reason: str = "") -> "PipelineEvent":
+    def stage_failed(
+        cls,
+        run_id: str,
+        stage: int,
+        reason: str = "",
+        extra_data: Optional[dict[str, Any]] = None,
+    ) -> "PipelineEvent":
         label = STAGE_LABELS.get(stage, f"Stage {stage}")
         return cls(
             run_id=run_id,
             event_type="stage_failed",
             stage=stage,
             stage_label=label,
-            data={"stage_label": label, "reason": reason},
+            data={"stage_label": label, "reason": reason, **(extra_data or {})},
         )
 
     @classmethod

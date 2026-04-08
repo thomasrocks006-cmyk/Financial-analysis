@@ -139,6 +139,13 @@ logger = logging.getLogger(__name__)
 
 
 class PipelineEngine:
+    _PIPELINE_EXECUTION_SEQUENCE: list[int] = [0, 1, 2, 3, 4, 5, 6, 8, 7, 9, 10, 11, 12, 13, 14]
+    _PIPELINE_TRANSITION_NOTES: dict[tuple[int | None, int], str] = {
+        (None, 0): "Initial bootstrap stage.",
+        (6, 8): "Intentional non-linear transition: Stage 8 runs before Stage 7 so macro context feeds valuation (ARC-4).",
+        (8, 7): "Intentional return to Stage 7 after Stage 8 so valuation uses the fresh macro regime packet.",
+    }
+
     """Main execution engine for the 15-stage research pipeline.
 
     Deterministic work stays in code. Judgment work goes to LLM agents.
@@ -557,6 +564,76 @@ class PipelineEngine:
             except Exception:  # never let event delivery crash the pipeline
                 pass
 
+    def _get_stage_transition_metadata(self, stage_num: int) -> dict[str, Any]:
+        """Describe why the pipeline moved into this stage.
+
+        This helps operators understand intentional non-linear execution such as
+        Stage 8 → Stage 7, and flags unexpected jumps for troubleshooting.
+        """
+        observed_previous = None
+        if self.supervisor is not None:
+            observed_previous = getattr(self.supervisor, "_last_started_stage", None)
+
+        try:
+            index = self._PIPELINE_EXECUTION_SEQUENCE.index(stage_num)
+        except ValueError:
+            index = -1
+        expected_previous = (
+            self._PIPELINE_EXECUTION_SEQUENCE[index - 1] if index > 0 else None
+        )
+
+        if observed_previous is None:
+            transition_kind = "initial"
+        elif observed_previous == expected_previous:
+            transition_kind = (
+                "planned_non_linear"
+                if expected_previous is not None and stage_num != expected_previous + 1
+                else "sequential"
+            )
+        else:
+            transition_kind = "unexpected_jump"
+
+        note = self._PIPELINE_TRANSITION_NOTES.get((observed_previous, stage_num))
+        if note is None:
+            if transition_kind == "sequential":
+                note = "Normal stage progression."
+            elif transition_kind == "planned_non_linear":
+                note = "Planned non-linear stage transition in the pipeline design."
+            elif transition_kind == "unexpected_jump":
+                note = (
+                    f"Unexpected stage jump detected. Expected previous stage {expected_previous}, "
+                    f"but observed {observed_previous}."
+                )
+            else:
+                note = "Pipeline entered its first executable stage."
+
+        payload = {
+            "from_stage": observed_previous,
+            "expected_previous_stage": expected_previous,
+            "transition_kind": transition_kind,
+            "transition_reason": note,
+        }
+        if self.supervisor is not None:
+            self.supervisor.note_stage_transition(
+                stage_num=stage_num,
+                from_stage=observed_previous,
+                expected_previous_stage=expected_previous,
+                transition_kind=transition_kind,
+                note=note,
+            )
+        return payload
+
+    @staticmethod
+    def _supervisor_event_payload(record: Any | None) -> dict[str, Any]:
+        if record is None:
+            return {}
+        return {
+            "health": getattr(record.health, "value", None),
+            "issues": list(getattr(record, "issues", []) or []),
+            "warnings": list(getattr(record, "warnings", []) or []),
+            "remediation": list(getattr(record, "remediation", []) or []),
+        }
+
     async def _timed_stage(self, stage_num: int, coro) -> bool:  # ACT-S7-3 + Session 15
         """Await a stage coroutine, record its wall-clock duration, emit stage events, and
         update the supervisor health record.
@@ -568,23 +645,39 @@ class PipelineEngine:
         through the supervisor, but does not attempt to retry the coroutine.
         """
         run_id = self.run_record.run_id if self.run_record else "unknown"
-        await self._emit(PipelineEvent.stage_started(run_id, stage_num))
+        transition_payload = self._get_stage_transition_metadata(stage_num)
+        await self._emit(PipelineEvent.stage_started(run_id, stage_num, extra_data=transition_payload))
         _t = time.monotonic()
         try:
             result = await coro
             duration_ms = round((time.monotonic() - _t) * 1000, 1)
             self._stage_timings[stage_num] = duration_ms
-            if result:
-                await self._emit(PipelineEvent.stage_completed(run_id, stage_num, duration_ms))
-            else:
-                await self._emit(PipelineEvent.stage_failed(run_id, stage_num))
-            # Supervisor health check
+            supervisor_record = None
             if self.supervisor is not None:
-                self.supervisor.check_stage(
+                supervisor_record = self.supervisor.check_stage(
                     stage_num=stage_num,
                     stage_passed=bool(result),
                     stage_output=self.stage_outputs.get(stage_num),
                     duration_ms=duration_ms,
+                )
+            event_extra = {
+                **transition_payload,
+                **self._supervisor_event_payload(supervisor_record),
+            }
+            if result:
+                await self._emit(
+                    PipelineEvent.stage_completed(
+                        run_id, stage_num, duration_ms, extra_data=event_extra
+                    )
+                )
+            else:
+                await self._emit(
+                    PipelineEvent.stage_failed(
+                        run_id,
+                        stage_num,
+                        reason="Stage returned a failing gate result",
+                        extra_data=event_extra,
+                    )
                 )
             return result
         except Exception as exc:
@@ -597,16 +690,26 @@ class PipelineEngine:
                     type(exc).__name__,
                     exc,
                 )
-            await self._emit(PipelineEvent.stage_failed(run_id, stage_num, reason=str(exc)))
-            # Supervisor failure notification
+            supervisor_record = None
             if self.supervisor is not None:
-                self.supervisor.check_stage(
+                supervisor_record = self.supervisor.check_stage(
                     stage_num=stage_num,
                     stage_passed=False,
                     stage_output=self.stage_outputs.get(stage_num),
                     duration_ms=duration_ms,
                     exception=exc,
                 )
+            await self._emit(
+                PipelineEvent.stage_failed(
+                    run_id,
+                    stage_num,
+                    reason=str(exc),
+                    extra_data={
+                        **transition_payload,
+                        **self._supervisor_event_payload(supervisor_record),
+                    },
+                )
+            )
             raise
 
     async def _run_with_retry(

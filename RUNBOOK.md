@@ -53,6 +53,7 @@ Operator-facing behavior:
 - the run detail page explains what the current stage is doing, what success looks like, and what to inspect if it stalls
 - blocker panels now surface clearer next-step guidance instead of only raw error text
 - supported browsers receive light haptic/vibration cues on stage start, stage completion, and failures
+- live stage events now carry transition diagnostics (`from_stage`, expected predecessor, transition kind, transition reason) plus supervisor health notes (`health`, `issues`, `warnings`, `remediation`) so intentional jumps such as Stage 6 → Stage 8 are explainable in-flight
 
 If live following looks stale:
 1. Check whether the page is in `LIVE`, `POLLING`, or `ISSUE` mode
@@ -60,6 +61,7 @@ If live following looks stale:
 3. Inspect `/api/v1/runs/{run_id}`
 4. Inspect `/api/v1/runs/{run_id}/stages`
 5. Open the Stage Detail tab for the blocked stage and review its gate reason/output
+6. Inspect the run summary `live_diagnostics` payload to see the latest transition reason and supervisor remediation notes
 
 ## Economic smoke mode
 

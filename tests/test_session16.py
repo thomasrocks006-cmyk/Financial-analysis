@@ -256,6 +256,44 @@ class TestRunManagerMethods:
         assert summary["last_event_label"] == "Pipeline blocked"
         assert summary["blocker_summary"] == "Blocked at stage 0"
 
+    def test_run_summary_includes_live_diagnostics_from_stage_events(self):
+        """Managed runs surface transition and supervisor diagnostics in summaries."""
+        from research_pipeline.schemas.events import PipelineEvent
+
+        manager = self._make_manager(result={"status": "running"}, status="running")
+        run = manager._runs["test-run-001"]
+
+        run.update_from_event(
+            PipelineEvent.stage_started(
+                "test-run-001",
+                8,
+                extra_data={
+                    "from_stage": 6,
+                    "expected_previous_stage": 6,
+                    "transition_kind": "planned_non_linear",
+                    "transition_reason": "Stage 8 intentionally runs before Stage 7.",
+                },
+            )
+        )
+        run.update_from_event(
+            PipelineEvent.stage_completed(
+                "test-run-001",
+                8,
+                250.0,
+                extra_data={
+                    "health": "ok",
+                    "issues": [],
+                    "warnings": [],
+                    "remediation": [],
+                },
+            )
+        )
+
+        summary = manager.list_runs()[0]
+        assert summary["live_diagnostics"]["health"] == "ok"
+        assert summary["live_diagnostics"]["transition_kind"] == "planned_non_linear"
+        assert summary["live_diagnostics"]["from_stage"] == 6
+
     def test_completed_run_clears_transient_stage_14_failure_noise(self):
         """Completed runs should not retain stale stage-failed noise from interim events."""
         result = {"status": "completed", "stages_completed": list(range(14))}

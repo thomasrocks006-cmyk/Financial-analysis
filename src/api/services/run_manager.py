@@ -62,6 +62,7 @@ class ManagedRun:
     last_event_stage: Optional[int] = None
     last_event_label: Optional[str] = None
     blocker_summary: Optional[str] = None
+    live_diagnostics: Optional[dict[str, Any]] = None
 
     # SSE event queue — None until the run starts
     event_queue: asyncio.Queue = field(default_factory=lambda: asyncio.Queue(maxsize=512))
@@ -166,6 +167,7 @@ class ManagedRun:
             "last_event_stage": self.last_event_stage,
             "last_event_label": self.last_event_label,
             "blocker_summary": self.blocker_summary,
+            "live_diagnostics": self.live_diagnostics,
         }
 
     def update_from_event(self, event: PipelineEvent) -> None:
@@ -173,6 +175,23 @@ class ManagedRun:
         self.last_event_at = event.timestamp
         self.last_event_stage = event.stage
         self.last_event_label = event.stage_label or event.agent_name or event.event_type.replace("_", " ")
+
+        diagnostic_keys = {
+            "from_stage",
+            "expected_previous_stage",
+            "transition_kind",
+            "transition_reason",
+            "health",
+            "issues",
+            "warnings",
+            "remediation",
+        }
+        diagnostics = {k: event.data.get(k) for k in diagnostic_keys if k in event.data}
+        if diagnostics:
+            self.live_diagnostics = {
+                **(self.live_diagnostics or {}),
+                **diagnostics,
+            }
 
         if event.event_type == "stage_started" and event.stage is not None:
             self.current_stage = event.stage

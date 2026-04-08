@@ -127,6 +127,44 @@ class TestPipelineSupervisorAgent:
         assert record.stage_num == 7
         assert self.supervisor._records[7] is record
 
+    def test_note_stage_transition_records_planned_non_linear_jump(self):
+        """Intentional stage jumps are logged without being treated as unexpected."""
+        self.supervisor.note_stage_transition(
+            stage_num=8,
+            from_stage=6,
+            expected_previous_stage=6,
+            transition_kind="planned_non_linear",
+            note="Stage 8 intentionally runs before Stage 7.",
+        )
+
+        report = self.supervisor.build_report()
+        assert len(report.transition_log) == 1
+        assert report.transition_log[0]["transition_kind"] == "planned_non_linear"
+        assert report.unexpected_transitions == []
+
+    def test_current_snapshot_exposes_latest_transition_and_stage_health(self):
+        """Live snapshots include latest transition context and last evaluated stage."""
+        self.supervisor.note_stage_transition(
+            stage_num=0,
+            from_stage=None,
+            expected_previous_stage=None,
+            transition_kind="initial",
+            note="Initial bootstrap stage.",
+        )
+        self.supervisor.check_stage(
+            stage_num=0,
+            stage_passed=True,
+            stage_output={"universe": ["NVDA"], "config_valid": True},
+            duration_ms=150,
+        )
+
+        snapshot = self.supervisor.current_snapshot()
+        assert snapshot["overall_health"] == "ok"
+        assert snapshot["latest_transition"]["stage_num"] == 0
+        assert snapshot["latest_transition"]["transition_kind"] == "initial"
+        assert snapshot["latest_stage_record"]["stage_num"] == 0
+        assert snapshot["latest_stage_record"]["health"] == "ok"
+
     def test_build_report_all_ok(self):
         """Report reflects correctly aggregated counts."""
         stage_outputs = {

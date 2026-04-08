@@ -19,6 +19,7 @@
 	- clearer stage-by-stage operator guidance
 	- better blocker and connection-state messaging
 	- light browser haptic feedback on stage transitions/failures
+- ✅ Extended live monitoring diagnostics so the supervisor now logs stage transitions, distinguishes intentional non-linear jumps from unexpected ones, and streams remediation-ready health notes into API run summaries
 
 | Area | Status |
 |---|---|

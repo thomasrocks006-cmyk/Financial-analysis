@@ -72,6 +72,28 @@ class StageHealthRecord:
         }
 
 
+@dataclass
+class StageTransitionRecord:
+    stage_num: int
+    stage_name: str
+    from_stage: Optional[int]
+    expected_previous_stage: Optional[int]
+    transition_kind: str
+    note: str
+    observed_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "stage_num": self.stage_num,
+            "stage_name": self.stage_name,
+            "from_stage": self.from_stage,
+            "expected_previous_stage": self.expected_previous_stage,
+            "transition_kind": self.transition_kind,
+            "note": self.note,
+            "observed_at": self.observed_at.isoformat(),
+        }
+
+
 # ── Supervisor report (full run summary) ─────────────────────────────────
 
 
@@ -92,6 +114,8 @@ class SupervisorReport(BaseModel):
     remediation_summary: list[str] = Field(default_factory=list)
     pipeline_interrupted_at: Optional[int] = None
     total_duration_ms: float = 0.0
+    transition_log: list[dict[str, Any]] = Field(default_factory=list)
+    unexpected_transitions: list[dict[str, Any]] = Field(default_factory=list)
 
     @property
     def health_pct(self) -> float:
@@ -114,6 +138,8 @@ class SupervisorReport(BaseModel):
             "remediation_summary": self.remediation_summary,
             "pipeline_interrupted_at": self.pipeline_interrupted_at,
             "total_duration_ms": self.total_duration_ms,
+            "transition_log": self.transition_log,
+            "unexpected_transitions": self.unexpected_transitions,
             "stage_records": self.stage_records,
         }
 
@@ -207,6 +233,8 @@ class PipelineSupervisorAgent:
     def __init__(self, run_id: str = "") -> None:
         self.run_id = run_id
         self._records: dict[int, StageHealthRecord] = {}
+        self._transitions: list[StageTransitionRecord] = []
+        self._last_started_stage: Optional[int] = None
         self._run_start = time.monotonic()
         logger.info("PipelineSupervisor initialised for run %s", run_id or "(no id yet)")
 
@@ -338,6 +366,13 @@ class PipelineSupervisorAgent:
         if total_duration_ms is None:
             total_duration_ms = round((time.monotonic() - self._run_start) * 1000, 1)
 
+        transition_log = [record.to_dict() for record in self._transitions]
+        unexpected_transitions = [
+            record.to_dict()
+            for record in self._transitions
+            if record.transition_kind == "unexpected_jump"
+        ]
+
         return SupervisorReport(
             run_id=self.run_id,
             overall_health=overall,
@@ -354,7 +389,55 @@ class PipelineSupervisorAgent:
             remediation_summary=remediation_summary,
             pipeline_interrupted_at=pipeline_interrupted_at,
             total_duration_ms=total_duration_ms,
+            transition_log=transition_log,
+            unexpected_transitions=unexpected_transitions,
         )
+
+    def note_stage_transition(
+        self,
+        stage_num: int,
+        from_stage: Optional[int],
+        expected_previous_stage: Optional[int],
+        transition_kind: str,
+        note: str,
+    ) -> dict[str, Any]:
+        """Record why the pipeline moved into a stage.
+
+        This is used for live diagnostics so operators can distinguish between
+        normal sequential flow, planned non-linear ordering, and unexpected jumps.
+        """
+        record = StageTransitionRecord(
+            stage_num=stage_num,
+            stage_name=_STAGE_LABELS.get(stage_num, f"Stage {stage_num}"),
+            from_stage=from_stage,
+            expected_previous_stage=expected_previous_stage,
+            transition_kind=transition_kind,
+            note=note,
+        )
+        self._transitions.append(record)
+        self._last_started_stage = stage_num
+        return record.to_dict()
+
+    def current_snapshot(self) -> dict[str, Any]:
+        """Return a lightweight live diagnostics snapshot for in-flight runs."""
+        report = self.build_report()
+        latest_transition = self._transitions[-1].to_dict() if self._transitions else None
+        latest_stage = None
+        if self._records:
+            latest_stage_num = max(self._records)
+            latest_stage = self._records[latest_stage_num].to_dict()
+        return {
+            "overall_health": report.overall_health.value,
+            "health_pct": report.health_pct,
+            "stages_checked": report.stages_checked,
+            "stages_failed": report.stages_failed,
+            "stages_degraded": report.stages_degraded,
+            "pipeline_interrupted_at": report.pipeline_interrupted_at,
+            "latest_transition": latest_transition,
+            "latest_stage_record": latest_stage,
+            "critical_issues": report.critical_issues,
+            "remediation_summary": report.remediation_summary,
+        }
 
     def get_stage_record(self, stage_num: int) -> Optional[StageHealthRecord]:
         """Return the health record for a specific stage, or None if not yet checked."""

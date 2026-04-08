@@ -39,6 +39,17 @@ class TestPipelineEventSchema:
         assert e.stage_label == "Evidence Library"
         assert e.run_id == "r-001"
 
+    def test_stage_started_accepts_extra_data(self):
+        from research_pipeline.schemas.events import PipelineEvent
+
+        e = PipelineEvent.stage_started(
+            "r-001",
+            8,
+            extra_data={"transition_kind": "planned_non_linear", "from_stage": 6},
+        )
+        assert e.data["transition_kind"] == "planned_non_linear"
+        assert e.data["from_stage"] == 6
+
     def test_stage_completed_has_duration(self):
         from research_pipeline.schemas.events import PipelineEvent
 
@@ -47,12 +58,36 @@ class TestPipelineEventSchema:
         assert e.duration_ms == pytest.approx(1234.5)
         assert e.stage == 3
 
+    def test_stage_completed_accepts_supervisor_diagnostics(self):
+        from research_pipeline.schemas.events import PipelineEvent
+
+        e = PipelineEvent.stage_completed(
+            "r-001",
+            3,
+            1234.5,
+            extra_data={"health": "ok", "warnings": ["slow stage"]},
+        )
+        assert e.data["health"] == "ok"
+        assert e.data["warnings"] == ["slow stage"]
+
     def test_stage_failed_has_stage(self):
         from research_pipeline.schemas.events import PipelineEvent
 
         e = PipelineEvent.stage_failed("r-001", 7, reason="LLM error")
         assert e.event_type == "stage_failed"
         assert e.data["reason"] == "LLM error"
+
+    def test_stage_failed_accepts_transition_context(self):
+        from research_pipeline.schemas.events import PipelineEvent
+
+        e = PipelineEvent.stage_failed(
+            "r-001",
+            7,
+            reason="LLM error",
+            extra_data={"expected_previous_stage": 8, "transition_kind": "unexpected_jump"},
+        )
+        assert e.data["expected_previous_stage"] == 8
+        assert e.data["transition_kind"] == "unexpected_jump"
 
     def test_agent_started(self):
         from research_pipeline.schemas.events import PipelineEvent
@@ -451,3 +486,22 @@ class TestEngineEventCallbackWiring:
         # Should NOT raise even though callback throws
         await engine._emit(e)
         engine._event_callback = None
+
+    def test_stage_transition_metadata_marks_planned_non_linear_jump(self, engine):
+        from research_pipeline.agents.pipeline_supervisor import PipelineSupervisorAgent
+
+        engine.supervisor = PipelineSupervisorAgent(run_id="test")
+        engine.supervisor.note_stage_transition(
+            stage_num=6,
+            from_stage=5,
+            expected_previous_stage=5,
+            transition_kind="sequential",
+            note="Normal stage progression.",
+        )
+
+        payload = engine._get_stage_transition_metadata(8)
+
+        assert payload["from_stage"] == 6
+        assert payload["expected_previous_stage"] == 6
+        assert payload["transition_kind"] == "planned_non_linear"
+        assert "macro context feeds valuation" in payload["transition_reason"]
